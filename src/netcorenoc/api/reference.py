@@ -69,6 +69,9 @@ REFERENCE: dict[tuple[str, str], Entry] = {
     ("DELETE", "/api/users/{uid}"): Entry(ADMIN, "Delete an account"),
     ("POST", "/api/users/{uid}/role"): Entry(ADMIN, "Change an account's role"),
     ("POST", "/api/users/{uid}/profile"): Entry(ADMIN, "Set a person's name and recovery address"),
+    ("POST", "/api/users/{uid}/password-reset"): Entry(
+        ADMIN, "Replace a person's password with a one-time one"
+    ),
     ("POST", "/api/users/{uid}/avatar"): Entry(ADMIN, "Upload a person's photo"),
     ("DELETE", "/api/users/{uid}/avatar"): Entry(ADMIN, "Remove a person's photo"),
     ("GET", "/api/tokens"): Entry(ADMIN, "List service tokens"),

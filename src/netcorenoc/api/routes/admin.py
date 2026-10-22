@@ -79,7 +79,11 @@ def register(app: FastAPI, ctx: AppContext) -> None:
                 "ok",
                 object_type="user",
                 object_id=str(uid),
-                details={"username": body.username, "role": body.role, "display_name": display},
+                details={
+                    "username": body.username,
+                    "role": body.role,
+                    "display_name_set": display is not None,
+                },
             )
         return {"id": uid, "username": body.username, "role": body.role, "display_name": display}
 

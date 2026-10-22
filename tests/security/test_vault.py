@@ -8,6 +8,7 @@ any user may read is refused.
 
 from __future__ import annotations
 
+import base64
 import os
 import stat
 from pathlib import Path
@@ -39,7 +40,9 @@ def test_the_wrong_key_is_named_as_such() -> None:
 def test_a_tampered_or_truncated_value_is_refused_without_echoing_it() -> None:
     v = vault.Vault.from_key(KEY)
     token = v.seal("meta:config.snmp", "s3cret-material")
-    flipped = token[:-2] + ("A" if token[-2] != "A" else "B") + token[-1]
+    raw = bytearray(base64.urlsafe_b64decode(token[len(vault.PREFIX) :]))
+    raw[-1] ^= 1  # one bit of the tag (a base64 character may carry only padding bits)
+    flipped = vault.PREFIX + base64.urlsafe_b64encode(bytes(raw)).decode("ascii")
     for bad in (flipped, token[:20], "nc1:!!!", "plaintext"):
         with pytest.raises(vault.VaultError) as caught:
             v.open("meta:config.snmp", bad)
@@ -59,7 +62,7 @@ def test_the_pepper_depends_on_the_key() -> None:
 
 
 def test_the_key_file_is_created_owner_only_once_and_reused(tmp_path: Path) -> None:
-    path = tmp_path / "secret.key"
+    path = tmp_path / "own.key"  # the suite's autouse fixture holds secret.key
     first, created = vault.load_or_create(path)
     assert created and stat.S_IMODE(path.stat().st_mode) == 0o600
     second, created_again = vault.load_or_create(path)
@@ -67,7 +70,7 @@ def test_the_key_file_is_created_owner_only_once_and_reused(tmp_path: Path) -> N
 
 
 def test_a_key_file_any_user_may_read_is_refused(tmp_path: Path) -> None:
-    path = tmp_path / "secret.key"
+    path = tmp_path / "own.key"  # the suite's autouse fixture holds secret.key
     vault.load_or_create(path)
     os.chmod(path, 0o644)
     with pytest.raises(vault.VaultError, match="chmod 600"):

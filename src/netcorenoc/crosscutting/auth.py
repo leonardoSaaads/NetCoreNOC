@@ -282,6 +282,13 @@ def new_session_token() -> str:
     return secrets.token_urlsafe(32)
 
 
+def temporary_password() -> str:
+    """A password an administrator hands over once (ADR #453): 120 random bits, in 20 characters
+    that survive being read aloud or pasted, and inside the length rule `validate_password` keeps.
+    """
+    return secrets.token_urlsafe(15)
+
+
 async def open_session(store: Store, user_id: int, source_ip: str | None, now: float) -> str:
     """Mint a fresh session (new id every login — fixation defence) and persist its hash."""
     token = new_session_token()

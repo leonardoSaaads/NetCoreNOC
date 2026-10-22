@@ -29,8 +29,8 @@ async function refreshSession() {
 class Profile extends Component {
   constructor(props) {
     super(props);
-    this.state = { name: session().displayName || "", email: session().email || "", status: null,
-      busy: false };
+    this.state = { name: session().displayName || "", email: session().email || "", password: "",
+      status: null, busy: false };
   }
 
   async photo(blob) {
@@ -49,18 +49,21 @@ class Profile extends Component {
     event.preventDefault();
     this.setState({ busy: true, status: null });
     try {
+      // A new recovery address takes the current password (ADR #453): a session alone must not be
+      // enough to send the next reset link somewhere else.
       await post("/api/me/profile", { display_name: this.state.name.trim() || null,
-        email: this.state.email.trim() || null });
+        email: this.state.email.trim() || null, current_password: this.state.password || null });
       await refreshSession();
-      this.setState({ busy: false, status: { ok: true, text: "Saved." } });
+      this.setState({ busy: false, password: "", status: { ok: true, text: "Saved." } });
     } catch (error) {
       this.setState({ busy: false, status: { ok: false, text: error.detail || error.message } });
     }
   }
 
-  render(_props, { name, email, status, busy }) {
+  render(_props, { name, email, password, status, busy }) {
     const me = session();
-    const dirty = name.trim() !== (me.displayName || "") || email.trim() !== (me.email || "");
+    const emailChanged = email.trim() !== (me.email || "");
+    const dirty = name.trim() !== (me.displayName || "") || emailChanged;
     return html`<section class="panel-block acct-profile">
       <${PhotoPicker} person=${{ id: me.userId, digest: me.avatar, name: me.displayName, username: me.user }}
         size=${104} label="Your photo" onChange=${(blob) => this.photo(blob)} />
@@ -75,6 +78,9 @@ class Profile extends Component {
           <input type="email" value=${email} maxlength="254" placeholder="you@example.com"
             autocomplete="email" onInput=${(e) => this.setState({ email: e.currentTarget.value })} />
         </label>
+        ${emailChanged ? html`<label class="pe-field"><span>Current password</span>
+          <input type="password" value=${password} required autocomplete="current-password"
+            onInput=${(e) => this.setState({ password: e.currentTarget.value })} /></label>` : null}
         <p class="acct-handle"><span class="muted">@${me.user}</span>
           <span class=${`role-pill role-${me.role}`}>${me.role}</span>
           <button type="submit" class="primary" disabled=${busy || !dirty}>Save</button></p>

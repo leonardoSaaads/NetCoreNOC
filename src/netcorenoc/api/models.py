@@ -282,6 +282,9 @@ class ProfileIn(BaseModel):
     display_name: str | None = Field(default=None, max_length=MAX_DISPLAY_NAME)
     # v0.30.0 (ADR #445): where a reset link goes. Applied only when sent; "" or null clears it.
     email: str | None = Field(default=None, max_length=254)
+    # ADR #453: changing your OWN address takes your password — whoever holds only your session
+    # must not be able to send your next reset link to themselves.
+    current_password: str | None = Field(default=None, max_length=auth.MAX_PASSWORD)
 
     _clean = field_validator("display_name")(_printable)
 

@@ -49,16 +49,19 @@ settings.load_profile("netcorenoc")
 def _secret_key_file(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """ADR #453: the suite's key, in a file of the test's own — never `secret.key` in the working
     tree, which is where an appliance with the default `NETCORENOC_DATA_DIR` would create one.
-    The CLI reads it through the environment; `runner.run` is given the same key directly."""
+    Settings read from the environment find it there; `vault.install` is given the same key
+    directly, for the tests that build `Settings` with the default data directory."""
     import base64
 
-    from netcorenoc import runner
+    def install(_path: Path) -> vault.Vault:
+        vault.configure(TEST_VAULT)
+        return TEST_VAULT
 
     path = tmp_path / "secret.key"
     path.write_text(base64.b64encode(TEST_KEY).decode("ascii") + "\n")
     path.chmod(0o600)
     monkeypatch.setenv("NETCORENOC_SECRET_KEY_FILE", str(path))
-    monkeypatch.setattr(runner, "load_secret_key", lambda _settings: vault.configure(TEST_VAULT))
+    monkeypatch.setattr(vault, "install", install)
     vault.configure(TEST_VAULT)
 
 

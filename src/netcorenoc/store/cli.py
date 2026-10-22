@@ -89,12 +89,10 @@ def _key(settings: Settings, *, create: bool) -> None:
         )
         raise SystemExit(2)
     try:
-        path.parent.mkdir(parents=True, exist_ok=True)
-        keyring, _created = vault.load_or_create(path)
-    except (OSError, vault.VaultError) as exc:
-        print(f"NETCORENOC_SECRET_KEY_FILE ({path}): {exc}", file=sys.stderr)
+        vault.install(path)
+    except vault.VaultError as exc:
+        print(exc, file=sys.stderr)
         raise SystemExit(2) from exc
-    vault.configure(keyring)
 
 
 async def _open(settings: Settings, *, create: bool = False) -> Store:
@@ -201,11 +199,7 @@ async def _import_sqlite(settings: Settings, source: str) -> int:
     store = await _open(settings, create=True)
     try:
         report = await importer.import_sqlite(store, source)
-        # What the file held in plain text is sealed before anyone reads it (ADR #453).
-        async with store.lock:
-            await store.check_vault()
-            await store.seal_plaintext()
-            await store.commit()
+        await store.open_vault()  # what the file held in plain text, sealed (ADR #453)
     except importer.ImportRefusedError as exc:
         print(f"refused: {exc}", file=sys.stderr)
         return 2

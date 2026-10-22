@@ -40,11 +40,31 @@ class RecoveryMixin(StoreBase):
         return key
 
     async def set_user_email(self, user_id: int, email: str | None, now: float) -> None:
-        # Sealed, with a keyed digest for the reset request's lookup (ADR #453).
+        """Sealed, with a keyed digest for the reset request's lookup (ADR #453). A link already
+        sent went to the old address, so it is withdrawn with it."""
         await self.conn.execute(
             "UPDATE app_user SET email=?, email_index=?, updated_at=? WHERE id=?",
             (seal_text(EMAIL, email), email_index(email), now, user_id),
         )
+        await self.withdraw_resets(user_id)
+
+    async def withdraw_resets(self, user_id: int) -> int:
+        """Every unused reset link of ``user_id`` stops working. Returns how many there were."""
+        cur = await self.conn.execute(
+            "DELETE FROM password_reset WHERE user_id=? AND used_at IS NULL RETURNING user_id",
+            (user_id,),
+        )
+        return len(await cur.fetchall())
+
+    async def replace_password(self, user_id: int, password_hash: str, now: float) -> None:
+        """An administrator's reset: a new password the person must change at their next sign-in,
+        and no reset link left that could race it. The caller revokes the sessions."""
+        await self.conn.execute(
+            "UPDATE app_user SET password_hash=?, must_change_password=true, updated_at=? "
+            "WHERE id=?",
+            (password_hash, now, user_id),
+        )
+        await self.withdraw_resets(user_id)
 
     async def recovery_accounts(self, login: str) -> list[dict[str, Any]]:
         """The enabled accounts a reset request names: by username, else by address."""

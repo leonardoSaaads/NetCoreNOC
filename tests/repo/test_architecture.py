@@ -560,6 +560,7 @@ ROUTE_ORDER_BASELINE: list[tuple[str, str]] = [
     ("POST", "/api/users/{uid}/avatar"),
     ("DELETE", "/api/users/{uid}/avatar"),
     ("POST", "/api/users/{uid}/profile"),
+    ("POST", "/api/users/{uid}/password-reset"),
     ("GET", "/api/scorer"),
     ("GET", "/api/correlation"),
     ("POST", "/api/scorer/preview"),

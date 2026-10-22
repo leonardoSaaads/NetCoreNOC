@@ -22,6 +22,7 @@ and every sealed read one at a time.
 
 from __future__ import annotations
 
+import logging
 from typing import Any
 
 from netcorenoc.crosscutting import vault
@@ -47,6 +48,8 @@ AVATAR = "user_avatar.image"
 #: `meta` keys whose values are secrets.
 SECRET_META = frozenset({"config.email", "config.snmp", "community_hmac_key"})
 KID_META = "vault.kid"
+
+log = logging.getLogger("netcorenoc")
 
 
 def seal_text(place: str, value: str | None) -> str | None:
@@ -88,6 +91,21 @@ def open_person(row: dict[str, Any]) -> dict[str, Any]:
 
 
 class SealingMixin(StoreBase):
+    async def open_vault(self) -> int:
+        """At start and after an import: refuse a key that is not this database's, then seal what
+        is still plain. Takes the lock and commits; returns how many values it sealed."""
+        async with self.lock:
+            try:
+                await self.check_vault()
+                sealed = await self.seal_plaintext()
+            except BaseException:
+                await self.rollback()
+                raise
+            await self.commit()
+        if sealed:
+            log.info("sealed %d personal value(s) and secret(s) left in plain text", sealed)
+        return sealed
+
     async def check_vault(self) -> bool:
         """Refuse a key file that is not the one this database was sealed with.
 

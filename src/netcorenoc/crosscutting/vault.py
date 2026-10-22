@@ -29,6 +29,7 @@ from __future__ import annotations
 import base64
 import hashlib
 import hmac
+import logging
 import os
 import secrets
 import stat
@@ -40,6 +41,8 @@ from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 from cryptography.hazmat.primitives.kdf.hkdf import HKDF
 
+from netcorenoc.crosscutting.settings import SettingsError
+
 __all__ = [
     "KEY_BYTES",
     "PREFIX",
@@ -47,9 +50,12 @@ __all__ = [
     "VaultError",
     "configure",
     "current",
+    "install",
     "is_sealed",
     "load_or_create",
 ]
+
+log = logging.getLogger("netcorenoc")
 
 KEY_BYTES = 32
 PREFIX = "nc1:"
@@ -57,8 +63,10 @@ _NONCE = 12
 _KID = 4
 
 
-class VaultError(RuntimeError):
-    """No key, the wrong key, or a sealed value that does not open. Never names the value."""
+class VaultError(SettingsError):
+    """No key, the wrong key, or a sealed value that does not open. Never names the value.
+
+    A :class:`SettingsError`: what fixes it is the key file the process was given."""
 
 
 def _subkey(key: bytes, purpose: bytes) -> bytes:
@@ -175,3 +183,29 @@ def load_or_create(path: Path) -> tuple[Vault, bool]:
     except ValueError as exc:
         raise VaultError(f"{path} does not hold a base64 secret key") from exc
     return Vault.from_key(key), created
+
+
+def install(path: Path) -> Vault:
+    """Load the key file at ``path`` — created on the first start — as the process's vault.
+
+    Logs the key's identifier, and on creation a warning to back the file up apart from the
+    database. Every failure, the file system's included, is a :class:`VaultError` naming the file.
+    """
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        keyring, created = load_or_create(path)
+    except (OSError, VaultError) as exc:
+        raise VaultError(
+            f"NETCORENOC_SECRET_KEY_FILE ({path}): {exc}. See docs/configure.md."
+        ) from exc
+    configure(keyring)
+    if created:
+        log.warning(
+            "created the secret key %s (key %s): back it up apart from the database — without "
+            "it, sealed personal data and every password are unreadable (ADR #453)",
+            path,
+            keyring.kid.hex(),
+        )
+    else:
+        log.info("secret key %s (key %s)", path, keyring.kid.hex())
+    return keyring

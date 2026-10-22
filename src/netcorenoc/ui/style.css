@@ -2800,6 +2800,8 @@ button.mw-row-name {
 .pe-access-head { display: flex; align-items: center; gap: var(--space-2); margin-bottom: var(--space-2); }
 .pe-access-head h4 { margin: 0; }
 .pe-foot, .roles-foot { display: flex; flex-wrap: wrap; gap: var(--space-2); align-items: center; }
+.pe-password { margin: var(--space-2) 0; }
+.pw-reset p { margin: 0 0 var(--space-2); }
 .capgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(13.5rem, 1fr)); gap: var(--space-3); }
 .capgroup { border: 1px solid var(--line); border-radius: var(--radius-2); padding: var(--space-2) var(--space-3) var(--space-3); margin: 0; min-width: 0; }
 .capgroup legend { display: flex; align-items: center; gap: var(--space-2); padding: 0 var(--space-1); font-weight: 600; font-size: var(--fs-sm); }
