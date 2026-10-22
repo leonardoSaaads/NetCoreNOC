@@ -17,6 +17,8 @@ import secrets
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
+from netcorenoc.crosscutting import vault
+
 if TYPE_CHECKING:
     from netcorenoc.store import Store
 
@@ -54,11 +56,23 @@ _DUMMY_SALT = b"\x00" * 16
 # -- passwords -----------------------------------------------------------------------
 
 
+#: The current scheme: scrypt over the password keyed with the secret key's pepper (ADR #453), so
+#: the hashes in a copy of the database cannot be tested offline without the key file. Hashes in the
+#: unkeyed `scrypt` scheme (v0.31.0 and earlier) still verify, and a successful sign-in rewrites
+#: them in this one.
+SCHEME = "scrypt-p1"
+LEGACY_SCHEME = "scrypt"
+
+
+def _scrypt_input(password: str, scheme: str) -> bytes:
+    return vault.current().pepper(password) if scheme == SCHEME else password.encode("utf-8")
+
+
 def hash_password(password: str) -> str:
-    """scrypt$<n>$<r>$<p>$<salt_b64>$<hash_b64> using the current cost parameters."""
+    """scrypt-p1$<n>$<r>$<p>$<salt_b64>$<hash_b64> using the current cost parameters."""
     salt = os.urandom(16)
     derived = hashlib.scrypt(
-        password.encode("utf-8"),
+        _scrypt_input(password, SCHEME),
         salt=salt,
         n=SCRYPT_N,
         r=SCRYPT_R,
@@ -68,14 +82,14 @@ def hash_password(password: str) -> str:
     )
     salt_b64 = base64.b64encode(salt).decode("ascii")
     hash_b64 = base64.b64encode(derived).decode("ascii")
-    return f"scrypt${SCRYPT_N}${SCRYPT_R}${SCRYPT_P}${salt_b64}${hash_b64}"
+    return f"{SCHEME}${SCRYPT_N}${SCRYPT_R}${SCRYPT_P}${salt_b64}${hash_b64}"
 
 
 def verify_password(password: str, stored: str) -> bool:
-    """Constant-time verify against a stored hash, reading its embedded parameters."""
+    """Constant-time verify against a stored hash, reading its scheme and parameters."""
     try:
         scheme, n_s, r_s, p_s, salt_b64, hash_b64 = stored.split("$")
-        if scheme != "scrypt":
+        if scheme not in (SCHEME, LEGACY_SCHEME):
             return False
         n, r, p = int(n_s), int(r_s), int(p_s)
         salt = base64.b64decode(salt_b64)
@@ -83,7 +97,7 @@ def verify_password(password: str, stored: str) -> bool:
     except (ValueError, TypeError):
         return False
     derived = hashlib.scrypt(
-        password.encode("utf-8"),
+        _scrypt_input(password, scheme),
         salt=salt,
         n=n,
         r=r,
@@ -92,6 +106,11 @@ def verify_password(password: str, stored: str) -> bool:
         maxmem=SCRYPT_MAXMEM,
     )
     return hmac.compare_digest(derived, expected)
+
+
+def needs_rehash(stored: str) -> bool:
+    """True for a hash an earlier release wrote: unkeyed (ADR #453)."""
+    return not stored.startswith(SCHEME + "$")
 
 
 def dummy_verify(password: str) -> bool:
@@ -347,6 +366,8 @@ async def perform_login(
 
     throttle.record_success(username, source_ip)
     user_id = int(user["id"])
+    if not user["must_change_password"] and needs_rehash(user["password_hash"]):
+        await store.rehash_password(user_id, hash_password(password))  # keyed from now on
     if user["must_change_password"]:
         if not new_password:
             return LoginOutcome("must_change", message="password change required")

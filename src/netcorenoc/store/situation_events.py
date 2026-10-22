@@ -22,6 +22,7 @@ from typing import Any
 
 from netcorenoc.crosscutting.shaping import derive_situation_name
 from netcorenoc.store.base import StoreBase
+from netcorenoc.store.sealing import open_person
 
 __all__ = ["SituationEventMixin"]
 
@@ -348,7 +349,7 @@ class SituationEventMixin(StoreBase):
             "WHERE e.situation_id=? OR e.peer_situation_id=? ORDER BY e.at, e.id",
             (situation_id, situation_id),
         )
-        return [dict(row) for row in await cur.fetchall()]
+        return [open_person(dict(row)) for row in await cur.fetchall()]
 
     async def gesture_positive_pairs(self) -> list[dict[str, Any]]:
         """The **positive** pair assertions the label surface has no shape for. One query.

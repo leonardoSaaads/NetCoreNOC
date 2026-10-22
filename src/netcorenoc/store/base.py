@@ -33,6 +33,9 @@ class StoreBase:
     # the same history fails at start instead of corrupting it (ADR #452).
     _exclusive: bool
     _create: bool  # False: a missing schema is refused, not created (the CLI's tools)
+    _owner_dsn: str | None  # the schema owner, when the store runs as another role (ADR #453)
+    _grant_to: str | None
+    owns_schema: bool
     _ne_ids: dict[str, int]
     _entity0_ids: dict[int, int]  # ne id -> its level-0 entity id
     _entity_ids: dict[tuple[int, str], int]  # (ne id, key) -> promoted entity id

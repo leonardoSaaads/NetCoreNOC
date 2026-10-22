@@ -19,6 +19,8 @@ result
 .env
 # The managed-database password file of docker-compose.supabase.yml (ADR #452).
 secrets/
+# The appliance's secret key (ADR #453), created in the data directory on the first start.
+secret.key
 # Local TLS material referenced by the commented compose profile.
 /tls/
 

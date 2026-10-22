@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+from netcorenoc.crosscutting import vault
 from netcorenoc.store.base import StoreBase
+from netcorenoc.store.sealing import SECRET_META, open_text
 from netcorenoc.store.types import EdgeRow
 
 
@@ -51,9 +53,14 @@ class LearnedMixin(StoreBase):
     async def get_meta(self, key: str) -> str | None:
         cur = await self.conn.execute("SELECT value FROM meta WHERE key=?", (key,))
         row = await cur.fetchone()
-        return str(row[0]) if row else None
+        if row is None:
+            return None
+        # A secret document is sealed at rest (ADR #453); it reads as the text it was written as.
+        return str(open_text(f"meta:{key}", row[0]) if key in SECRET_META else row[0])
 
     async def set_meta(self, key: str, value: str) -> None:
+        if key in SECRET_META:
+            value = vault.current().seal(f"meta:{key}", value)
         await self.conn.execute(
             "INSERT INTO meta (key, value) VALUES (?, ?) "
             "ON CONFLICT (key) DO UPDATE SET value=excluded.value",

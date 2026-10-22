@@ -13,6 +13,7 @@ import os
 import sys
 from collections.abc import Awaitable
 
+from netcorenoc.crosscutting import vault
 from netcorenoc.crosscutting.settings import (
     Settings,
     SettingsError,
@@ -23,7 +24,7 @@ from netcorenoc.crosscutting.settings import (
 )
 from netcorenoc.store import OPEN_ERRORS, Store, StoreRefusedError
 
-__all__ = ["_backup", "_db_status", "_import_sqlite", "_open", "_settings"]
+__all__ = ["_backup", "_db_migrate", "_db_status", "_import_sqlite", "_key", "_open", "_settings"]
 
 #: What opening the store can raise that an operator fixes by pointing at the right database: a
 #: refused or unreachable server, a role or password it does not accept, a database or schema that
@@ -59,8 +60,9 @@ def _settings(*, importing: bool = False) -> Settings:
     return settings
 
 
-def _store(settings: Settings, *, create: bool = False) -> Store:
-    """A store beside the running appliance: one reader, no instance lock."""
+def _store(settings: Settings, *, create: bool = False, grant: bool = False) -> Store:
+    """A store beside the running appliance: one reader, no instance lock. ``grant``: run the
+    migrations as the owner and grant the runtime role (``db migrate``, ADR #453)."""
     return Store(
         settings.database_url,
         schema=settings.db_schema,
@@ -68,7 +70,31 @@ def _store(settings: Settings, *, create: bool = False) -> Store:
         statement_cache_size=settings.db_statement_cache,
         exclusive=False,
         create=create,
+        owner_dsn=(settings.database_owner_url or None) if grant else None,
+        grant_to=(settings.db_runtime_role or None) if grant else None,
     )
+
+
+def _key(settings: Settings, *, create: bool) -> None:
+    """The appliance's secret key (ADR #453). Created only by a command that may be the first
+    to touch the database (``db import-sqlite``); any other refuses a missing key rather than
+    making one the appliance does not have."""
+    path = settings.secret_key_path
+    if not create and not path.exists():
+        print(
+            f"no secret key at {path}: run this where the appliance runs, with its "
+            "NETCORENOC_DATA_DIR (or NETCORENOC_SECRET_KEY_FILE) — in Compose, "
+            "`docker compose exec netcorenoc python -m netcorenoc ...`.",
+            file=sys.stderr,
+        )
+        raise SystemExit(2)
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        keyring, _created = vault.load_or_create(path)
+    except (OSError, vault.VaultError) as exc:
+        print(f"NETCORENOC_SECRET_KEY_FILE ({path}): {exc}", file=sys.stderr)
+        raise SystemExit(2) from exc
+    vault.configure(keyring)
 
 
 async def _open(settings: Settings, *, create: bool = False) -> Store:
@@ -153,7 +179,13 @@ async def _db_status(settings: Settings) -> int:
 async def _db_migrate(settings: Settings) -> int:
     """Create the schema when it is missing and apply every pending migration. Idempotent, and safe
     beside a running appliance: each migration runs under its own advisory lock."""
-    store = await _open(settings, create=True)
+    store = _store(settings, create=True, grant=True)
+    try:
+        await store.open()
+    except _OPEN_ERRORS as exc:
+        await store.close()
+        print(f"cannot migrate {redact_url(settings.database_url)}: {exc}", file=sys.stderr)
+        return 2
     try:
         version = await store.schema_version()
     finally:
@@ -165,9 +197,15 @@ async def _db_migrate(settings: Settings) -> int:
 async def _import_sqlite(settings: Settings, source: str) -> int:
     from netcorenoc.store import importer
 
+    _key(settings, create=True)
     store = await _open(settings, create=True)
     try:
         report = await importer.import_sqlite(store, source)
+        # What the file held in plain text is sealed before anyone reads it (ADR #453).
+        async with store.lock:
+            await store.check_vault()
+            await store.seal_plaintext()
+            await store.commit()
     except importer.ImportRefusedError as exc:
         print(f"refused: {exc}", file=sys.stderr)
         return 2

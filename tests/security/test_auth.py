@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from netcorenoc.crosscutting import administration, auth
+from netcorenoc.crosscutting import administration, auth, vault
 from netcorenoc.store import Store
 
 import authutil
@@ -14,10 +14,54 @@ import authutil
 
 def test_password_hash_roundtrip_and_format() -> None:
     stored = auth.hash_password("correct horse battery staple")
-    assert stored.startswith("scrypt$")
+    assert stored.startswith("scrypt-p1$")
     assert stored.count("$") == 5
     assert auth.verify_password("correct horse battery staple", stored)
     assert not auth.verify_password("wrong password here", stored)
+
+
+def test_a_hash_does_not_verify_without_the_secret_key() -> None:
+    """ADR #453: the pepper. A copy of the database without the key file cannot test a guess —
+    the same password under another key is a different hash, and verification fails."""
+    stored = auth.hash_password("correct horse battery staple")
+    previous = vault.current()
+    vault.configure(vault.Vault.from_key(bytes(32)))
+    try:
+        assert not auth.verify_password("correct horse battery staple", stored)
+    finally:
+        vault.configure(previous)
+
+
+def _legacy_hash(password: str) -> str:
+    """A v0.31.0 hash: scrypt with no pepper."""
+    import base64
+    import hashlib
+
+    salt = b"\x01" * 16
+    derived = hashlib.scrypt(password.encode(), salt=salt, n=auth.SCRYPT_N, r=8, p=1, dklen=32)
+    salt_b64, hash_b64 = base64.b64encode(salt).decode(), base64.b64encode(derived).decode()
+    return f"scrypt${auth.SCRYPT_N}$8$1${salt_b64}${hash_b64}"
+
+
+async def test_an_unkeyed_hash_still_signs_in_and_is_rewritten_keyed(store: Store) -> None:
+    async with store.lock:
+        uid = await store.create_user("old", _legacy_hash(authutil.PW), "viewer", False, 0.0)
+        await store.commit()
+    async with store.lock:
+        outcome = await auth.perform_login(
+            store,
+            auth.LoginThrottle(),
+            username="old",
+            password=authutil.PW,
+            new_password=None,
+            source_ip="10.0.0.1",
+            now=1000.0,
+        )
+        await store.commit()
+    assert outcome.status == "ok"
+    user = await store.get_user(uid)
+    assert user is not None and str(user["password_hash"]).startswith("scrypt-p1$")
+    assert auth.verify_password(authutil.PW, str(user["password_hash"]))
 
 
 def test_password_hashes_are_salted_and_unique() -> None:

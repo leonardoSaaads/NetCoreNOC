@@ -2,20 +2,25 @@
 #
 #     docker compose up --build
 #
-# Three services (ADR #452):
+# Four services (ADRs #452, #453):
 #
 #   * `netcorenoc` — the appliance the Dockerfile builds: the trap receiver, the correlator and
 #     the console, hardened (read-only rootfs, every capability dropped but one, no privilege
-#     escalation, tmpfs /tmp). Its own volume holds only the trap spool;
+#     escalation, tmpfs /tmp). Its own volume holds the trap spool and the secret key that seals
+#     personal data and secrets in the database. It connects as `netcorenoc_app`, a role that owns
+#     nothing: it may read and write rows, and may not alter, drop or truncate a table, disable a
+#     trigger, or delete an audit row;
+#   * `db-migrate` — runs once before it, as the schema's owner `netcorenoc`: creates and migrates
+#     the schema and grants `netcorenoc_app` its privileges. Only it holds the owner's password;
 #   * `postgres` — the database, on an internal network with no published port, its data on a
 #     named volume, tuned for this workload (see `command:`);
-#   * `db-secret` — runs once, before both: it writes two random passwords into a volume only
-#     these containers mount, if none is there yet. `db_admin_password` is the cluster superuser's
-#     (`postgres`, for initialisation and maintenance; only the database container can read it);
-#     `db_password` is the appliance's role, `netcorenoc`, which is **not** a superuser: it owns its
-#     database and nothing else (`configs: netcorenoc-role`). The appliance reads it from the file
-#     (`NETCORENOC_DATABASE_PASSWORD_FILE`). No password is typed, stored in `.env`, in this file,
-#     in the image, or in any container's environment.
+#   * `db-secret` — runs once, before the rest: it writes three random passwords into a volume
+#     only these containers mount, if none is there yet, each readable by the one container that
+#     needs it (and the database's, which sets them): `db_admin_password`, the cluster superuser's
+#     (`postgres`, initialisation and maintenance); `db_password`, the schema owner's
+#     (`db-migrate`); `db_app_password`, the runtime role's (`netcorenoc`). Neither application
+#     role is a superuser (`configs: netcorenoc-role`). No password is typed, stored in `.env`, in
+#     this file, in the image, or in any container's environment.
 #
 # Configuration is optional. Copy .env.example to .env and edit it to set an allowlist, TLS,
 # retention, etc. `.env` is git-ignored and is the ONLY place secrets belong — never the image
@@ -51,7 +56,7 @@ services:
     cap_drop:
       - ALL
     cap_add:
-      - CHOWN                             # netcorenoc (10001) and postgres (70)
+      - CHOWN                             # netcorenoc (10001), db-migrate (10002), postgres (70)
       - DAC_OVERRIDE
       - FOWNER
     security_opt:
@@ -65,13 +70,15 @@ services:
         set -eu
         dir=/run/netcorenoc-secrets
         umask 377
-        for name in db_password db_admin_password; do
+        for name in db_admin_password db_password db_app_password; do
           [ -s "$$dir/$$name" ] || head -c 48 /dev/urandom | base64 | tr -d '\n=+/' > "$$dir/$$name"
         done
-        chown 10001:70 "$$dir/db_password"        # the appliance reads it; so does the init script
-        chmod 0440 "$$dir/db_password"
         chown 70:70 "$$dir/db_admin_password"     # the database container alone
         chmod 0400 "$$dir/db_admin_password"
+        chown 10002:70 "$$dir/db_password"        # db-migrate; and the init script (group 70)
+        chmod 0440 "$$dir/db_password"
+        chown 10001:70 "$$dir/db_app_password"    # the appliance; and the init script
+        chmod 0440 "$$dir/db_app_password"
     restart: "no"
 
   postgres:
@@ -163,6 +170,34 @@ services:
         reservations:
           memory: 256M
 
+  db-migrate:
+    # The same image, as another user (10002), so the appliance's user cannot read the owner's
+    # password file. Creates or migrates the schema, grants the runtime role, and exits.
+    build: .
+    image: netcorenoc:local
+    user: "10002"
+    command: ["python", "-m", "netcorenoc", "db", "migrate"]
+    restart: "no"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - backend
+    read_only: true
+    tmpfs:
+      - /tmp
+    volumes:
+      - netcorenoc-secrets:/run/netcorenoc-secrets:ro
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    environment:
+      NETCORENOC_DATABASE_URL: postgresql://netcorenoc@postgres:5432/netcorenoc
+      NETCORENOC_DATABASE_PASSWORD_FILE: /run/netcorenoc-secrets/db_password
+      NETCORENOC_DB_SCHEMA: ${NETCORENOC_DB_SCHEMA:-netcorenoc}
+      NETCORENOC_DB_RUNTIME_ROLE: netcorenoc_app
+
   netcorenoc:
     build: .
     image: netcorenoc:local
@@ -171,6 +206,8 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+      db-migrate:
+        condition: service_completed_successfully
     networks:
       - backend
       - default
@@ -188,7 +225,7 @@ services:
     tmpfs:
       - /tmp                              # ...with a writable tmpfs for scratch...
     volumes:
-      - netcorenoc-data:/home/netcorenoc  # ...and the trap spool on a named volume...
+      - netcorenoc-data:/home/netcorenoc  # ...the trap spool and the secret key on a volume...
       - netcorenoc-secrets:/run/netcorenoc-secrets:ro  # ...and the database password, read-only.
     cap_drop:
       - ALL
@@ -230,8 +267,8 @@ services:
 
     environment:
       # Defaults keep `docker compose up` working with no .env. Override in .env.
-      NETCORENOC_DATABASE_URL: ${NETCORENOC_DATABASE_URL:-postgresql://netcorenoc@postgres:5432/netcorenoc}
-      NETCORENOC_DATABASE_PASSWORD_FILE: ${NETCORENOC_DATABASE_PASSWORD_FILE:-/run/netcorenoc-secrets/db_password}
+      NETCORENOC_DATABASE_URL: ${NETCORENOC_DATABASE_URL:-postgresql://netcorenoc_app@postgres:5432/netcorenoc}
+      NETCORENOC_DATABASE_PASSWORD_FILE: ${NETCORENOC_DATABASE_PASSWORD_FILE:-/run/netcorenoc-secrets/db_app_password}
       NETCORENOC_DB_SCHEMA: ${NETCORENOC_DB_SCHEMA:-netcorenoc}
       NETCORENOC_DATA_DIR: /home/netcorenoc
       NETCORENOC_TRAP_PORT: ${NETCORENOC_TRAP_PORT:-162}
@@ -273,9 +310,10 @@ services:
     #  HTTP on an internal network — see docs/security.md.)
 
 configs:
-  # The appliance's role, least privilege: it logs in and owns its database, so it may create its
-  # schema; it is not a superuser and may not create databases or roles. A file, not inline
-  # `content:` — Compose cannot write a config into a read-only container, only bind-mount one.
+  # The two application roles, least privilege: `netcorenoc` owns the database (and so the
+  # schema it creates); `netcorenoc_app` may only connect, and is granted rows by `db-migrate`.
+  # Neither is a superuser. A file, not inline `content:` — Compose cannot write a config into a
+  # read-only container, only bind-mount one.
   netcorenoc-role:
     file: ./deploy/postgres/10-netcorenoc-role.sql
 

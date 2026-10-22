@@ -27,7 +27,7 @@ from typing import Any
 import uvicorn
 
 from netcorenoc.api import QuietServer, create_app
-from netcorenoc.crosscutting import administration, posture, shaping
+from netcorenoc.crosscutting import administration, posture, shaping, vault
 from netcorenoc.crosscutting.runtime import RuntimeConfig
 from netcorenoc.crosscutting.settings import (
     ENV_PREFIX,
@@ -185,11 +185,13 @@ async def run(settings: Settings) -> None:
             f"`python -m netcorenoc db import-sqlite {settings.legacy_db}`, then unset "
             f"{ENV_PREFIX}DB and set {ENV_PREFIX}DATABASE_URL. See MIGRATION.md."
         )
+    load_secret_key(settings)
     store = Store(
         settings.database_url,
         schema=settings.db_schema,
         readers=settings.db_readers,
         statement_cache_size=settings.db_statement_cache,
+        owner_dsn=settings.database_owner_url or None,
     )
     try:
         await store.open()
@@ -208,11 +210,48 @@ async def run(settings: Settings) -> None:
             f"and that the database exists. See docs/configure.md."
         ) from exc
     try:
+        await _seal(store)
         await _serve(settings, store)
     finally:
         # **The store is closed on every exit path** (F66, DECISIONS #225): a connection left open
         # leaves the server holding the instance lock until its TCP keepalive notices.
         await store.close()
+
+
+def load_secret_key(settings: Settings) -> None:
+    """Load (or, on the first start, create) the key the database never sees (ADR #453)."""
+    path = settings.secret_key_path
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        keyring, created = vault.load_or_create(path)
+    except (OSError, vault.VaultError) as exc:
+        raise SettingsError(
+            f"{ENV_PREFIX}SECRET_KEY_FILE ({path}): {exc}. See docs/configure.md."
+        ) from exc
+    vault.configure(keyring)
+    if created:
+        log.warning(
+            "created the secret key %s (key %s): back it up apart from the database — without "
+            "it, sealed personal data and every password are unreadable (ADR #453)",
+            path,
+            keyring.kid.hex(),
+        )
+    else:
+        log.info("secret key %s (key %s)", path, keyring.kid.hex())
+
+
+async def _seal(store: Store) -> None:
+    """Refuse a key that is not the database's; seal what an earlier release left plain."""
+    async with store.lock:
+        try:
+            await store.check_vault()
+        except vault.VaultError as exc:
+            await store.rollback()
+            raise SettingsError(str(exc)) from exc
+        sealed = await store.seal_plaintext()
+        await store.commit()
+    if sealed:
+        log.info("sealed %d personal value(s) and secret(s) left in plain text (ADR #453)", sealed)
 
 
 async def _serve(settings: Settings, store: Store) -> None:

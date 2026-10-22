@@ -64,6 +64,7 @@ from netcorenoc.store.restructure import RestructureMixin
 from netcorenoc.store.retention import RetentionMixin
 from netcorenoc.store.scoring_config import ScoringConfigMixin
 from netcorenoc.store.seal import SealMixin
+from netcorenoc.store.sealing import SealingMixin
 from netcorenoc.store.shadow import ShadowMixin
 from netcorenoc.store.situation_reads import SituationReadsMixin
 from netcorenoc.store.state_clears import StateClearMixin
@@ -104,6 +105,7 @@ class Store(
     DeciderMixin,
     PromotionMixin,
     SealMixin,
+    SealingMixin,
     ShadowMixin,
     DatasetMixin,
     RetentionMixin,
@@ -172,6 +174,8 @@ class Store(
         statement_cache_size: int = 1024,
         exclusive: bool = True,
         create: bool = True,
+        owner_dsn: str | None = None,
+        grant_to: str | None = None,
     ) -> None:
         """A store for the PostgreSQL database at ``dsn``, in ``schema`` (ADR #452).
 
@@ -181,12 +185,19 @@ class Store(
         ``exclusive`` refuses a second appliance
         against the same schema; ``create=False`` refuses a schema that is not there instead of
         creating it (the CLI's tools, which must never read an empty history as the real one).
+        ``owner_dsn`` is the schema owner's, when ``dsn`` names a runtime role that is not: the
+        migrations run as the owner, who then grants the runtime role its privileges;
+        ``grant_to`` names one more role to grant them to (``db migrate``, ADR #453).
         """
         self._db = Database(
             dsn, schema=schema, readers=readers, statement_cache_size=statement_cache_size
         )
         self._exclusive = exclusive
         self._create = create
+        self._owner_dsn = owner_dsn
+        self._grant_to = grant_to
+        # Whether the role this store runs as owns its schema (ADR #453): set by `open()`.
+        self.owns_schema = True
         self._ne_ids: dict[str, int] = {}
         self._entity0_ids: dict[int, int] = {}  # ne id -> its level-0 entity id
         self._entity_ids: dict[tuple[int, str], int] = {}  # (ne id, key) -> promoted entity id

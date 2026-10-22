@@ -19,7 +19,10 @@ import hashlib
 import logging
 from collections.abc import AsyncIterator
 
+import asyncpg
+
 from netcorenoc.store.base import StoreBase
+from netcorenoc.store.privileges import grant_runtime
 from netcorenoc.store.types import MIGRATIONS_DIR
 
 # `MIGRATIONS_DIR` is re-exported deliberately. It is *defined* in `types.py`, but the code that
@@ -80,16 +83,51 @@ class LifecycleMixin(StoreBase):
         ):
             await self._db.close()
             raise MissingSchemaError(f"schema {self._db.schema!r} has no NetCoreNOC tables")
-        await self._migrate()
+        role = str(await raw.fetchval("SELECT current_user"))
+        if self._owner_dsn:
+            owner = await self._db.connect(self._owner_dsn)
+            try:
+                await self._migrate(owner)
+                for grantee in {role, *([self._grant_to] if self._grant_to else [])}:
+                    await grant_runtime(owner, self._db.schema, grantee)
+            finally:
+                await owner.close()
+        else:
+            await self._migrate(raw)
+            if self._grant_to:
+                await grant_runtime(raw, self._db.schema, self._grant_to)
+        self.owns_schema = bool(
+            await raw.fetchval(
+                "SELECT pg_has_role(current_user, nspowner, 'USAGE') FROM pg_namespace "
+                "WHERE nspname = $1",
+                self._db.schema,
+            )
+        )
         await self._db.open_readers()
 
-    async def _migrate(self) -> None:
+    async def _migrate(self, raw: asyncpg.Connection) -> None:
         """Apply the pending scripts, each in one transaction, and **say which** (DECISIONS #227).
 
         One line per applied script and one summary line, both at `info`; a boot that applies
         nothing says so at `debug` rather than adding noise to every restart.
+
+        ``raw`` is the writer, or the schema owner's connection (ADR #453). A runtime role that
+        owns nothing runs no DDL when the schema is current; with migrations pending it is refused,
+        naming the command that applies them.
         """
-        raw = self._db.writer_raw()
+        try:
+            await self._apply_migrations(raw)
+        except (
+            asyncpg.exceptions.InsufficientPrivilegeError,
+            asyncpg.exceptions.InvalidSchemaNameError,  # no USAGE on a schema the owner made
+        ) as exc:
+            raise StoreRefusedError(
+                f"schema {self._db.schema!r} needs migrations this role may not apply ({exc}): "
+                "run `python -m netcorenoc db migrate` as the schema's owner, or set "
+                "NETCORENOC_DATABASE_OWNER_URL"
+            ) from exc
+
+    async def _apply_migrations(self, raw: asyncpg.Connection) -> None:
         key = _lock_key(self._db.schema, "migrate")
         async with raw.transaction():
             await raw.execute("SELECT pg_advisory_xact_lock($1)", key)
@@ -99,11 +137,16 @@ class LifecycleMixin(StoreBase):
                 "SELECT 1 FROM pg_namespace WHERE nspname = $1", self._db.schema
             ):
                 await raw.execute(f'CREATE SCHEMA "{self._db.schema}"')
-            await raw.execute(
-                "CREATE TABLE IF NOT EXISTS schema_migrations ("
-                "version integer PRIMARY KEY, name text NOT NULL, checksum text NOT NULL, "
-                "applied_at timestamptz NOT NULL DEFAULT now())"
-            )
+            if not await raw.fetchval(
+                "SELECT 1 FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace "
+                "WHERE n.nspname = $1 AND c.relname = 'schema_migrations'",
+                self._db.schema,
+            ):
+                await raw.execute(
+                    "CREATE TABLE schema_migrations ("
+                    "version integer PRIMARY KEY, name text NOT NULL, checksum text NOT NULL, "
+                    "applied_at timestamptz NOT NULL DEFAULT now())"
+                )
             done = {
                 int(r["version"]): (str(r["name"]), str(r["checksum"]))
                 for r in await raw.fetch("SELECT version, name, checksum FROM schema_migrations")
@@ -136,7 +179,7 @@ class LifecycleMixin(StoreBase):
                     checksum,
                 )
             applied.append(script.name)
-        newest = await self.schema_version()
+        newest = int(await raw.fetchval("SELECT COALESCE(MAX(version), 0) FROM schema_migrations"))
         if newest > self.latest_schema_version():
             self.integrity_warnings.append(
                 f"The database is at schema {newest}, newer than this release's "

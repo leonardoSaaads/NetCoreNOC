@@ -10,7 +10,9 @@ from __future__ import annotations
 import os
 from typing import Any
 
+from netcorenoc.crosscutting import vault
 from netcorenoc.store.base import StoreBase
+from netcorenoc.store.sealing import EMAIL, email_index, open_person, open_text, seal_text
 
 #: Expired links are kept this long (for an audit question asked the same day), then deleted.
 RESET_GRACE_S = 86_400.0
@@ -25,30 +27,34 @@ class RecoveryMixin(StoreBase):
         Read by the receiver at start and by the SNMP settings route, which hashes the communities
         an admin accepts under the same key, so the two always agree. The caller commits.
         """
+        place = "meta:community_hmac_key"  # sealed at rest (ADR #453)
         cur = await self.conn.execute("SELECT value FROM meta WHERE key='community_hmac_key'")
         row = await cur.fetchone()
         if row is not None:
-            return bytes.fromhex(str(row[0]))
+            return bytes.fromhex(str(open_text(place, row[0])))
         key = os.urandom(32)
         await self.conn.execute(
-            "INSERT INTO meta (key, value) VALUES ('community_hmac_key', ?)", (key.hex(),)
+            "INSERT INTO meta (key, value) VALUES ('community_hmac_key', ?)",
+            (vault.current().seal(place, key.hex()),),
         )
         return key
 
     async def set_user_email(self, user_id: int, email: str | None, now: float) -> None:
+        # Sealed, with a keyed digest for the reset request's lookup (ADR #453).
         await self.conn.execute(
-            "UPDATE app_user SET email=?, updated_at=? WHERE id=?", (email, now, user_id)
+            "UPDATE app_user SET email=?, email_index=?, updated_at=? WHERE id=?",
+            (seal_text(EMAIL, email), email_index(email), now, user_id),
         )
 
     async def recovery_accounts(self, login: str) -> list[dict[str, Any]]:
         """The enabled accounts a reset request names: by username, else by address."""
         cur = await self.conn.execute(
             "SELECT id, username, email FROM app_user WHERE NOT disabled AND email IS NOT NULL "
-            "AND (username=? OR (lower(email)=lower(?) AND NOT EXISTS "
+            "AND (username=? OR (email_index=? AND NOT EXISTS "
             "(SELECT 1 FROM app_user WHERE username=?))) ORDER BY id LIMIT ?",
-            (login, login, login, MAX_ACCOUNTS_PER_EMAIL),
+            (login, email_index(login), login, MAX_ACCOUNTS_PER_EMAIL),
         )
-        return [dict(r) for r in await cur.fetchall()]
+        return [open_person(dict(r)) for r in await cur.fetchall()]
 
     async def reset_requested_since(self, user_id: int, since: float) -> bool:
         cur = await self.conn.execute(

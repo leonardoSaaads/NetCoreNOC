@@ -1,8 +1,9 @@
 """The append-only, hash-chained audit log.
 
-``prune_audit`` is the one sanctioned deleter (DECISIONS v0.2 #3): inside the caller's locked
-transaction it sets the transaction-local `netcorenoc.prune` the schema's `forbid_change()` trigger
-honours, deletes only the oldest rows, and clears it again, so the surviving suffix stays
+``prune_audit`` is the one sanctioned deleter (DECISIONS v0.2 #3): the schema's
+`prune_audit_log` function (0032, ADR #453), which runs as the schema's owner, sets the
+transaction-local `netcorenoc.prune` the `forbid_change()` trigger honours, deletes only rows older
+than its cutoff — never less than a day old — and clears it again, so the surviving suffix stays
 verifiable and no other statement can delete a row.
 """
 
@@ -68,17 +69,12 @@ class AuditLogMixin(StoreBase):
         return [dict(r) for r in await cur.fetchall()]
 
     async def prune_audit(self, cutoff: float) -> int:
-        """Delete audit rows older than cutoff. The one sanctioned deleter (DECISIONS v0.2
-        #3): `forbid_change()` lets a DELETE on `audit_log` through only while the
-        transaction-local `netcorenoc.prune` is `audit_log`, so this sets it, deletes, and clears
-        it in this locked transaction. Pruning only the oldest rows keeps the surviving suffix
-        verifiable."""
-        # The shim opens the implicit transaction only for a write, and `SELECT set_config` is a
-        # read to it: open it first, or the setting would end with its own statement. If the
-        # DELETE fails, the rollback discards the setting with everything else.
-        await self.conn.begin()
-        await self.conn.execute("SELECT set_config('netcorenoc.prune', 'audit_log', true)")
-        cur = await self.conn.execute("DELETE FROM audit_log WHERE ts < ? RETURNING id", (cutoff,))
-        removed = len(list(await cur.fetchall()))
-        await self.conn.execute("SELECT set_config('netcorenoc.prune', '', true)")
-        return removed
+        """Delete audit rows older than cutoff. The one sanctioned deleter (DECISIONS v0.2 #3),
+        and since ADR #453 a function, `prune_audit_log`, that runs as the schema's owner: the
+        runtime role may hold no DELETE on `audit_log` at all, and the function refuses a cutoff
+        less than a day old. Pruning only the oldest rows keeps the surviving suffix verifiable;
+        it runs in the caller's locked transaction."""
+        cur = await self.conn.execute("SELECT prune_audit_log(?)", (cutoff,))
+        row = await cur.fetchone()
+        assert row is not None
+        return int(row[0])
