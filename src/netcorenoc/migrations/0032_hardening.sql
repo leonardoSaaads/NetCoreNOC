@@ -13,6 +13,22 @@
 --    an address, case-insensitively — reads `email_index`, a keyed digest, instead of the text.
 --    The appliance seals what is still plain on its next start; this file cannot, the key is not
 --    the database's to hold.
+--
+-- 4. The audit chain is keyed. `entry_hash` is a plain SHA-256 chain: whoever may write the table
+--    as its owner (or a superuser, or a restored and edited dump) can rewrite history and
+--    recompute every hash after it. `mac` is an HMAC of each new row's `entry_hash` under the
+--    appliance's secret key, which the database never holds, so a rewritten row cannot carry a
+--    valid one. Rows written before this release have none and stay verifiable by hash alone.
+--
+-- 5. Counters that grow with traffic are 64-bit. An alarm repeating a hundred times a second
+--    reached 2^31 in eight months, and the write that crossed it failed the whole batch.
+--
+-- 6. A quarantined packet's hash and prefix are of the stored, community-blanked bytes. The hash
+--    of the original beside the blanked payload tested any guessed community offline, and the
+--    original's first eight bytes carry a community's first characters (F4). Rows already kept
+--    are rewritten; a packet whose community could not be located keeps four bytes, not eight.
+--
+-- 7. The trigger functions resolve nothing through the caller's `search_path`.
 
 CREATE FUNCTION forbid_truncate() RETURNS trigger
     LANGUAGE plpgsql AS $$
@@ -73,3 +89,21 @@ REVOKE ALL ON FUNCTION prune_audit_log(double precision) FROM PUBLIC;
 
 ALTER TABLE app_user ADD COLUMN email_index text COLLATE "C";
 CREATE INDEX idx_app_user_email_index ON app_user (email_index) WHERE email_index IS NOT NULL;
+
+ALTER TABLE audit_log ADD COLUMN mac text COLLATE "C";
+
+ALTER TABLE alarm ALTER COLUMN count TYPE bigint;
+ALTER TABLE episode_pair ALTER COLUMN count TYPE bigint;
+ALTER TABLE varbind_profile
+    ALTER COLUMN n_obs TYPE bigint,
+    ALTER COLUMN n_repeat TYPE bigint,
+    ALTER COLUMN n_monotonic TYPE bigint,
+    ALTER COLUMN n_numeric TYPE bigint,
+    ALTER COLUMN n_distinct TYPE bigint;
+
+UPDATE quarantine SET sha256 = encode(sha256(raw), 'hex'), first8 = encode(substr(raw, 1, 8), 'hex')
+    WHERE sanitized;
+UPDATE quarantine SET first8 = left(first8, 8) WHERE NOT sanitized;
+
+ALTER FUNCTION forbid_change() SET search_path = pg_catalog, pg_temp;
+ALTER FUNCTION forbid_truncate() SET search_path = pg_catalog, pg_temp;

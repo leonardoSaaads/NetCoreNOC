@@ -95,8 +95,8 @@ def _key(settings: Settings, *, create: bool) -> None:
         raise SystemExit(2) from exc
 
 
-async def _open(settings: Settings, *, create: bool = False) -> Store:
-    store = _store(settings, create=create)
+async def _open(settings: Settings, *, create: bool = False, grant: bool = False) -> Store:
+    store = _store(settings, create=create, grant=grant)
     try:
         await store.open()
     except _OPEN_ERRORS as exc:
@@ -138,7 +138,13 @@ def _backup(settings: Settings, target: str) -> int:
     url, password = split_password(settings.database_url)
     env = {**os.environ, **({"PGPASSWORD": password} if password else {})}
     dumped = subprocess.run(  # nosec B603 - fixed binary, the operator's own URL and file name
-        [dump, "--format=custom", f"--schema={settings.db_schema}", f"--file={target}", url],
+        [
+            dump,
+            "--format=custom",
+            f"--schema={settings.db_schema}",
+            f"--file={target}",
+            f"--dbname={url}",
+        ],
         check=False,
         env=env,
     )
@@ -196,10 +202,14 @@ async def _import_sqlite(settings: Settings, source: str) -> int:
     from netcorenoc.store import importer
 
     _key(settings, create=True)
-    store = await _open(settings, create=True)
+    # As the schema's owner (the importer replaces seeded rows of append-only tables), granting
+    # the runtime role once the schema exists — Compose's `db-import` service (ADR #453).
+    store = await _open(settings, create=True, grant=True)
     try:
         report = await importer.import_sqlite(store, source)
-        await store.open_vault()  # what the file held in plain text, sealed (ADR #453)
+        async with store.lock:  # what the file held in plain text, sealed (ADR #453)
+            await store.open_vault()
+            await store.commit()
     except importer.ImportRefusedError as exc:
         print(f"refused: {exc}", file=sys.stderr)
         return 2

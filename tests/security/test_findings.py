@@ -138,8 +138,11 @@ def test_f4_quarantine_blanks_community_in_raw() -> None:
     pkt = receiver.quarantine_packet("10.0.0.9", data, "not-a-trap-pdu", 1.0)
     assert pkt.sanitized is True
     assert COMMUNITY.encode() not in pkt.raw  # blanked in the stored packet
-    assert pkt.sha256 == hashlib.sha256(data).hexdigest()
-    assert pkt.length == len(data) and pkt.first8 == data[:8].hex()
+    # ADR #453: the hash and the prefix are of the blanked bytes too. A hash of the original beside
+    # the blanked payload would test any guessed community offline; a prefix of the original
+    # carries its first characters.
+    assert pkt.sha256 == hashlib.sha256(pkt.raw).hexdigest() != hashlib.sha256(data).hexdigest()
+    assert pkt.length == len(data) and pkt.first8 == pkt.raw[:8].hex()
 
 
 def test_f4_quarantine_metadata_only_when_unlocatable() -> None:
@@ -148,7 +151,7 @@ def test_f4_quarantine_metadata_only_when_unlocatable() -> None:
     assert pkt.sanitized is False
     assert pkt.raw == b""  # never store the raw payload
     assert pkt.sha256 == hashlib.sha256(junk).hexdigest()
-    assert pkt.length == len(junk) and pkt.first8 == junk[:8].hex()
+    assert pkt.length == len(junk) and pkt.first8 == junk[:4].hex()  # where a community may begin
 
 
 # -- F6: operator warning banner -----------------------------------------------------
@@ -457,3 +460,31 @@ def test_the_denied_trap_warning_says_how_many_allowlist_entries_and_never_which
     # CONTROL: with nothing denied there is no string at all, so what is measured above is the
     # warning's own content and not a coarsener acting somewhere else.
     assert receiver_warnings(ReceiverStats(denied=0), allowlist) == []
+
+
+def test_a_password_in_the_query_string_is_redacted_and_kept_off_command_lines() -> None:
+    """ADR #453: libpq and the driver take `?password=` as well as `user:password@`. Both are
+    masked in what is logged or shown, and both leave the URL a child process is given."""
+    from netcorenoc.crosscutting.settings import redact_url, split_password
+
+    url = "postgresql://ops@db.example.com/noc?sslmode=require&password=s3cret"
+    assert "s3cret" not in redact_url(url) and "password=***" in redact_url(url)
+    bare, password = split_password(url)
+    assert password == "s3cret" and "s3cret" not in bare and "sslmode=require" in bare
+    socket = "postgresql://u@/x?host=%2Fvar%2Frun%2Fpostgresql"
+    assert redact_url(socket) == socket and split_password(socket) == (socket, None)
+
+
+def test_a_remote_database_without_a_verified_certificate_is_a_posture_warning() -> None:
+    from netcorenoc.crosscutting import posture
+
+    for local in (
+        "postgresql://netcorenoc_app@postgres:5432/netcorenoc",  # Compose's internal network
+        "postgresql://u@localhost/x",
+        "postgresql://u@/x?host=%2Fvar%2Frun%2Fpostgresql",
+        "postgresql://u@db.example.com/x?sslmode=verify-full&sslrootcert=/ca.pem",
+    ):
+        assert posture.database_warnings(local) == [], local
+    for exposed in ("postgresql://u@db.example.com/x?sslmode=require", "postgresql://u@10.1.2.3/x"):
+        (warning,) = posture.database_warnings(exposed)
+        assert posture.is_security_posture(warning) and "verify-full" in warning

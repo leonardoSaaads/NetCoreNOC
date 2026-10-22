@@ -15,7 +15,7 @@ import re
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from pathlib import Path
-from urllib.parse import quote, unquote, urlsplit, urlunsplit
+from urllib.parse import parse_qsl, quote, unquote, urlencode, urlsplit, urlunsplit
 
 # Rebrand (v0.4.0): the canonical environment prefix is NETCORENOC_*. The legacy OPTICORR_*
 # aliases were accepted with a once-per-variable deprecation warning through v0.5.0 and are
@@ -175,27 +175,41 @@ def _identifier(suffix: str, value: str) -> str:
     return value
 
 
+def _without_query_password(query: str) -> tuple[str, str | None]:
+    """``query`` without a ``password=`` parameter (libpq and the driver both accept one), and its
+    value. Untouched, byte for byte, when there is none."""
+    pairs = parse_qsl(query, keep_blank_values=True)
+    found = [value for key, value in pairs if key == "password"]
+    if not found:
+        return query, None
+    return urlencode([(key, value) for key, value in pairs if key != "password"]), found[-1]
+
+
 def split_password(url: str) -> tuple[str, str | None]:
     """``(url_without_password, password)``: for a child process that takes the password in its
-    environment (``PGPASSWORD``) rather than on a command line ``ps`` can read."""
+    environment (``PGPASSWORD``) rather than on a command line ``ps`` can read. Either place a
+    URL may carry it — before the host, or as ``?password=`` — is emptied."""
     parts = urlsplit(url)
-    if parts.password is None:
+    query, from_query = _without_query_password(parts.query)
+    password = unquote(parts.password) if parts.password is not None else from_query
+    if password is None:
         return url, None
     host = parts.netloc.rsplit("@", 1)[-1]
     user = f"{parts.username}@" if parts.username else ""
-    bare = urlunsplit((parts.scheme, f"{user}{host}", parts.path, parts.query, parts.fragment))
-    return bare, unquote(parts.password)
+    return urlunsplit((parts.scheme, f"{user}{host}", parts.path, query, parts.fragment)), password
 
 
 def redact_url(url: str) -> str:
     """A database URL fit for a log line or a settings screen: the password replaced by ***."""
     parts = urlsplit(url)
-    if parts.password is None:
+    query, from_query = _without_query_password(parts.query)
+    if parts.password is None and from_query is None:
         return url
     host = parts.netloc.rsplit("@", 1)[-1]
-    return urlunsplit(
-        (parts.scheme, f"{parts.username}:***@{host}", parts.path, parts.query, parts.fragment)
-    )
+    user = f"{parts.username}@" if parts.username else ""
+    user = f"{parts.username}:***@" if parts.password is not None else user
+    query = "&".join(filter(None, [query, "password=***" if from_query is not None else ""]))
+    return urlunsplit((parts.scheme, f"{user}{host}", parts.path, query, parts.fragment))
 
 
 def _count(suffix: str, default: int, low: int, high: int) -> int:

@@ -22,7 +22,10 @@ from __future__ import annotations
 from collections.abc import Callable
 from typing import TYPE_CHECKING, Any
 
-from fastapi import Depends, FastAPI
+from fastapi import Depends, FastAPI, Request
+from fastapi.encoders import jsonable_encoder
+from fastapi.exceptions import RequestValidationError
+from fastapi.responses import JSONResponse
 
 from netcorenoc import __version__
 from netcorenoc.api import declare, routes
@@ -33,6 +36,7 @@ from netcorenoc.api.perimeter import (
     PREVIEW_RATE_REFILL,
     RATE_CAPACITY,
     RATE_REFILL,
+    SECURITY_HEADERS,
     Perimeter,
     RateLimiter,
 )
@@ -42,6 +46,24 @@ from netcorenoc.ingest import trappack
 if TYPE_CHECKING:
     from netcorenoc.crosscutting.runtime import RuntimeConfig
     from netcorenoc.main import Engine
+
+
+async def _invalid_request(_request: Request, exc: RequestValidationError) -> JSONResponse:
+    """A 422 that names what was wrong and never repeats it (ADR #453).
+
+    FastAPI's own answer echoes each offending value as ``input`` — for a sign-in, a password
+    change or a reset, the password itself, into the response and any log or proxy that keeps
+    response bodies. Where and why is enough to fix a request."""
+    errors = [{k: e[k] for k in ("type", "loc", "msg") if k in e} for e in exc.errors()]
+    return JSONResponse(status_code=422, content={"detail": jsonable_encoder(errors)})
+
+
+async def _server_error(_request: Request, _exc: Exception) -> JSONResponse:
+    """An unhandled error, answered with nothing about it. This response leaves through the
+    outermost middleware, which the perimeter's header middleware does not wrap, so it carries
+    the same headers itself; the server still logs the traceback (Starlette re-raises)."""
+    headers = {**SECURITY_HEADERS, "Cache-Control": "no-store"}
+    return JSONResponse(status_code=500, content={"detail": "internal error"}, headers=headers)
 
 
 def create_app(
@@ -72,6 +94,8 @@ def create_app(
     # perimeter wraps it and a 413 carries the same security headers as every other response.
     app.add_middleware(BodyLimit)
     app.middleware("http")(perimeter.security_headers)
+    app.add_exception_handler(RequestValidationError, _invalid_request)  # type: ignore[arg-type]
+    app.add_exception_handler(Exception, _server_error)
 
     # Everything the route modules need, resolved once. Each `register()` rebinds the fields it
     # uses to local names as its first statement, which is what keeps every handler body
@@ -112,6 +136,7 @@ def create_app(
     routes.proposals.register(app, ctx)  # v0.27.0: an operator's answer to a pending proposal
     routes.annotate.register(app, ctx)
     routes.operate.register(app, ctx)
+    routes.users.register(app, ctx)  # ADR #453: the accounts, split from `admin`, same order
     routes.admin.register(app, ctx)
     routes.people.register(app, ctx)  # v0.25.0: names and photos, after the accounts they belong to
     routes.scorer.register(app, ctx)

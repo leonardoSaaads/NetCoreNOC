@@ -21,6 +21,7 @@ from collections.abc import AsyncIterator
 
 import asyncpg
 
+from netcorenoc.crosscutting import posture
 from netcorenoc.store.base import StoreBase
 from netcorenoc.store.privileges import grant_runtime
 from netcorenoc.store.types import MIGRATIONS_DIR
@@ -103,6 +104,13 @@ class LifecycleMixin(StoreBase):
                 self._db.schema,
             )
         )
+        if self.owns_schema and self._exclusive:
+            log.warning(
+                "the appliance's database role owns schema %s: give it a role that does not, "
+                "with NETCORENOC_DATABASE_OWNER_URL for migrations (docs/security.md)",
+                self._db.schema,
+            )
+        self.integrity_warnings.extend(posture.database_warnings(self._db.dsn))
         await self._db.open_readers()
 
     async def _migrate(self, raw: asyncpg.Connection) -> None:
@@ -223,9 +231,14 @@ class LifecycleMixin(StoreBase):
         writer = self._db.writer
         if writer is None or writer.raw.is_closed():
             await self._db.reconnect()
-            if self._exclusive:
-                await self._db.writer_raw().fetchval(
-                    "SELECT pg_try_advisory_lock($1)", _lock_key(self._db.schema, "instance")
+            # If another appliance took the schema while this one was disconnected, two writers
+            # would interleave one history: stop instead (ADR #453).
+            if self._exclusive and not await self._db.writer_raw().fetchval(
+                "SELECT pg_try_advisory_lock($1)", _lock_key(self._db.schema, "instance")
+            ):
+                raise StoreRefusedError(
+                    f"lost schema {self._db.schema!r} to another NetCoreNOC while reconnecting; "
+                    "stopping rather than writing beside it"
                 )
         else:
             await writer.rollback()

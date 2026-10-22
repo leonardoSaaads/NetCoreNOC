@@ -922,6 +922,30 @@ async def _sse_updates(
     return updates
 
 
+async def test_the_stream_ends_when_its_credential_does(store: Store) -> None:
+    """ADR #453: a stream opened by a session must not outlive it. A role change revokes the
+    account's sessions (as a sign-out, a password change or a reset do); the open stream stops at
+    its next update instead of serving the new role's — or no — grant."""
+    engine, queue, app = await authutil.make_env(store)
+    await util.drive(engine, queue, util.fixture_events("fiber_cut.json", BASE))
+    admin = await authutil.client_as(app, "admin")
+    viewer = await authutil.client_as(app, "viewer")
+    cookie = viewer.cookies.get(auth.COOKIE_NAME)
+    uid = (await viewer.get("/api/me")).json()["user_id"]
+    await viewer.aclose()
+    assert cookie is not None
+    try:
+
+        async def demote() -> None:
+            resp = await admin.post(f"/api/users/{uid}/role", json={"role": "editor"})
+            assert resp.status_code == 200, resp.text
+
+        updates = await _sse_updates(app, cookie, want=3, between=demote)
+        assert len(updates) == 1, "the stream must end once its session was revoked"
+    finally:
+        await admin.aclose()
+
+
 async def test_f30_sse_reevaluates_scope_on_every_event(store: Store) -> None:
     """A stream opened *before* a scope existed must not keep pushing unfiltered snapshots.
 

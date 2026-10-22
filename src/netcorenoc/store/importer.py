@@ -96,8 +96,8 @@ TABLES: tuple[tuple[str, str], ...] = (
     ("holdout_access", "holdout_access"),
     ("user", "app_user"),
     ("user_avatar", "user_avatar"),
-    ("session", "session"),
-    ("password_reset", "password_reset"),
+    # Not `session` nor `password_reset` (ADR #453): a signed-in session or an unused reset link
+    # is a credential, and the file is not trusted to hand one over. Everyone signs in again.
     ("notice_snooze", "notice_snooze"),
     ("api_token", "api_token"),
     ("governance_policy", "governance_policy"),
@@ -126,6 +126,9 @@ class ImportReport:
     audit: str = ""
     seconds: float = 0.0
     ok: bool = False
+    # Who can administer what was imported: read them before the first start (ADR #453).
+    admins: list[str] = field(default_factory=list)
+    tokens: list[str] = field(default_factory=list)
 
     def render(self) -> str:
         width = max((len(name) for name, _, _ in self.tables), default=10)
@@ -134,6 +137,8 @@ class ImportReport:
             mark = "" if expected == got else "   <-- MISMATCH"
             lines.append(f"  {name:<{width}} {got:>10} of {expected:>10}{mark}")
         lines.append(f"audit chain: {self.audit}")
+        lines.append(f"admin accounts: {', '.join(self.admins) or 'none'}")
+        lines.append(f"active service tokens: {', '.join(self.tokens) or 'none'}")
         lines.append("OK" if self.ok else "FAILED: nothing was committed")
         return "\n".join(lines)
 
@@ -256,6 +261,9 @@ async def import_sqlite(store: Store, path: str) -> ImportReport:
             report.audit = chain.render()
             if not chain.ok:
                 raise ImportRefusedError(f"the imported audit log does not verify: {report.audit}")
+            admins = await raw.fetch("SELECT username FROM app_user WHERE role='admin' ORDER BY 1")
+            tokens = await raw.fetch("SELECT name FROM api_token WHERE NOT revoked ORDER BY 1")
+            report.admins, report.tokens = [r[0] for r in admins], [r[0] for r in tokens]
         report.seconds = time.monotonic() - started
     finally:
         await raw.close()

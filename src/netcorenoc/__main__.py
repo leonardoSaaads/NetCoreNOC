@@ -75,6 +75,7 @@ from netcorenoc.store.cli import (
 
 
 async def _verify(settings: Settings) -> int:
+    _key(settings, create=False)  # the seals are checked with the appliance's key (ADR #453)
     store = await _open(settings)
     try:
         result = await audit.verify_chain(store)

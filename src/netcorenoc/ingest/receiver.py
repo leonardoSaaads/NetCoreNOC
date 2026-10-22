@@ -306,7 +306,7 @@ def blank_community(data: bytes) -> bytes | None:
 
 
 def quarantine_packet(source: str, data: bytes, reason: str, ts: float) -> QuarantinedPacket:
-    """Build a quarantine record with the community blanked, or metadata only (F4)."""
+    """A quarantine record, community blanked in its payload, hash and prefix too (F4, #453)."""
     blanked = blank_community(data)
     if blanked is not None:
         raw, sanitized = blanked[:MAX_QUARANTINE_BYTES], True
@@ -317,9 +317,9 @@ def quarantine_packet(source: str, data: bytes, reason: str, ts: float) -> Quara
         raw=raw,
         reason=reason,
         ts=ts,
-        sha256=hashlib.sha256(data).hexdigest(),
+        sha256=hashlib.sha256(raw if sanitized else data).hexdigest(),
         length=len(data),
-        first8=data[:8].hex(),
+        first8=(raw[:8] if sanitized else data[:4]).hex(),
         sanitized=sanitized,
     )
 

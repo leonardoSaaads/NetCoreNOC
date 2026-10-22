@@ -24,7 +24,7 @@ from fastapi import Depends, FastAPI, HTTPException, Request, Response
 from netcorenoc.api.context import AppContext
 from netcorenoc.api.declare import DeclaredRoutes
 from netcorenoc.api.models import ProfileIn
-from netcorenoc.crosscutting import auth, avatar, mail, shaping
+from netcorenoc.crosscutting import administration, auth, avatar, mail, shaping
 
 #: The headers every photo is served with. `sandbox` and `default-src 'none'` mean that even a file
 #: crafted to parse as something else too cannot run or load anything if opened directly.
@@ -54,6 +54,13 @@ def _checked(data: bytes) -> avatar.Avatar:
         return avatar.validate(data)
     except avatar.AvatarError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+def _within(request: Request, role: str) -> None:
+    """ADR #453: taking over an account — its password, or where its reset link goes — needs
+    everything that account could hold; a narrowed admin token cannot reach a full admin."""
+    if not administration.within_grant(request.state.capabilities, role):
+        raise HTTPException(status_code=403, detail=administration.BEYOND_GRANT)
 
 
 def register(app: FastAPI, ctx: AppContext) -> None:
@@ -127,6 +134,8 @@ def register(app: FastAPI, ctx: AppContext) -> None:
             email = (body.email or "").strip() or None
             if email is not None and not mail.valid_address(email):
                 raise HTTPException(status_code=400, detail="that is not an email address")
+            if action == "user.update" and email != user["email"]:
+                _within(request, str(user["role"]))  # the address a reset link would go to
             if action == "profile.update" and email != user["email"]:
                 password = body.current_password or ""
                 if not auth.verify_password(password, user["password_hash"]):
@@ -221,8 +230,10 @@ def register(app: FastAPI, ctx: AppContext) -> None:
             raise HTTPException(status_code=400, detail="change your own password under Account")
         temporary = auth.temporary_password()
         async with write_txn():
-            if await store.get_user(uid) is None:
+            user = await store.get_user(uid)
+            if user is None:
                 raise HTTPException(status_code=404, detail="no such user")
+            _within(request, str(user["role"]))
             await store.replace_password(uid, auth.hash_password(temporary), time.time())
             revoked = await store.revoke_user_sessions(uid)
             await audit_row(

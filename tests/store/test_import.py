@@ -142,6 +142,17 @@ def build_v030(path: Path, *, bad_address: bool = False) -> str:
         "VALUES (1, ?, 'agent', 'editor', ?, 1, ?)",
         ("a" * 64, T0, NOW),
     )
+    # A live session and an unused reset link: credentials, which the import leaves behind.
+    db.execute(
+        "INSERT INTO session (session_hash, user_id, created_at, last_seen_at, idle_expiry, "
+        "absolute_expiry) VALUES (?, 1, ?, ?, ?, ?)",
+        ("b" * 64, T0, NOW, NOW + 3600, NOW + 86400),
+    )
+    db.execute(
+        "INSERT INTO password_reset (user_id, token_hash, created_at, expires_at) "
+        "VALUES (1, ?, ?, ?)",
+        ("c" * 64, NOW, NOW + 1800),
+    )
     db.execute(
         "INSERT INTO quarantine (source, raw, reason, received_at, sanitized) "
         "VALUES ('10.0.0.9', X'DEAD00BEEF', 'ber-decode-failed', ?, 1)",
@@ -224,6 +235,12 @@ async def test_a_v030_history_imports_whole_typed_and_verified(tmp_path: Path, d
 
         token = await store.conn.execute("SELECT revoked FROM api_token")
         assert [r[0] for r in await token.fetchall()] == [True]
+        # ADR #453: no session, no reset link — and the operator is shown who administers it.
+        for table in ("session", "password_reset"):
+            cur = await store.conn.execute(f"SELECT COUNT(*) FROM {table}")  # nosec B608
+            assert (await cur.fetchone())[0] == 0, table  # type: ignore[index]
+        assert (report.admins, report.tokens) == (["adm"], [])
+        assert "admin accounts: adm" in report.render()
         cur = await store.conn.execute("SELECT raw, sanitized FROM quarantine")
         packet = await cur.fetchone()
         assert packet is not None and packet["raw"] == b"\xde\xad\x00\xbe\xef"

@@ -5,6 +5,10 @@
 transaction-local `netcorenoc.prune` the `forbid_change()` trigger honours, deletes only rows older
 than its cutoff — never less than a day old — and clears it again, so the surviving suffix stays
 verifiable and no other statement can delete a row.
+
+Each row carries ``mac`` since ADR #453, an HMAC of its ``entry_hash`` under the appliance's secret
+key, and every append takes a transaction-scoped advisory lock first: the CLI is another process
+appending to the same chain, which `store.lock` does not reach.
 """
 
 from __future__ import annotations
@@ -14,8 +18,15 @@ from typing import Any
 
 from netcorenoc.store.base import StoreBase
 
+#: The advisory lock every audit append takes: "ncaudit" as a 64-bit key.
+AUDIT_LOCK_KEY = int.from_bytes(b"ncaudit", "big")
+
 
 class AuditLogMixin(StoreBase):
+    async def audit_serialize(self) -> None:
+        """Hold the chain's tail until this transaction ends, across processes."""
+        await self.conn.execute("SELECT pg_advisory_xact_lock(?)", (AUDIT_LOCK_KEY,))
+
     async def audit_last_hash(self) -> str:
         """entry_hash of the newest audit row, or the genesis hash for an empty chain."""
         cur = await self.conn.execute("SELECT entry_hash FROM audit_log ORDER BY id DESC LIMIT 1")
@@ -29,12 +40,14 @@ class AuditLogMixin(StoreBase):
         assert row is not None
         return int(row[0])
 
-    async def audit_insert(self, entry: dict[str, Any], prev_hash: str, entry_hash: str) -> None:
+    async def audit_insert(
+        self, entry: dict[str, Any], prev_hash: str, entry_hash: str, mac: str | None = None
+    ) -> None:
         await self.conn.execute(
             "INSERT INTO audit_log (id, ts, actor, role, source_ip, action, object_type, "
-            "object_id, outcome, details, prev_hash, entry_hash) "
+            "object_id, outcome, details, prev_hash, entry_hash, mac) "
             "VALUES (:id, :ts, :actor, :role, :source_ip, :action, :object_type, :object_id, "
-            ":outcome, :details, :prev_hash, :entry_hash)",
+            ":outcome, :details, :prev_hash, :entry_hash, :mac)",
             {
                 "id": entry["id"],
                 "ts": entry["ts"],
@@ -48,6 +61,7 @@ class AuditLogMixin(StoreBase):
                 "details": json.dumps(entry["details"], sort_keys=True, separators=(",", ":")),
                 "prev_hash": prev_hash,
                 "entry_hash": entry_hash,
+                "mac": mac,
             },
         )
 
@@ -55,7 +69,7 @@ class AuditLogMixin(StoreBase):
         """Every audit row in id (chain) order — for verify and export."""
         cur = await self.conn.execute(
             "SELECT id, ts, actor, role, source_ip, action, object_type, object_id, outcome, "
-            "details, prev_hash, entry_hash FROM audit_log ORDER BY id"
+            "details, prev_hash, entry_hash, mac FROM audit_log ORDER BY id"
         )
         return [dict(r) for r in await cur.fetchall()]
 

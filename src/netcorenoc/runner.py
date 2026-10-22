@@ -210,7 +210,9 @@ async def run(settings: Settings) -> None:
             f"and that the database exists. See docs/configure.md."
         ) from exc
     try:
-        await store.open_vault()
+        async with store.lock:
+            await store.open_vault()
+            await store.commit()
         await _serve(settings, store)
     finally:
         # **The store is closed on every exit path** (F66, DECISIONS #225): a connection left open

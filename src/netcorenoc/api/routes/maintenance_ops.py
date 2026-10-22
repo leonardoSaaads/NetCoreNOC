@@ -194,7 +194,7 @@ def register(app: FastAPI, ctx: AppContext) -> None:
             )
         now = time.time()
         needs = needs_confirmation(float(window["starts_at"]), body.ends_at)
-        status = restatus(window, needs, float(window["starts_at"]), now)
+        status = restatus(window, needs, float(window["starts_at"]), now, body.ends_at)
         async with write_txn():
             await store.update_window_schedule(
                 wid,

@@ -212,14 +212,25 @@ class MaintenanceReadMixin(StoreBase):
         row = await cur.fetchone()
         return _row(row) if row is not None else None
 
-    async def window_targets(self, window_id: int) -> list[dict[str, Any]]:
-        """The window's elements, with the label an operator gave each one if there is one."""
+    async def window_targets(
+        self, window_id: int, ne_ids: frozenset[int] | None = None
+    ) -> list[dict[str, Any]]:
+        """The window's elements, with the label an operator gave each one if there is one.
+
+        ``ne_ids`` is the caller's scope (None: unrestricted), applied in the query (ADR #453)."""
+        scoped, args = (
+            ("", (window_id,))
+            if ne_ids is None
+            else ("AND t.ne_id = ANY(?) ", (window_id, sorted(ne_ids)))
+        )
         cur = await self.conn.execute(
-            "SELECT t.ne_id, n.ip, "  # nosec B608 - one literal from `_label_join`
+            "SELECT t.ne_id, n.ip, "  # nosec B608 - literals from `_label_join` and above
             "l.label AS label FROM maintenance_window_target t JOIN ne n ON n.id = t.ne_id "
             + self._label_join("l", "ne", "n.id")
-            + "WHERE t.window_id = ? ORDER BY n.ip",
-            (window_id,),
+            + "WHERE t.window_id = ? "
+            + scoped
+            + "ORDER BY n.ip",
+            args,
         )
         return [
             {
@@ -230,11 +241,20 @@ class MaintenanceReadMixin(StoreBase):
             for row in await cur.fetchall()
         ]
 
-    async def window_rules(self, window_id: int) -> list[dict[str, Any]]:
+    async def window_rules(
+        self, window_id: int, ne_ids: frozenset[int] | None = None
+    ) -> list[dict[str, Any]]:
+        scoped, args = (
+            ("", (window_id,))
+            if ne_ids is None
+            else ("AND ne_id = ANY(?) ", (window_id, sorted(ne_ids)))
+        )
         cur = await self.conn.execute(
-            "SELECT id, ne_id, kind, severity_rank, oid_root, match_on, slot_starts_at, "
-            "slot_ends_at FROM maintenance_window_rule WHERE window_id = ? ORDER BY ne_id, id",
-            (window_id,),
+            "SELECT id, ne_id, kind, severity_rank, oid_root, match_on, slot_starts_at, "  # nosec B608
+            "slot_ends_at FROM maintenance_window_rule WHERE window_id = ? "
+            + scoped
+            + "ORDER BY ne_id, id",
+            args,
         )
         return [
             {

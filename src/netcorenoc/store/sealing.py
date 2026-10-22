@@ -48,6 +48,8 @@ AVATAR = "user_avatar.image"
 #: `meta` keys whose values are secrets.
 SECRET_META = frozenset({"config.email", "config.snmp", "community_hmac_key"})
 KID_META = "vault.kid"
+#: The first audit id that had to be sealed (`crosscutting/audit.py`), itself sealed.
+AUDIT_ANCHOR_META = "audit.sealed_from"
 
 log = logging.getLogger("netcorenoc")
 
@@ -93,15 +95,9 @@ def open_person(row: dict[str, Any]) -> dict[str, Any]:
 class SealingMixin(StoreBase):
     async def open_vault(self) -> int:
         """At start and after an import: refuse a key that is not this database's, then seal what
-        is still plain. Takes the lock and commits; returns how many values it sealed."""
-        async with self.lock:
-            try:
-                await self.check_vault()
-                sealed = await self.seal_plaintext()
-            except BaseException:
-                await self.rollback()
-                raise
-            await self.commit()
+        is still plain. The caller holds the lock and commits; returns how many it sealed."""
+        await self.check_vault()
+        sealed = await self.seal_plaintext()
         if sealed:
             log.info("sealed %d personal value(s) and secret(s) left in plain text", sealed)
         return sealed
@@ -117,6 +113,14 @@ class SealingMixin(StoreBase):
         row = await cur.fetchone()
         if row is None:
             await self.conn.execute("INSERT INTO meta (key, value) VALUES (?, ?)", (KID_META, kid))
+            # From here on every audit row is sealed; the boundary is sealed too, so it cannot be
+            # moved past a rewritten tail.
+            cur = await self.conn.execute("SELECT COALESCE(MAX(id), 0) + 1 FROM audit_log")
+            first = str((await cur.fetchone())[0])  # type: ignore[index]
+            anchor = vault.current().seal(f"meta:{AUDIT_ANCHOR_META}", first)
+            await self.conn.execute(
+                "INSERT INTO meta (key, value) VALUES (?, ?)", (AUDIT_ANCHOR_META, anchor)
+            )
             return True
         if str(row[0]) != kid:
             raise vault.VaultError(
@@ -126,6 +130,19 @@ class SealingMixin(StoreBase):
                 "password are unreadable — see docs/troubleshoot.md, 'The secret key'."
             )
         return False
+
+    async def audit_sealed_from(self) -> int | None:
+        """The first audit id that must carry a seal, or None for a database never opened with a
+        secret key. Raises :class:`vault.VaultError` when the anchor was removed or altered."""
+        cur = await self.conn.execute(
+            "SELECT key, value FROM meta WHERE key IN (?, ?)", (KID_META, AUDIT_ANCHOR_META)
+        )
+        found = {str(r[0]): str(r[1]) for r in await cur.fetchall()}
+        if AUDIT_ANCHOR_META not in found:
+            if KID_META in found:
+                raise vault.VaultError("missing, although this database was sealed — removed")
+            return None
+        return int(vault.current().open_text(f"meta:{AUDIT_ANCHOR_META}", found[AUDIT_ANCHOR_META]))
 
     async def seal_plaintext(self) -> int:
         """Seal every personal value and secret still in plain text. Idempotent; the caller holds

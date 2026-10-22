@@ -2,7 +2,7 @@
 #
 #     docker compose up --build
 #
-# Four services (ADRs #452, #453):
+# Five services, one of them on request (ADRs #452, #453):
 #
 #   * `netcorenoc` — the appliance the Dockerfile builds: the trap receiver, the correlator and
 #     the console, hardened (read-only rootfs, every capability dropped but one, no privilege
@@ -14,6 +14,8 @@
 #     the schema and grants `netcorenoc_app` its privileges. Only it holds the owner's password;
 #   * `postgres` — the database, on an internal network with no published port, its data on a
 #     named volume, tuned for this workload (see `command:`);
+#   * `db-import` — never started by `up`: the one-off copy of a v0.30.x SQLite file
+#     (`docker compose --profile import run --rm db-import`, MIGRATION.md), as the schema's owner;
 #   * `db-secret` — runs once, before the rest: it writes three random passwords into a volume
 #     only these containers mount, if none is there yet, each readable by the one container that
 #     needs it (and the database's, which sets them): `db_admin_password`, the cluster superuser's
@@ -155,6 +157,10 @@ services:
       - -c
       - log_min_duration_statement=1000
       - -c
+      # A slow statement is logged without its bound values: they include password hashes, sealed
+      # values and whatever an operator typed (ADR #453).
+      - log_parameter_max_length=0
+      - -c
       - idle_in_transaction_session_timeout=300s
     healthcheck:
       test: ["CMD", "pg_isready", "-U", "netcorenoc", "-d", "netcorenoc", "-h", "127.0.0.1"]
@@ -197,6 +203,41 @@ services:
       NETCORENOC_DATABASE_PASSWORD_FILE: /run/netcorenoc-secrets/db_password
       NETCORENOC_DB_SCHEMA: ${NETCORENOC_DB_SCHEMA:-netcorenoc}
       NETCORENOC_DB_RUNTIME_ROLE: netcorenoc_app
+
+  db-import:
+    # One-off and explicit — never started by `docker compose up`: copies a v0.30.x SQLite file
+    # into the new schema (MIGRATION.md). As the schema's owner, because the import replaces seeded
+    # rows of append-only tables; with the appliance's data volume, where the old file lives and
+    # where the secret key is created for the appliance (uid 10001) to find. Group 70 reads the
+    # owner's password file; the long-running appliance is never given that group.
+    #   docker compose --profile import run --rm db-import
+    profiles: ["import"]
+    build: .
+    image: netcorenoc:local
+    user: "10001:70"
+    command: ["python", "-m", "netcorenoc", "db", "import-sqlite", "/home/netcorenoc/netcorenoc.db"]
+    restart: "no"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - backend
+    read_only: true
+    tmpfs:
+      - /tmp
+    volumes:
+      - netcorenoc-data:/home/netcorenoc
+      - netcorenoc-secrets:/run/netcorenoc-secrets:ro
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    environment:
+      NETCORENOC_DATABASE_URL: postgresql://netcorenoc@postgres:5432/netcorenoc
+      NETCORENOC_DATABASE_PASSWORD_FILE: /run/netcorenoc-secrets/db_password
+      NETCORENOC_DB_SCHEMA: ${NETCORENOC_DB_SCHEMA:-netcorenoc}
+      NETCORENOC_DB_RUNTIME_ROLE: netcorenoc_app
+      NETCORENOC_DATA_DIR: /home/netcorenoc
 
   netcorenoc:
     build: .

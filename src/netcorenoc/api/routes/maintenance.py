@@ -243,8 +243,10 @@ def register(app: FastAPI, ctx: AppContext) -> None:
     async def read_window(
         wid: int, request: Request, principal: auth.Principal = Depends(security)
     ) -> dict[str, Any]:
-        """One window in full, with its targets and its rules — **if the caller may see it.**"""
+        """One window in full, with its targets and its rules — **if the caller may see it**, and
+        of those only the ones on elements their scope reaches (ADR #453)."""
         window = await access.visible_or_404(wid, principal, request, "maintenance.window.read")
+        ne_ids = await access.scope_ne_ids(principal)
         now = time.time()
         async with store.reading():
             await governance.load()
@@ -253,8 +255,8 @@ def register(app: FastAPI, ctx: AppContext) -> None:
         )
         return {
             **shape(window, principal, now),
-            "targets": await store.window_targets(wid),
-            "rules": await store.window_rules(wid),
+            "targets": await store.window_targets(wid, ne_ids),
+            "rules": await store.window_rules(wid, ne_ids),
             # Counts only, and behind `mw.ledger`: the ledger is not a view of the network and
             # this is not a way to make it one (`store/mw_ledger.py`). Resolved through
             # `rbac.resolve_capabilities` rather than compared against a role, which is F28 — a
@@ -283,11 +285,18 @@ def register(app: FastAPI, ctx: AppContext) -> None:
                 detail=f"this window has {window['status']}; reload the card",
             )
         targets = await access.permitted_targets(body.targets, principal)
+        rules = [rule.as_row() for rule in body.rules if rule.ne_id in set(targets)]
         now = time.time()
+        async with store.reading():
+            current_targets = [t["ne_id"] for t in await store.window_targets(wid)]
+            current_rules = await store.window_rules(wid)
+        # ADR #453: the body names what the caller can see. Targets and rules on elements outside
+        # their scope are not theirs to remove — nor, by omission, to learn about — so they stay.
+        ne_ids = await access.scope_ne_ids(principal)
+        if ne_ids is not None:
+            targets = sorted({*targets, *(ne for ne in current_targets if ne not in ne_ids)})
+            rules += [r for r in current_rules if r["ne_id"] not in ne_ids]
         if window["status"] == "active":
-            async with store.reading():
-                current_targets = [t["ne_id"] for t in await store.window_targets(wid)]
-                current_rules = await store.window_rules(wid)
             frozen = frozen_while_active(
                 window,
                 starts_at=body.starts_at,
@@ -295,7 +304,7 @@ def register(app: FastAPI, ctx: AppContext) -> None:
                 patch_s=body.patch_s,
                 ledger_enabled=body.ledger_enabled,
                 targets=targets,
-                rules=[rule.as_row() for rule in body.rules if rule.ne_id in set(targets)],
+                rules=rules,
                 current_targets=current_targets,
                 current_rules=current_rules,
             )
@@ -313,7 +322,7 @@ def register(app: FastAPI, ctx: AppContext) -> None:
                     detail="ends_at: a running window cannot end in the past; use End now",
                 )
         needs = needs_confirmation(body.starts_at, body.ends_at)
-        status = restatus(window, needs, body.starts_at, now)
+        status = restatus(window, needs, body.starts_at, now, body.ends_at)
         async with write_txn():
             await store.update_window_fields(
                 wid,
@@ -334,11 +343,7 @@ def register(app: FastAPI, ctx: AppContext) -> None:
                 now=now,
             )
             await store.set_window_targets(wid, targets)
-            await store.set_window_rules(
-                wid,
-                [rule.as_row() for rule in body.rules if rule.ne_id in set(targets)],
-                now,
-            )
+            await store.set_window_rules(wid, rules, now)
             await audit_row(
                 request,
                 principal,

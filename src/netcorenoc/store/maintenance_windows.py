@@ -203,9 +203,14 @@ class MaintenanceWindowMixin(StoreBase):
         past six hours is a visible line of code that re-asks the question — rather than a window
         silently losing its confirmed state because somebody moved its end.
         """
+        # A window sent back to `pending_confirmation` holds no confirmation: the one it had was
+        # for other bounds (ADR #453), and keeping it would let the next edit count it again.
         await self.conn.execute(
             "UPDATE maintenance_window SET starts_at=?, ends_at=?, tz=?, patch_s=?, "
-            "needs_confirmation=?, status=?, updated_at=? WHERE id=?",
+            "needs_confirmation=?, status=?, updated_at=?, "
+            "confirmed_at = CASE WHEN ?='pending_confirmation' THEN NULL ELSE confirmed_at END, "
+            "confirmed_by = CASE WHEN ?='pending_confirmation' THEN NULL ELSE confirmed_by END "
+            "WHERE id=?",
             (
                 starts_at,
                 ends_at,
@@ -214,6 +219,8 @@ class MaintenanceWindowMixin(StoreBase):
                 int(needs_confirmation),
                 status,
                 now,
+                status,
+                status,
                 window_id,
             ),
         )

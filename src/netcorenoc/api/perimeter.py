@@ -227,14 +227,17 @@ class Perimeter:
                 raise
             await self._store.commit()
 
-    async def resolve_identity(self, request: Request) -> auth.Principal | None:
+    async def resolve_identity(
+        self, request: Request, *, touch: bool = True
+    ) -> auth.Principal | None:
         """Who is asking — and the session's or token's last use — **without `store.lock`**.
 
         Every request passes here, so under SQLite every request queued behind the engine's batch
         before its route ran at all. The only rows touched are the session's and the token's, which
         nothing in the process holds in memory, so they are written on a pooled connection
         (`store.side_write`, ADR #452) — and at most every `auth.TOUCH_EVERY_S`, so most requests
-        read one row and write nothing.
+        read one row and write nothing. ``touch=False`` writes nothing at all: the event stream
+        re-checks its caller with it, and an open tab must not keep an idle session alive.
         """
         now = time.time()
         header = request.headers.get("authorization", "")
@@ -242,11 +245,11 @@ class Perimeter:
         cookie = request.cookies.get(auth.COOKIE_NAME)
         if not bearer and not cookie:
             return None
-        async with self._store.side_write():
+        async with self._store.side_write() if touch else self._store.reading():
             if bearer:
-                return await auth.resolve_bearer(self._store, bearer, now)
+                return await auth.resolve_bearer(self._store, bearer, now, touch=touch)
             assert cookie is not None
-            return await auth.resolve_session(self._store, cookie, now)
+            return await auth.resolve_session(self._store, cookie, now, touch=touch)
 
     def csrf_ok(self, request: Request) -> bool:
         origin = request.headers.get("origin") or request.headers.get("referer")
@@ -276,11 +279,12 @@ class Perimeter:
 
     async def security(self, request: Request) -> auth.Principal:
         method, path = request.method, _route_path(request)
-        # (1) CSRF — cookie-authenticated mutations only.
+        # (1) CSRF — every mutation the cookie authenticates: any header but a Bearer one leaves
+        # the identity to the cookie, so it does not exempt the request (ADR #453).
         cookie_mutation = (
             method in MUTATING
             and bool(request.cookies.get(auth.COOKIE_NAME))
-            and "authorization" not in request.headers
+            and not request.headers.get("authorization", "").startswith("Bearer ")
         )
         if cookie_mutation and not self.csrf_ok(request):
             raise HTTPException(status_code=403, detail="CSRF check failed")
@@ -291,7 +295,11 @@ class Perimeter:
         # (3) bootstrap gate
         if principal.must_change_password and (method, path) not in BOOTSTRAP_ALLOWED:
             raise HTTPException(status_code=403, detail="password change required")
-        # (4) RBAC (single source of truth). v0.7.0: the capability set is resolved per request as
+        # (4) rate limit — before RBAC, so a flood of refused requests is refused cheaply too
+        # instead of writing an audit row each (ADR #453).
+        if not self._limiter.allow(_client_ip(request), time.monotonic()):
+            raise HTTPException(status_code=429, detail="rate limit exceeded")
+        # (5) RBAC (single source of truth). v0.7.0: the capability set is resolved per request as
         # `ceiling(role) ∩ stored policy` — the compiled map is the first operand, so no stored
         # policy can put a capability here that `PERMISSIONS` does not already grant this role
         # (DECISIONS #53). This is the ONLY authorization decision in the file; `role_allows` is
@@ -319,9 +327,6 @@ class Perimeter:
                     )
                     await self._store.commit()
             raise HTTPException(status_code=403, detail="insufficient role")
-        # (5) rate limit
-        if not self._limiter.allow(_client_ip(request), time.monotonic()):
-            raise HTTPException(status_code=429, detail="rate limit exceeded")
         request.state.principal = principal
         return principal
 

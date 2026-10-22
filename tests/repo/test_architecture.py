@@ -735,7 +735,9 @@ async def test_the_api_route_order_is_unchanged_by_the_ui_rewrite(store: Store) 
     # concrete `…/test`), `/api/reference` and `/api/password-reset` (and `…/confirm`) are new
     # prefixes, and `GET /api/login/options` is a new verb and segment below `POST /api/login`
     # (ADRs #444-#446).
-    assert len(live) == 117, (
+    # **v0.31.0: 117 -> 118.** `POST /api/users/{uid}/password-reset`, a concrete segment below
+    # `{uid}` beside `…/role` and `…/profile`, which it cannot shadow (ADR #453).
+    assert len(live) == 118, (
         f"the /api surface is {len(live)} pairs; v0.16.0 adds exactly five, v0.16.2 exactly one, "
         f"v0.16.3 exactly one, v0.16.5 exactly one — `POST /api/alarms/clear` — v0.18.0 exactly "
         f"one, `GET /api/correlation`, and v0.21.0 exactly thirteen for maintenance windows, "

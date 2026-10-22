@@ -24,8 +24,7 @@ ROUTE_PERMISSIONS: dict[tuple[str, str], str] = {
     ("GET", "/api/me"): "self.read",
     ("POST", "/api/password"): "self.read",
     # v0.25.0 (ADR #401, #402): your own name and photo are yours, like your password. Reading a
-    # photo is `self.read`; whose photo a caller may read is decided in the handler, by the rule
-    # the gesture history's names follow (`shaping.sees_people`).
+    # photo is `self.read`; whose photo is readable is the handler's call (`shaping.sees_people`).
     ("GET", "/api/avatars/{uid}"): "self.read",
     ("POST", "/api/me/avatar"): "self.read",
     ("DELETE", "/api/me/avatar"): "self.read",
@@ -104,9 +103,8 @@ ROUTE_PERMISSIONS: dict[tuple[str, str], str] = {
     ("GET", "/api/audit"): "audit.read",
     ("GET", "/api/audit/export"): "audit.export",
     ("POST", "/api/audit/prune"): "audit.prune",
-    # v0.21.0 — maintenance windows. `preview` is `mw.read` rather than `mw.write`: it is a dry
-    # run that writes nothing, and an operator who may see planned work may ask what a plan would
-    # cover. It is bounded by the caller's own scope, so it is not an existence oracle.
+    # v0.21.0 — maintenance windows. `preview` is `mw.read`, not `mw.write`: a dry run that writes
+    # nothing, bounded by the caller's scope (no existence oracle), for whoever sees planned work.
     ("GET", "/api/maintenance-windows"): "mw.read",
     ("POST", "/api/maintenance-windows/preview"): "mw.read",
     ("POST", "/api/maintenance-windows"): "mw.write",

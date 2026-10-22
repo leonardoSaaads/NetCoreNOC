@@ -4,7 +4,9 @@ A long-lived stream is the one place a perimeter change could go unnoticed: the 
 runs once, at connect time, so a connection opened before a policy was written would otherwise keep
 pushing unfiltered snapshots for as long as it stayed open. Every snapshot therefore re-reads the
 live policy, re-resolves both the capability set and the scope, and **ends the stream** if
-`events.stream` has since been revoked (F30).
+`events.stream` has since been revoked (F30) — or, since ADR #453, if the credential itself has
+ended: a sign-out, an expired or revoked session, a revoked token, or a role or password change
+(each of which revokes the account's sessions).
 """
 
 from __future__ import annotations
@@ -15,7 +17,7 @@ import time
 from collections.abc import AsyncIterator
 from typing import Any
 
-from fastapi import Depends, FastAPI
+from fastapi import Depends, FastAPI, Request
 from fastapi.responses import StreamingResponse
 
 from netcorenoc.api.context import AppContext
@@ -38,7 +40,9 @@ def register(app: FastAPI, ctx: AppContext) -> None:
     # -- SSE: primary live-update path -------------------------------------------------
 
     @route.get("/api/events")
-    async def events(principal: auth.Principal = Depends(security)) -> StreamingResponse:
+    async def events(
+        request: Request, principal: auth.Principal = Depends(security)
+    ) -> StreamingResponse:
         """The live stream, re-authorized and re-scoped on **every event**.
 
         A long-lived stream is the one place a perimeter change could go unnoticed: the security
@@ -49,6 +53,9 @@ def register(app: FastAPI, ctx: AppContext) -> None:
         """
 
         async def snapshot() -> str | None:
+            current = await ctx.perimeter.resolve_identity(request, touch=False)
+            if current is None or (current.ref, current.role) != (principal.ref, principal.role):
+                return None  # signed out, expired, revoked or demoted since the stream opened
             async with store.reading():
                 await governance.load()
             capabilities = rbac.resolve_capabilities(
