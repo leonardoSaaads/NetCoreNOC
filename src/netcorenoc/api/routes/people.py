@@ -16,6 +16,7 @@ from its own bytes. Every change is audited; the audit row carries the digest, n
 
 from __future__ import annotations
 
+import asyncio
 import time
 from typing import Any
 
@@ -229,12 +230,15 @@ def register(app: FastAPI, ctx: AppContext) -> None:
         if principal.user_id is not None and int(principal.user_id) == uid:
             raise HTTPException(status_code=400, detail="change your own password under Account")
         temporary = auth.temporary_password()
+        # scrypt is a fraction of a second of CPU: off the event loop, and before the store lock,
+        # which the engine's batch waits on.
+        hashed = await asyncio.to_thread(auth.hash_password, temporary)
         async with write_txn():
             user = await store.get_user(uid)
             if user is None:
                 raise HTTPException(status_code=404, detail="no such user")
             _within(request, str(user["role"]))
-            await store.replace_password(uid, auth.hash_password(temporary), time.time())
+            await store.replace_password(uid, hashed, time.time())
             revoked = await store.revoke_user_sessions(uid)
             await audit_row(
                 request,

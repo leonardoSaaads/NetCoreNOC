@@ -1367,7 +1367,7 @@ def test_the_queue_put_on_the_hot_path_is_non_blocking() -> None:
 #: key: sealing, blind indexes, the password pepper), `store/sealing.py` (what is sealed, where),
 #: `store/privileges.py` (the runtime role's grants), `api/routes/users.py` (the account routes,
 #: split from `admin.py` with the ceiling check) and migration `0032_hardening.sql`.
-SRC_TREE_DIGEST = "882b38611cd582a161b00b0d70638fcbe12c294cd383a45e1767a2ec49cc809e"
+SRC_TREE_DIGEST = "01f0af16d2efe7e91f8817e0add40d6bc168c3f46b4e9033f42b35e483c9dc48"
 SRC_FILE_COUNT = 380
 SRC_VERSION_FILE = "src/netcorenoc/__init__.py"
 
