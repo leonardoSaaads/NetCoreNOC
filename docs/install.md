@@ -117,7 +117,7 @@ Your equipment then has to be configured to send to 1162, which most vendors sup
 
 ```sh
 python3.12 -m venv .venv
-.venv/bin/pip install ".[snmpv3]"     # `.` alone: no SNMPv3 privacy (DES/AES), nothing else differs
+.venv/bin/pip install .     # SNMPv3 privacy (DES/AES) included: `cryptography` is a core dependency
 .venv/bin/python -m netcorenoc.main
 ```
 
@@ -149,6 +149,16 @@ with `NETCORENOC_DATABASE_PASSWORD_FILE` naming a file readable by the user it r
 below hands this one over by itself. [`configure.md`](configure.md#database) has every database
 variable; [`security.md`](security.md#the-database) what the role should and should not hold.
 
+**Better: a second role for the appliance, which owns nothing** (ADR #453), so neither an injection
+nor a compromised process can alter a table or rewrite the audit log. Create `netcorenoc_app` beside
+the owner, keep the owner's password for `db migrate`, and give the appliance the runtime role:
+[`configure.md`](configure.md#two-roles-one-owns-the-schema-the-appliances-owns-nothing). The unit
+file carries the lines to uncomment.
+
+**The secret key** is created on the first start in the data directory (`secret.key`,
+`/var/lib/netcorenoc` with the unit below). Back it up once, apart from the database: it seals
+personal data and secrets and keys the password hashes ([`operate.md`](operate.md#8-backups-upgrades-and-checks)).
+
 ### As a systemd service
 
 [`deploy/netcorenoc.service`](../deploy/netcorenoc.service) is a hardened unit file — a dedicated
@@ -165,7 +175,7 @@ fails to start, and `systemd-analyze verify` is what says so:
 
 ```sh
 sudo python3.12 -m venv /opt/netcorenoc/.venv
-sudo /opt/netcorenoc/.venv/bin/pip install ".[snmpv3]"
+sudo /opt/netcorenoc/.venv/bin/pip install .
 sudo cp deploy/netcorenoc.service /etc/systemd/system/
 systemd-analyze verify /etc/systemd/system/netcorenoc.service   # silence means it will start
 sudo systemctl daemon-reload && sudo systemctl enable --now netcorenoc

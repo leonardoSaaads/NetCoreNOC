@@ -593,6 +593,9 @@ def main(argv: list[str] | None = None) -> int:
             'corpus; the gate is a baseline of the corpus, so it is re-cut with it."'
         )
 
+    # ADR #453: the engine seals every audit row it writes with the process's secret key. The gate
+    # measures grouping and never reads a seal, so a fixed key keeps it free of a key file.
+    pgtemp.throwaway_vault()
     current = asyncio.run(run_all(promote=not args.cold))
     payload = json.dumps(current, indent=2, sort_keys=True) + "\n"
 

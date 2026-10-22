@@ -68,12 +68,14 @@ from netcorenoc.store.cli import (
     _db_migrate,
     _db_status,
     _import_sqlite,
+    _key,
     _open,
     _settings,
 )
 
 
 async def _verify(settings: Settings) -> int:
+    _key(settings, create=False)  # the seals are checked with the appliance's key (ADR #453)
     store = await _open(settings)
     try:
         result = await audit.verify_chain(store)
@@ -233,10 +235,13 @@ async def _reset_password(settings: Settings, username: str) -> int:
 
     The forgotten-password path the console cannot offer when the person who forgot is the only
     admin. `must_change_password` is set, so the printed password works for exactly one sign-in.
+    The hash is keyed with the appliance's secret key (ADR #453), which this loads and checks.
     """
+    _key(settings, create=False)
     store = await _open(settings)
     try:
         async with store.lock:
+            await store.check_vault()
             user = await store.get_user_by_name(username)
             if user is None:
                 print(f"no account named {username!r}", file=sys.stderr)
@@ -244,8 +249,8 @@ async def _reset_password(settings: Settings, username: str) -> int:
             password = secrets.token_urlsafe(BOOTSTRAP_PASSWORD_CHARS)[:BOOTSTRAP_PASSWORD_CHARS]
             now = time.time()
             uid = int(user["id"])
-            await store.update_user_password(uid, hash_password(password), now)
-            await store.set_must_change_password(uid, True, now)
+            # Must be changed at the next sign-in, and no reset link left to race it (ADR #453).
+            await store.replace_password(uid, hash_password(password), now)
             revoked = await store.revoke_user_sessions(uid)
             await audit.write_event(
                 store,

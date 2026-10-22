@@ -253,10 +253,11 @@ class Database:
             settings["synchronous_commit"] = "off"
         return settings
 
-    async def connect(self) -> asyncpg.Connection:
-        """A new connection with the store's codecs and search path (the writer, a migration)."""
+    async def connect(self, dsn: str | None = None) -> asyncpg.Connection:
+        """A new connection with the store's codecs and search path: the writer, or the schema
+        owner's for the migrations (``dsn``, ADR #453)."""
         raw = await asyncpg.connect(
-            self.dsn,
+            dsn or self.dsn,
             statement_cache_size=self.statement_cache_size,
             server_settings=self._settings(reader=False),
         )

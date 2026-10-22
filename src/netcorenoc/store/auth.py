@@ -9,6 +9,7 @@ from __future__ import annotations
 from typing import Any
 
 from netcorenoc.store.base import StoreBase
+from netcorenoc.store.sealing import open_person
 
 
 class AuthMixin(StoreBase):
@@ -51,12 +52,12 @@ class AuthMixin(StoreBase):
     async def get_user_by_name(self, username: str) -> dict[str, Any] | None:
         cur = await self.conn.execute("SELECT * FROM app_user WHERE username=?", (username,))
         row = await cur.fetchone()
-        return dict(row) if row else None
+        return open_person(dict(row)) if row else None
 
     async def get_user(self, user_id: int) -> dict[str, Any] | None:
         cur = await self.conn.execute("SELECT * FROM app_user WHERE id=?", (user_id,))
         row = await cur.fetchone()
-        return dict(row) if row else None
+        return open_person(dict(row)) if row else None
 
     async def list_users(self) -> list[dict[str, Any]]:
         # v0.25.0: the display name and the photo's DIGEST, never the image (ADR #401, #402).
@@ -65,7 +66,13 @@ class AuthMixin(StoreBase):
             "u.disabled, u.created_at, a.sha256 AS avatar FROM app_user u "
             "LEFT JOIN user_avatar a ON a.user_id=u.id ORDER BY u.username"
         )
-        return [dict(r) for r in await cur.fetchall()]
+        return [open_person(dict(r)) for r in await cur.fetchall()]
+
+    async def rehash_password(self, user_id: int, password_hash: str) -> None:
+        """The same password under the current scheme (a successful sign-in upgrades it)."""
+        await self.conn.execute(
+            "UPDATE app_user SET password_hash=? WHERE id=?", (password_hash, user_id)
+        )
 
     async def update_user_password(self, user_id: int, password_hash: str, now: float) -> None:
         await self.conn.execute(

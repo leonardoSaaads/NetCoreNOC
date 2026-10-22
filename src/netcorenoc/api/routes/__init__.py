@@ -52,6 +52,7 @@ from netcorenoc.api.routes import (
     scorer,
     snmp,
     static,
+    users,
 )
 
 __all__ = [
@@ -83,4 +84,5 @@ __all__ = [
     "scorer",
     "snmp",
     "static",
+    "users",
 ]

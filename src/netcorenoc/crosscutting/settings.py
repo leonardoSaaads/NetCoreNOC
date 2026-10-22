@@ -15,7 +15,7 @@ import re
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from pathlib import Path
-from urllib.parse import quote, unquote, urlsplit, urlunsplit
+from urllib.parse import parse_qsl, quote, unquote, urlencode, urlsplit, urlunsplit
 
 # Rebrand (v0.4.0): the canonical environment prefix is NETCORENOC_*. The legacy OPTICORR_*
 # aliases were accepted with a once-per-variable deprecation warning through v0.5.0 and are
@@ -137,7 +137,7 @@ def _tls(cert: str, key: str) -> None:
             )
 
 
-def _database_url(url: str, password_file: str) -> str:
+def _database_url(url: str, password_file: str, name: str = "DATABASE") -> str:
     """The PostgreSQL URL, with the password from ``password_file`` when one is named (ADR #452).
 
     The file is how a Docker or Kubernetes secret reaches the process without sitting in its
@@ -146,7 +146,7 @@ def _database_url(url: str, password_file: str) -> str:
     parts = urlsplit(url)
     if parts.scheme not in ("postgresql", "postgres"):
         raise SettingsError(
-            f"{ENV_PREFIX}DATABASE_URL must be a postgresql:// URL (got scheme {parts.scheme!r}). "
+            f"{ENV_PREFIX}{name}_URL must be a postgresql:// URL (got scheme {parts.scheme!r}). "
             "See docs/configure.md."
         )
     if not password_file:
@@ -155,7 +155,7 @@ def _database_url(url: str, password_file: str) -> str:
         password = Path(password_file).read_text().strip()
     except OSError as exc:
         raise SettingsError(
-            f"{ENV_PREFIX}DATABASE_PASSWORD_FILE={password_file!r} cannot be read ({exc.strerror})."
+            f"{ENV_PREFIX}{name}_PASSWORD_FILE={password_file!r} cannot be read ({exc.strerror})."
             " It is a path inside the container or on the host; check the mount and the "
             "permissions. See docs/configure.md."
         ) from exc
@@ -165,27 +165,51 @@ def _database_url(url: str, password_file: str) -> str:
     return urlunsplit((parts.scheme, netloc, parts.path, parts.query, parts.fragment))
 
 
+def _identifier(suffix: str, value: str) -> str:
+    """A role or schema name: lower-case letters, digits and _, or empty."""
+    if value and not re.fullmatch(r"[a-z_][a-z0-9_]{0,62}", value):
+        raise SettingsError(
+            f"{ENV_PREFIX}{suffix}={value!r} is not a role name: lower-case letters, digits and _, "
+            "starting with a letter or _. See docs/configure.md."
+        )
+    return value
+
+
+def _without_query_password(query: str) -> tuple[str, str | None]:
+    """``query`` without a ``password=`` parameter (libpq and the driver both accept one), and its
+    value. Untouched, byte for byte, when there is none."""
+    pairs = parse_qsl(query, keep_blank_values=True)
+    found = [value for key, value in pairs if key == "password"]
+    if not found:
+        return query, None
+    return urlencode([(key, value) for key, value in pairs if key != "password"]), found[-1]
+
+
 def split_password(url: str) -> tuple[str, str | None]:
     """``(url_without_password, password)``: for a child process that takes the password in its
-    environment (``PGPASSWORD``) rather than on a command line ``ps`` can read."""
+    environment (``PGPASSWORD``) rather than on a command line ``ps`` can read. Either place a
+    URL may carry it — before the host, or as ``?password=`` — is emptied."""
     parts = urlsplit(url)
-    if parts.password is None:
+    query, from_query = _without_query_password(parts.query)
+    password = unquote(parts.password) if parts.password is not None else from_query
+    if password is None:
         return url, None
     host = parts.netloc.rsplit("@", 1)[-1]
     user = f"{parts.username}@" if parts.username else ""
-    bare = urlunsplit((parts.scheme, f"{user}{host}", parts.path, parts.query, parts.fragment))
-    return bare, unquote(parts.password)
+    return urlunsplit((parts.scheme, f"{user}{host}", parts.path, query, parts.fragment)), password
 
 
 def redact_url(url: str) -> str:
     """A database URL fit for a log line or a settings screen: the password replaced by ***."""
     parts = urlsplit(url)
-    if parts.password is None:
+    query, from_query = _without_query_password(parts.query)
+    if parts.password is None and from_query is None:
         return url
     host = parts.netloc.rsplit("@", 1)[-1]
-    return urlunsplit(
-        (parts.scheme, f"{parts.username}:***@{host}", parts.path, parts.query, parts.fragment)
-    )
+    user = f"{parts.username}@" if parts.username else ""
+    user = f"{parts.username}:***@" if parts.password is not None else user
+    query = "&".join(filter(None, [query, "password=***" if from_query is not None else ""]))
+    return urlunsplit((parts.scheme, f"{user}{host}", parts.path, query, parts.fragment))
 
 
 def _count(suffix: str, default: int, low: int, high: int) -> int:
@@ -213,8 +237,17 @@ class Settings:
     # transaction mode is unsupported either way: the instance lock is a session lock (ADR #452).
     db_readers: int = 4
     db_statement_cache: int = 1024
-    # Files the appliance keeps on its own disk: the trap spool (ADR #450).
+    # ADR #453: the schema owner, when it is not the role the appliance runs as. Set, migrations
+    # run as this role at start and the appliance runs as `database_url`'s, which may not alter,
+    # drop or truncate anything; unset, one role does both.
+    database_owner_url: str = ""
+    # ADR #453: the runtime role `db migrate` grants the appliance's privileges to, when it runs
+    # as the owner and the appliance runs as another role (the Compose recipe).
+    db_runtime_role: str = ""
+    # Files the appliance keeps on its own disk: the trap spool (ADR #450) and the secret key
+    # (ADR #453), which the database server never sees.
     data_dir: str = "."
+    secret_key_file: str = ""
     # `NETCORENOC_DB`, the SQLite file of v0.30.0 and earlier: set, it stops the start (ADR #452).
     legacy_db: str = ""
     trap_host: str = "0.0.0.0"  # nosec B104 - a trap destination must listen externally
@@ -274,9 +307,16 @@ class Settings:
                 s("DATABASE_URL", cls.database_url), s("DATABASE_PASSWORD_FILE", "")
             ),
             db_schema=schema,
+            database_owner_url=(
+                _database_url(owner, s("DATABASE_OWNER_PASSWORD_FILE", ""), "DATABASE_OWNER")
+                if (owner := s("DATABASE_OWNER_URL", ""))
+                else ""
+            ),
+            db_runtime_role=_identifier("DB_RUNTIME_ROLE", s("DB_RUNTIME_ROLE", "")),
             db_readers=_count("DB_READERS", cls.db_readers, 1, 64),
             db_statement_cache=_count("DB_STATEMENT_CACHE", cls.db_statement_cache, 0, 100_000),
             data_dir=s("DATA_DIR", cls.data_dir),
+            secret_key_file=s("SECRET_KEY_FILE", cls.secret_key_file),
             legacy_db=s("DB", cls.legacy_db),
             trap_host=s("TRAP_HOST", cls.trap_host),
             trap_port=_port("TRAP_PORT", cls.trap_port, "UDP"),
@@ -308,6 +348,11 @@ class Settings:
     def spool_path(self) -> Path:
         """`NETCORENOC_SPOOL_DIR`, or a ``spool`` directory in `NETCORENOC_DATA_DIR` (ADR #450)."""
         return Path(self.spool_dir or Path(self.data_dir) / "spool").resolve()
+
+    @property
+    def secret_key_path(self) -> Path:
+        """`NETCORENOC_SECRET_KEY_FILE`, or ``secret.key`` in `NETCORENOC_DATA_DIR` (ADR #453)."""
+        return Path(self.secret_key_file or Path(self.data_dir) / "secret.key").resolve()
 
     @property
     def tls_enabled(self) -> bool:

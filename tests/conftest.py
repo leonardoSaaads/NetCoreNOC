@@ -1,17 +1,24 @@
 from __future__ import annotations
 
 from collections.abc import AsyncIterator, Callable, Iterator
+from pathlib import Path
 
 import pytest
 from hypothesis import settings
 
-from netcorenoc.crosscutting import auth
+from netcorenoc.crosscutting import auth, vault
 from netcorenoc.store import Store
 
 import paths
 import pgtemp
 
 FIXTURES = paths.FIXTURES
+
+# ADR #453: the suite runs with one fixed secret key, as an appliance runs with its key file. A
+# test that needs no key, or another one, configures its own and restores this one.
+TEST_KEY = b"netcorenoc test secret key 32 b!"
+TEST_VAULT = vault.Vault.from_key(TEST_KEY)
+vault.configure(TEST_VAULT)
 
 # --- the Hypothesis profile (v0.16.2, DECISIONS #279) --------------------------------------
 #
@@ -36,6 +43,26 @@ FIXTURES = paths.FIXTURES
 # on, and a reproducible figure is what lets a release compare itself to the last one at all.
 settings.register_profile("netcorenoc", derandomize=True, database=None)
 settings.load_profile("netcorenoc")
+
+
+@pytest.fixture(autouse=True)
+def _secret_key_file(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """ADR #453: the suite's key, in a file of the test's own — never `secret.key` in the working
+    tree, which is where an appliance with the default `NETCORENOC_DATA_DIR` would create one.
+    Settings read from the environment find it there; `vault.install` is given the same key
+    directly, for the tests that build `Settings` with the default data directory."""
+    import base64
+
+    def install(_path: Path) -> vault.Vault:
+        vault.configure(TEST_VAULT)
+        return TEST_VAULT
+
+    path = tmp_path / "secret.key"
+    path.write_text(base64.b64encode(TEST_KEY).decode("ascii") + "\n")
+    path.chmod(0o600)
+    monkeypatch.setenv("NETCORENOC_SECRET_KEY_FILE", str(path))
+    monkeypatch.setattr(vault, "install", install)
+    vault.configure(TEST_VAULT)
 
 
 @pytest.fixture(autouse=True)

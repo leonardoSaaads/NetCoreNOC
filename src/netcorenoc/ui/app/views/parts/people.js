@@ -8,6 +8,10 @@
  * **The last admin** (F79): the server says which account is the only enabled admin
  * (`sole_admin`), and this editor then offers neither a role change nor deletion for it. That is an
  * affordance; `routes/admin.py` refuses both whatever this renders.
+ *
+ * **A password is never shown, only replaced** (ADR #453): "Reset password…" asks the server for a
+ * random one-time password, displayed here once, which the person must change at their next
+ * sign-in. Their sessions end and any reset link already emailed stops working.
  */
 
 import { html, Component, cx } from "../../dom.js";
@@ -88,6 +92,61 @@ export class PeopleList extends Component {
         })}
       </ul>
       ${shown.length ? null : html`<p class="muted">No one matches.</p>`}
+    </div>`;
+  }
+}
+
+/** An administrator's one power over someone's password: replace it, and hand over the new one. */
+export class PasswordReset extends Component {
+  constructor(props) {
+    super(props);
+    this.state = { open: false, busy: false, issued: null, copied: false, error: null };
+  }
+
+  async reset() {
+    this.setState({ busy: true, error: null });
+    try {
+      const out = await post(`/api/users/${this.props.user.id}/password-reset`, {});
+      this.setState({ busy: false, issued: out.temporary_password });
+    } catch (error) {
+      this.setState({ busy: false, error: error.detail || error.message });
+    }
+  }
+
+  async copy() {
+    try {
+      await globalThis.navigator.clipboard.writeText(this.state.issued);
+      this.setState({ copied: true });
+    } catch { /* the value is selectable in the field */ }
+  }
+
+  render({ user, onDone }, { open, busy, issued, copied, error }) {
+    if (issued) {
+      return html`<div class="token-issued pw-reset" role="status">
+        <p><b>Give ${user.username} this one-time password now.</b> It will not be shown again;
+          they must choose their own when they sign in.</p>
+        <div class="token-value">
+          <input readonly value=${issued} aria-label="One-time password" autocomplete="off"
+            onFocus=${(e) => e.currentTarget.select()} />
+          <button type="button" class="primary" onClick=${() => this.copy()}>${copied ? "Copied" : "Copy"}</button>
+        </div>
+        <button type="button" onClick=${onDone}>Done</button>
+      </div>`;
+    }
+    if (!open) {
+      return html`<button type="button" class="linkish" onClick=${() => this.setState({ open: true })}>
+        Reset password…</button>`;
+    }
+    return html`<div class="pw-reset panel-block" role="group" aria-label="Reset password">
+      <p>A random one-time password replaces ${user.username}'s. Their sessions end now, any reset
+        link already emailed stops working, and they choose their own password at the next sign-in.
+        No one — an admin included — can see the current password.</p>
+      <div class="fb">
+        <button type="button" class="warn" disabled=${busy} onClick=${() => this.reset()}>
+          ${busy ? "Resetting…" : `Reset ${user.username}'s password`}</button>
+        <button type="button" disabled=${busy} onClick=${() => this.setState({ open: false })}>Cancel</button>
+      </div>
+      ${error ? html`<p class="err" role="alert">${error}</p>` : null}
     </div>`;
   }
 }
@@ -203,6 +262,8 @@ export class PersonEditor extends Component {
           readOnly=${base.fixed || !can("rbac.write")} onChange=${(next) => this.setState({ caps: next })} />
       </div>` : null}
       ${error ? html`<p class="err" role="alert">${error}</p>` : null}
+      ${user && user.username !== session().user ? html`<div class="pe-password">
+        <${PasswordReset} user=${user} onDone=${onSaved} /></div>` : null}
       <footer class="pe-foot">
         <button type="submit" class="primary" disabled=${busy}>${busy ? "Saving…" : user ? "Save" : "Create user"}</button>
         <button type="button" onClick=${onClose}>Cancel</button>

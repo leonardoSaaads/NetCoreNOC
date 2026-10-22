@@ -27,7 +27,7 @@ from typing import Any
 import uvicorn
 
 from netcorenoc.api import QuietServer, create_app
-from netcorenoc.crosscutting import administration, posture, shaping
+from netcorenoc.crosscutting import administration, posture, shaping, vault
 from netcorenoc.crosscutting.runtime import RuntimeConfig
 from netcorenoc.crosscutting.settings import (
     ENV_PREFIX,
@@ -185,11 +185,13 @@ async def run(settings: Settings) -> None:
             f"`python -m netcorenoc db import-sqlite {settings.legacy_db}`, then unset "
             f"{ENV_PREFIX}DB and set {ENV_PREFIX}DATABASE_URL. See MIGRATION.md."
         )
+    vault.install(settings.secret_key_path)
     store = Store(
         settings.database_url,
         schema=settings.db_schema,
         readers=settings.db_readers,
         statement_cache_size=settings.db_statement_cache,
+        owner_dsn=settings.database_owner_url or None,
     )
     try:
         await store.open()
@@ -208,6 +210,9 @@ async def run(settings: Settings) -> None:
             f"and that the database exists. See docs/configure.md."
         ) from exc
     try:
+        async with store.lock:
+            await store.open_vault()
+            await store.commit()
         await _serve(settings, store)
     finally:
         # **The store is closed on every exit path** (F66, DECISIONS #225): a connection left open

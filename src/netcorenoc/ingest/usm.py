@@ -14,9 +14,9 @@ decryption when the message is private (C, in `cryptography`), and the BER decod
 already pays. No lock, no I/O, no await — `receiver.datagram_received` calls this exactly as it
 calls the v2c parser.
 
-**Privacy needs `cryptography`**, the one optional package this appliance can use (DECISIONS #444):
-the core stays five runtime dependencies, the Docker image includes it, and without it an encrypted
-trap is quarantined as `v3-privacy-unavailable` — never silently dropped.
+**Privacy needs `cryptography`** (DECISIONS #444), a core dependency since ADR #453 seals secrets
+at rest with it. A build without it still runs: an encrypted trap is then quarantined as
+`v3-privacy-unavailable` — never silently dropped.
 """
 
 from __future__ import annotations

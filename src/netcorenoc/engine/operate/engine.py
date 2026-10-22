@@ -605,31 +605,37 @@ class Engine(MaintenanceMixin, GapMixin, ScorerLifecycleMixin, EngineBase):
     async def maintenance(self, now: float, retention_days: float, tick: int = 0) -> None:
         """Close idle situations, persist learned state, record ingest gaps, and prune."""
         async with self.store.lock:
-            # Record a degradation *before* reloading, so a fallback that happened under the
-            # current configuration is never lost to the swap that an admin's fix would cause.
-            await self._audit_scorer_fallback(now)
-            # The documented scoring-configuration reload point: an admin's apply or rollback
-            # takes effect here, between batches, never inside one.
-            await self.load_scorer_config()
-            await self._capture_run(now)  # same reload point, same reason
-            for sid in await self.store.idle_open_situations(now - IDLE_CLOSE_S):
-                await self._close_situation(sid, now)
-            for sid in await occurrence.settled(self, now, CLEAR_HOLD_S):  # ADR #433
-                await self._close_situation(sid, now)
-            await proposals.lapse(self.store, now)  # after the closes: a target gone now lapses now
-            await self._maintenance_windows(now)  # v0.21.0: advance, surface, rebuild the index
-            await self._promotion_sweep(now)
-            await self.learner.save(self.store, now)
-            await self.precedence.save(self.store, now)
-            await self._flush_profiler(now)
-            await self._record_ingest_gaps(now)
-            await self.store.purge_expired_sessions(now)  # expired auth sessions
-            if tick % PRUNE_EVERY_TICKS == 0:
-                await self.store.prune(now, retention_days * 86400.0)
-                self.profiler.prune_stale(now - PROFILE_STALE_S)
-                await self.store.delete_stale_varbind_profiles(now - PROFILE_STALE_S)
-                await self.capture.prune(self.store, now, self.retention)
-            await self.store.commit()
+            try:
+                # Record a degradation *before* reloading, so a fallback that happened under the
+                # current configuration is never lost to the swap that an admin's fix would cause.
+                await self._audit_scorer_fallback(now)
+                # The documented scoring-configuration reload point: an admin's apply or rollback
+                # takes effect here, between batches, never inside one.
+                await self.load_scorer_config()
+                await self._capture_run(now)  # same reload point, same reason
+                for sid in await self.store.idle_open_situations(now - IDLE_CLOSE_S):
+                    await self._close_situation(sid, now)
+                for sid in await occurrence.settled(self, now, CLEAR_HOLD_S):  # ADR #433
+                    await self._close_situation(sid, now)
+                # After the closes: a target gone now lapses now.
+                await proposals.lapse(self.store, now)
+                await self._maintenance_windows(now)  # v0.21.0: advance, surface, rebuild the index
+                await self._promotion_sweep(now)
+                await self.learner.save(self.store, now)
+                await self.precedence.save(self.store, now)
+                await self._flush_profiler(now)
+                await self._record_ingest_gaps(now)
+                await self.store.purge_expired_sessions(now)  # expired auth sessions
+                if tick % PRUNE_EVERY_TICKS == 0:
+                    await self.store.prune(now, retention_days * 86400.0)
+                    self.profiler.prune_stale(now - PROFILE_STALE_S)
+                    await self.store.delete_stale_varbind_profiles(now - PROFILE_STALE_S)
+                    await self.capture.prune(self.store, now, self.retention)
+                await self.store.commit()
+            except Exception:  # half a pass is never committed, and memory forgets it too
+                await self.store.rollback()
+                await membership.reload(self)
+                raise
 
     def latency_p95(self) -> float:
         return self.deadlines.percentile(0.95)

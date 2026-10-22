@@ -222,9 +222,11 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--json", type=Path, help="also write the report here")
     args = parser.parse_args(argv)
     if args.db:
+        pgtemp.throwaway_vault()  # the engine seals what it audits (ADR #453)
         report = asyncio.run(bench(args, args.db))
     else:
         with pgtemp.database() as url:
+            pgtemp.throwaway_vault()
             report = asyncio.run(bench(args, url))
     text = json.dumps(report, indent=2)
     print(text)

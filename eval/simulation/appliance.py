@@ -116,8 +116,8 @@ class Http:
 
     Both, because the release exercises both: a console signs in and carries a cookie, and a service
     principal carries a token. `urllib` and `http.cookiejar` so `eval/` stays dependency-free — the
-    five runtime dependencies are the release's headline and a test harness that added a sixth would
-    be the wrong kind of convenient.
+    six runtime dependencies are the release's headline and a test harness that added a seventh
+    would be the wrong kind of convenient.
     """
 
     def __init__(self, base: str, token: str | None = None, console: bool = False) -> None:

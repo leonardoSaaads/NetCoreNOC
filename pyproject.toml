@@ -17,13 +17,14 @@ dependencies = [
     "fastapi>=0.115",
     "uvicorn>=0.30",
     "pydantic>=2.7",
+    # ADR #453: personal data and secrets are sealed at rest (AES-256-GCM, HKDF) with a vetted
+    # implementation; the standard library has none. It also decrypts SNMPv3 traps (#444).
+    "cryptography>=43",
 ]
 
 [project.optional-dependencies]
-# v0.30.0 (DECISIONS #444): SNMPv3 *privacy* — decrypting DES/3DES/AES traps — needs a vetted cipher
-# implementation, and the standard library has none. Optional, so the core stays five runtime
-# dependencies and a v1/v2c or authNoPriv deployment installs nothing more; the Docker image
-# installs it. Without it an encrypted trap is quarantined as `v3-privacy-unavailable`.
+# v0.30.0 (DECISIONS #444): SNMPv3 *privacy* needed `cryptography`, then optional. A core dependency
+# since ADR #453; the extra stays so `pip install ".[snmpv3]"` in existing scripts still works.
 snmpv3 = ["cryptography>=43"]
 dev = [
     "pytest>=8.2",

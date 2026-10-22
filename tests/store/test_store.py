@@ -12,14 +12,20 @@ import util
 
 
 async def test_migrations_are_idempotent(db_url: str) -> None:
-    """Opening twice applies nothing the second time and records each script once (ADR #452)."""
+    """Opening twice applies nothing the second time and records each script once (ADR #452,
+    #453)."""
     for _ in range(2):
         s = Store(db_url)
         await s.open()
-        cur = await s.conn.execute("SELECT version, name, checksum FROM schema_migrations")
+        cur = await s.conn.execute(
+            "SELECT version, name, checksum FROM schema_migrations ORDER BY version"
+        )
         rows = await cur.fetchall()
-        assert [(r["version"], r["name"]) for r in rows] == [(31, "0031_postgresql.sql")]
-        assert len(rows[0]["checksum"]) == 64
+        assert [(r["version"], r["name"]) for r in rows] == [
+            (31, "0031_postgresql.sql"),
+            (32, "0032_hardening.sql"),
+        ]
+        assert all(len(r["checksum"]) == 64 for r in rows)
         assert s.integrity_warnings == []
         await s.close()
 

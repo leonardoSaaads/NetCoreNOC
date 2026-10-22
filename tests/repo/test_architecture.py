@@ -560,6 +560,7 @@ ROUTE_ORDER_BASELINE: list[tuple[str, str]] = [
     ("POST", "/api/users/{uid}/avatar"),
     ("DELETE", "/api/users/{uid}/avatar"),
     ("POST", "/api/users/{uid}/profile"),
+    ("POST", "/api/users/{uid}/password-reset"),
     ("GET", "/api/scorer"),
     ("GET", "/api/correlation"),
     ("POST", "/api/scorer/preview"),
@@ -734,7 +735,9 @@ async def test_the_api_route_order_is_unchanged_by_the_ui_rewrite(store: Store) 
     # concrete `…/test`), `/api/reference` and `/api/password-reset` (and `…/confirm`) are new
     # prefixes, and `GET /api/login/options` is a new verb and segment below `POST /api/login`
     # (ADRs #444-#446).
-    assert len(live) == 117, (
+    # **v0.31.0: 117 -> 118.** `POST /api/users/{uid}/password-reset`, a concrete segment below
+    # `{uid}` beside `…/role` and `…/profile`, which it cannot shadow (ADR #453).
+    assert len(live) == 118, (
         f"the /api surface is {len(live)} pairs; v0.16.0 adds exactly five, v0.16.2 exactly one, "
         f"v0.16.3 exactly one, v0.16.5 exactly one — `POST /api/alarms/clear` — v0.18.0 exactly "
         f"one, `GET /api/correlation`, and v0.21.0 exactly thirteen for maintenance windows, "
@@ -1360,8 +1363,12 @@ def test_the_queue_put_on_the_hot_path_is_non_blocking() -> None:
 #: the reader pool), `store/codecs.py`, `store/sql.py` (the placeholder translation),
 #: `store/importer.py` (the one-way SQLite import) and `store/cli.py` (the CLI's database
 #: plumbing) added.
-SRC_TREE_DIGEST = "50002d59c65db5245a3229d00a24df087a4353334f3b5202db0cee7ef84d890a"
-SRC_FILE_COUNT = 375
+#: **Then 375 -> 380.** Five added, none removed (ADR #453): `crosscutting/vault.py` (the secret
+#: key: sealing, blind indexes, the password pepper), `store/sealing.py` (what is sealed, where),
+#: `store/privileges.py` (the runtime role's grants), `api/routes/users.py` (the account routes,
+#: split from `admin.py` with the ceiling check) and migration `0032_hardening.sql`.
+SRC_TREE_DIGEST = "01f0af16d2efe7e91f8817e0add40d6bc168c3f46b4e9033f42b35e483c9dc48"
+SRC_FILE_COUNT = 380
 SRC_VERSION_FILE = "src/netcorenoc/__init__.py"
 
 

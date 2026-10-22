@@ -6,6 +6,9 @@ is 64 zeros. The ``audit_log`` table is append-only at the storage layer (SQLite
 ``BEFORE UPDATE``/``BEFORE DELETE`` triggers, migration ``0002``), so any edit to history
 breaks the chain and is detectable by :func:`verify_chain`.
 
+**Keyed since ADR #453**: ``mac`` is an HMAC of ``entry_hash`` under a key the database never holds,
+so a writer of the table cannot forge a valid tail; the first sealed id is anchored, sealed too.
+
 The event catalog (frozen in ``docs/gates/v0.2-phase-1.md``) is enumerated in
 :data:`ACTIONS`. Writers live at the API call sites (Phase 3 S4); this module owns the
 cryptographic contract and the offline tooling.
@@ -14,15 +17,20 @@ cryptographic contract and the offline tooling.
 from __future__ import annotations
 
 import hashlib
+import hmac
 import json
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
+from netcorenoc.crosscutting import vault
+
 if TYPE_CHECKING:
     from netcorenoc.store import Store
 
 GENESIS_HASH = "0" * 64
+#: Where an audit row's seal is placed in the vault's keyed digests.
+MAC_PLACE = "audit_log.mac"
 
 # Fields that make up the canonical form, in the exact key set the hash commits to.
 CANONICAL_KEYS = (
@@ -314,6 +322,7 @@ async def write_event(
     """
     assert action in ACTIONS, f"unknown audit action {action!r}"
     assert outcome in OUTCOMES, f"unknown audit outcome {outcome!r}"
+    await store.audit_serialize()  # the CLI appends to the same chain from another process
     prev_hash = await store.audit_last_hash()
     next_id = await store.audit_next_id()
     entry = {
@@ -329,21 +338,34 @@ async def write_event(
         "details": redact_details(details),
     }
     entry_hash = compute_hash(prev_hash, canonical(entry))
-    await store.audit_insert(entry, prev_hash, entry_hash)
+    await store.audit_insert(entry, prev_hash, entry_hash, entry_mac(entry_hash))
     return entry_hash
 
 
+def entry_mac(entry_hash: str) -> str:
+    """A row's seal: its hash, keyed. Needs the process's secret key."""
+    return vault.current().index(MAC_PLACE, entry_hash)
+
+
 async def verify_chain(store: Store) -> VerifyResult:
-    """Walk the chain in id order; report the first row whose hash or linkage is wrong."""
-    return verify_rows(await store.audit_all())
+    """Walk the chain in id order; report the first row whose hash, linkage or seal is wrong."""
+    try:
+        sealed_from = await store.audit_sealed_from()
+    except vault.VaultError as exc:
+        return VerifyResult(False, 0, None, f"the audit anchor: {exc}", GENESIS_HASH)
+    return verify_rows(await store.audit_all(), sealed_from=sealed_from)
 
 
-def verify_rows(rows: Sequence[Mapping[str, Any]]) -> VerifyResult:
+def verify_rows(
+    rows: Sequence[Mapping[str, Any]], *, sealed_from: int | None = None
+) -> VerifyResult:
     """:func:`verify_chain` over rows already read — by `db import-sqlite`, inside its
-    transaction, before it commits (ADR #452)."""
+    transaction, before it commits (ADR #452). ``sealed_from``: the first id that must carry a
+    seal; any row after a sealed one must carry one regardless."""
     checked = 0
     prev_hash = GENESIS_HASH
     final_hash = GENESIS_HASH
+    sealed = False
     for row in rows:
         entry = _row_entry(row)
         stored_prev = row["prev_hash"]
@@ -365,6 +387,12 @@ def verify_rows(rows: Sequence[Mapping[str, Any]]) -> VerifyResult:
             return VerifyResult(
                 False, checked, rid, "entry_hash mismatch (row tampered)", final_hash
             )
+        mac = row.get("mac")
+        if mac is not None or sealed or (sealed_from is not None and rid >= sealed_from):
+            if mac is None or not hmac.compare_digest(str(mac), entry_mac(stored_entry)):
+                reason = "seal missing or wrong (row written without the secret key)"
+                return VerifyResult(False, checked, rid, reason, final_hash)
+            sealed = True
         prev_hash = stored_entry
         final_hash = stored_entry
         checked += 1
@@ -372,8 +400,15 @@ def verify_rows(rows: Sequence[Mapping[str, Any]]) -> VerifyResult:
 
 
 async def export_ndjson(store: Store) -> tuple[list[str], str]:
-    """Return (NDJSON lines, final chain hash). Each line is one full audit row."""
+    """Return (NDJSON lines, final chain hash). Each line is one audit row without its seal:
+    the export's contract is the hash chain, which anyone can check without the key."""
     rows = await store.audit_all()
-    lines = [json.dumps(dict(row), sort_keys=True, separators=(",", ":")) for row in rows]
+    lines = [export_line(row) for row in rows]
     final_hash = rows[-1]["entry_hash"] if rows else GENESIS_HASH
     return lines, final_hash
+
+
+def export_line(row: Mapping[str, Any]) -> str:
+    """One exported row: every stored field but the seal, as canonical JSON."""
+    fields = {k: v for k, v in dict(row).items() if k != "mac"}
+    return json.dumps(fields, sort_keys=True, separators=(",", ":"))

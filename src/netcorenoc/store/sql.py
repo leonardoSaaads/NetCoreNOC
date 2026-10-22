@@ -23,7 +23,7 @@ _WRITE_HEAD = re.compile(
 )
 _WRITE_ANYWHERE = re.compile(
     r"\b(INSERT\s+INTO|UPDATE\s+\w+\s+SET|DELETE\s+FROM|FOR\s+(NO\s+KEY\s+)?UPDATE|FOR\s+SHARE|"
-    r"pg_advisory_xact_lock)\b",
+    r"pg_advisory_xact_lock|prune_audit_log)\b",
     re.IGNORECASE,
 )
 

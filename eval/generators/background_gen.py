@@ -135,6 +135,7 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--check", action="store_true", help="compare against the shipped constant")
     args = parser.parse_args()
+    pgtemp.throwaway_vault()  # the engine seals what it audits (ADR #453)
     rows, pairs, distinct, stride = asyncio.run(regenerate())
 
     if not args.check:

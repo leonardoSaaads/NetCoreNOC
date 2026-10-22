@@ -168,15 +168,22 @@ def initial_status(starts_at: float, now: float) -> str:
     return "active" if starts_at <= now else "scheduled"
 
 
-def restatus(window: dict[str, Any], needs: bool, starts_at: float, now: float) -> str:
+def restatus(
+    window: dict[str, Any], needs: bool, starts_at: float, now: float, ends_at: float
+) -> str:
     """The status an edited window takes. **A re-armed gate is never silent.**
 
     A window that now needs confirmation and does not have one goes back to
     `pending_confirmation` — which means it stops being in force, and the response says so. The
     alternative is a window an operator believes is running that is not, which is the one failure
     mode a maintenance feature must never have.
+
+    **A confirmation covers the span that was confirmed** (ADR #453): a long window made longer
+    needs confirming again, or one human's yes to eight hours would let whoever holds `mw.write`
+    — an agent, say, which `mw.confirm` exists to keep from confirming — stretch it to a month.
     """
-    if needs and window["confirmed_at"] is None:
+    lengthened = ends_at - starts_at > float(window["ends_at"]) - float(window["starts_at"])
+    if needs and (window["confirmed_at"] is None or lengthened):
         return "pending_confirmation"
     return initial_status(starts_at, now)
 

@@ -146,8 +146,14 @@ that an editor can always stop it. Turning a grade on is admin-only (#412).
 
 ## Sessions, passwords, throttling
 
-* `scrypt` (n = 2¹⁷). Policy is **length only**: 12–128 characters, no composition rules, no forced
-  expiry — NIST SP 800-63B.
+* `scrypt` (n = 2¹⁷) over the password **keyed with the secret key** (`scrypt-p1`, ADR #453), so a
+  copy of the database alone cannot test a single guess. Policy is **length only**: 12–128
+  characters, no composition rules, no forced expiry — NIST SP 800-63B.
+* **No one reads a password — an administrator included.** No route returns a password or its
+  hash. An admin **resets**: People & access → *Reset password…* issues a random one-time password,
+  shown once, which the person must replace at the next sign-in; their sessions and any reset link
+  already emailed end. Not for the admin's own account, and not for an account with more access
+  than the caller holds (a narrowed admin token cannot take over an admin).
 * Login throttling is per-username **and** per-IP, with no user enumeration: a wrong username and a
   wrong password are the same response and the same timing. Its memory is bounded without ever
   forgetting an active lockout first, so a flood of throwaway usernames from many addresses cannot
@@ -164,7 +170,9 @@ that an editor can always stop it. Turning a grade on is admin-only (#412).
   minutes, works once and is superseded by the next request. Its host is the configured console
   address, **never the request's `Host` header** (reset poisoning). Requests are bounded per client
   address and per account, every one is audited, and a reset ends every session of the account.
-  A mailbox is now a way into the account: protect it as you protect the account.
+  A mailbox is now a way into the account: protect it as you protect the account. **Changing your
+  own recovery address takes your current password**, so a stolen session cannot point the next
+  link at another mailbox, and a new address withdraws the links sent to the old one (ADR #453).
 * Sessions are stored server-side by SHA-256 of the id, with a sliding idle timeout **and** an
   absolute one. A stolen cookie expires on the absolute clock whatever the holder does.
 * Service tokens are per-identity and revocable. The value is shown once and stored hashed.
@@ -172,7 +180,13 @@ that an editor can always stop it. Turning a grade on is admin-only (#412).
 ## The audit log
 
 Append-only and **hash-chained**: each row commits to its predecessor, so a deletion or an edit
-breaks the chain at a nameable row.
+breaks the chain at a nameable row. **Sealed** too (ADR #453): each row carries an HMAC of its hash
+under the secret key, so someone who can write the table — its owner, a superuser, an edited dump —
+cannot rewrite a row and recompute the chain after it; stripping the seals is a break as well. The
+appliance's own role cannot update, delete or truncate a row at all; pruning is a function that
+refuses anything less than a day old. Appends from the appliance and from the CLI are serialised by
+an advisory lock, so they never fork the chain. The export (`GET /api/audit/export`) is the plain
+chain anyone can verify, without the seals.
 
 ```sh
 python -m netcorenoc audit verify     # walks the chain, reports the FIRST broken link
@@ -202,36 +216,49 @@ the credential that matters most after an admin's (#452).
 * **A server you run or rent is on the network**: require TLS (`sslmode=verify-full` with the
   provider's CA certificate, or at least `sslmode=require`) and allow connections only from the
   appliance (`pg_hba.conf`, the provider's network rules).
-* **Least privilege.** The role needs to log in and either own its database or own a schema a DBA
-  created for it (`CREATE SCHEMA netcorenoc AUTHORIZATION <role>`): the appliance creates the
-  schema only when it is missing, so `CREATE` on the database is needed only for that first start.
-  It needs no `SUPERUSER`, `CREATEDB`, `CREATEROLE`, `REPLICATION` or `BYPASSRLS`. The schema's
-  privileges are revoked from `PUBLIC` when it is created, so other roles on a shared server —
-  Supabase's `anon` and `authenticated` among them — cannot read it; a reporting role is a
-  deliberate `GRANT`. **The bundled server does the same**: its superuser, `postgres`, has its own
-  generated password that only the database container can read, and is used for initialisation
-  and maintenance; the appliance's role, `netcorenoc`, owns its database and nothing else. On a
-  shared server, create the role as [`install.md`](install.md#the-database-on-the-same-host) does.
+* **Least privilege: the appliance's role owns nothing** (ADR #453). One role owns the schema and
+  runs the migrations; the appliance connects as another that may only `SELECT, INSERT, UPDATE,
+  DELETE` rows — no DDL, no `TRUNCATE`, no trigger changes, no write to `schema_migrations`, and no
+  update or delete on the twelve append-only tables. So an injection or a compromised process
+  cannot drop the guards it would need to rewrite history. **Compose does this out of the box**:
+  `db-migrate` runs as the owner `netcorenoc`, whose password only it can read, and the appliance
+  as `netcorenoc_app`. Elsewhere, see [`configure.md`](configure.md#two-roles-one-owns-the-schema-the-appliances-owns-nothing);
+  a single role that owns its schema still works and is logged as such. Neither role needs
+  `SUPERUSER`, `CREATEDB`, `CREATEROLE`, `REPLICATION` or `BYPASSRLS`. The schema's privileges are
+  revoked from `PUBLIC` when it is created, so other roles on a shared server — Supabase's `anon`
+  and `authenticated` among them — cannot read it. The bundled server's superuser, `postgres`, has
+  its own generated password that only the database container can read.
+* **Slow statements are logged without their bound values** on the bundled server
+  (`log_parameter_max_length=0`): those include password hashes and sealed values.
 * **One appliance per schema**, enforced: a second appliance against the same schema stops at start
   (a session advisory lock), so a mistyped URL cannot interleave two histories.
 
 ## Data at rest
 
-The database is the whole state, and the appliance does **not encrypt** it. Anyone who can read
-the schema — through the role's credentials, the server's data directory or a dump — has your
-learned model, your situations and your audit history. Passwords and token values are hashed and
-session ids and reset links are stored by digest, so the data does not yield those credentials —
-but treat the database and every dump as sensitive, and use the server's storage encryption
-(managed providers encrypt at rest) or volume encryption if your threat model needs it.
+**What a copy of the database gives away** (ADR #453) — a stolen backup, a leaked managed-database
+snapshot, a read-only SQL injection:
 
-Two secrets it does hold, because the appliance has to use them (v0.30.0):
+| In the database | Stored as | Without the secret key it is |
+|---|---|---|
+| A person's recovery email, display name, photo | AES-256-GCM, sealed to its column | unreadable; the email's lookup is a keyed digest |
+| The SMTP password, SNMPv3 keys, the community HMAC key | AES-256-GCM | unreadable |
+| Passwords | scrypt over an HMAC with the key | not testable offline, guess by guess |
+| Session ids, reset links, token values | SHA-256 of 256 random bits | not reversible |
+| The audit log | hash chain + HMAC seal | readable; not rewritable without detection |
+| Situations, alarms, devices, the learned model | plain | readable — this is the appliance's working data |
 
-* **The SMTP password** of Settings → Email, so the appliance can sign in to the mail server. It is
-  never returned by the API, written to a log or put in an audit row. Set
-  `NETCORENOC_SMTP_PASSWORD` to keep it out of the database and its dumps.
-* **SNMPv3 master keys** — the RFC 3414 hash of each passphrase, not the passphrase. They let
-  someone with the database authenticate as that SNMP user, as Net-SNMP's stored keys do. Accepted
-  v1/v2c communities are kept as keyed hashes (F4).
+**The secret key** is 32 random bytes in `NETCORENOC_SECRET_KEY_FILE` (default `secret.key` in the
+data directory, `0600`, created on the first start), beside the spool and never in the database —
+so the two are stolen separately or not at all. Back it up **apart** from the database: lose it and
+every sealed value and every password is lost with it (an admin then issues new passwords). The
+appliance refuses to start with a key that is not the one that sealed its database. Usernames stay
+plain: they are the sign-in name and the actor of every audit row.
+
+Your network's working data is not encrypted by the appliance: treat the database and every dump
+as sensitive, and use the server's storage encryption (managed providers encrypt at rest) or volume
+encryption if your threat model needs it. The SMTP password can stay out of the database altogether
+(`NETCORENOC_SMTP_PASSWORD`). Accepted v1/v2c communities are kept as keyed hashes (F4), and a
+quarantined packet keeps neither its community nor a hash or prefix that would test a guess.
 
 ## A new route declares itself, or the process does not start
 

@@ -24,6 +24,7 @@ from __future__ import annotations
 import secrets
 from typing import TYPE_CHECKING, NamedTuple
 
+from netcorenoc.crosscutting import rbac
 from netcorenoc.crosscutting.auth import hash_password
 
 if TYPE_CHECKING:
@@ -116,6 +117,22 @@ def print_banner(minted: Bootstrap, *, recovery: bool) -> None:
 
 
 # -- the last-admin invariant (F79, DECISIONS #233) -----------------------------------
+
+#: What a route says to a caller reaching past their own access (ADR #453).
+BEYOND_GRANT = "you cannot create, promote or take over an account with more access than you hold"
+
+
+def within_grant(capabilities: frozenset[str], role: str) -> bool:
+    """May a caller holding ``capabilities`` create, promote to, or take over an account of
+    ``role``? Only when they hold everything that role could ever hold — its ceiling.
+
+    `users.manage` and `tokens.manage` can be held by a narrowed admin token; without this, such a
+    token could mint a full admin user or token, or reset an admin's password, and so hold every
+    capability its narrowing withheld. A full admin holds every ceiling, so for them this is
+    always true.
+    """
+    return rbac.ceiling(role) <= capabilities
+
 
 #: What a route says when the invariant would be broken. One sentence, naming the invariant and
 #: the way out, because a bare refusal on the only screen that can create the second admin teaches

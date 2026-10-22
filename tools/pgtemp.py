@@ -113,6 +113,24 @@ def server() -> str:
     return _server
 
 
+#: ADR #453: the key a throwaway database's sealed values and audit seals are made with — fixed, so
+#: a tool's output never depends on a random one. Never an appliance's key.
+THROWAWAY_KEY = b"netcorenoc throwaway key, 32 b!!"
+
+
+def throwaway_vault() -> None:
+    """Load :data:`THROWAWAY_KEY` as the process's secret key, unless it already has one.
+
+    For the tools that run the engine or the store in process against a throwaway database: the
+    engine seals each audit row and keys each password hash with the process's key."""
+    from netcorenoc.crosscutting import vault
+
+    try:
+        vault.current()
+    except vault.VaultError:
+        vault.configure(vault.Vault.from_key(THROWAWAY_KEY))
+
+
 def url_for(name: str) -> str:
     """The server's URL with its database replaced by ``name``."""
     parts = urlsplit(server())

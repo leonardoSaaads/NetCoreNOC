@@ -110,6 +110,9 @@ def register(app: FastAPI, ctx: AppContext) -> None:
                 raise HTTPException(status_code=404, detail="no such situation")
         if sid == body.to_situation_id:
             raise HTTPException(status_code=409, detail="the alarm is already in that situation")
+        # ADR #453: a member the caller's scope hides is not theirs to move — answered like an
+        # alarm that is not a member at all, so the refusal reveals nothing about it.
+        hidden = await ctx.perimeter.hidden_member_ids(sid, scope)
         now = time.time()
         async with write_txn():
             for named in (sid, body.to_situation_id):
@@ -119,7 +122,7 @@ def register(app: FastAPI, ctx: AppContext) -> None:
                     )
             subject = await gestures.snapshot(store, sid)
             peer = await gestures.snapshot(store, body.to_situation_id)
-            if any(alarm not in subject.alarm_ids for alarm in moving):
+            if any(alarm not in subject.alarm_ids or alarm in hidden for alarm in moving):
                 raise HTTPException(
                     status_code=409, detail="that alarm is no longer in this situation"
                 )
@@ -252,6 +255,7 @@ def register(app: FastAPI, ctx: AppContext) -> None:
         if not await situation_in_scope(sid, scope):
             await audit_scope_denial(request, principal, "situation.split", "situation", str(sid))
             raise HTTPException(status_code=404, detail="no such situation")
+        hidden = await ctx.perimeter.hidden_member_ids(sid, scope)  # not theirs to split off
         now = time.time()
         async with write_txn():
             if await live_or_404(sid) == "resolved":
@@ -259,7 +263,7 @@ def register(app: FastAPI, ctx: AppContext) -> None:
                     status_code=409, detail="that situation has resolved; reload the card"
                 )
             subject = await gestures.snapshot(store, sid)
-            departing = [a for a in body.alarm_ids if a in subject.alarm_ids]
+            departing = [a for a in body.alarm_ids if a in subject.alarm_ids and a not in hidden]
             # Every named member must still be one, and the whole situation may not depart: a
             # "split" that moved everything is a rename with extra steps, and it would leave an
             # empty situation asserting a negative against nothing.

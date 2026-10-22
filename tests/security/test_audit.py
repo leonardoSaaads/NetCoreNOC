@@ -229,6 +229,91 @@ async def test_audit_tamper_is_detected_at_the_exact_row(store: Store, db_url: s
     assert result.first_broken_id == 2
 
 
+async def _sealed_chain(store: Store) -> None:
+    async with store.lock:
+        await store.check_vault()  # what every start does: records the key and the seal anchor
+        for action in ("login.ok", "feedback", "logout"):
+            await audit.write_event(
+                store,
+                ts=1.0,
+                actor="a",
+                role="admin",
+                source_ip="-",
+                action=action,
+                outcome="ok",
+                details={},
+            )
+        await store.commit()
+
+
+async def _as_owner(store: Store, db_url: str, *statements: str) -> None:
+    """What an attacker holding the schema's owner (or a superuser) can do: drop the guard and
+    rewrite rows, recomputing every hash so the plain chain still links."""
+    raw = await asyncpg.connect(db_url, server_settings={"search_path": store._db.schema})
+    try:
+        async with raw.transaction():
+            await raw.execute("DROP TRIGGER audit_log_append_only ON audit_log")
+            for statement in statements:
+                await raw.execute(statement)
+            rows = await raw.fetch("SELECT * FROM audit_log ORDER BY id")
+            prev = rows[0]["prev_hash"]
+            for row in rows:
+                entry = audit._row_entry(row)
+                entry_hash = audit.compute_hash(prev, audit.canonical(entry))
+                await raw.execute(
+                    "UPDATE audit_log SET prev_hash=$1, entry_hash=$2 WHERE id=$3",
+                    prev,
+                    entry_hash,
+                    row["id"],
+                )
+                prev = entry_hash
+    finally:
+        await raw.close()
+
+
+async def test_a_rewritten_and_rehashed_row_is_caught_by_its_seal(
+    store: Store, db_url: str
+) -> None:
+    """ADR #453: the plain chain is consistent again after the rewrite — only the key catches it."""
+    await _sealed_chain(store)
+    assert (await audit.verify_chain(store)).ok
+    await _as_owner(store, db_url, "UPDATE audit_log SET actor='mallory' WHERE id=2")
+    result = await audit.verify_chain(store)
+    assert not result.ok and result.first_broken_id == 2 and "seal" in str(result.reason)
+
+
+async def test_stripping_every_seal_is_a_break_too(store: Store, db_url: str) -> None:
+    await _sealed_chain(store)
+    await _as_owner(
+        store,
+        db_url,
+        "UPDATE audit_log SET actor='mallory' WHERE id=2",
+        "UPDATE audit_log SET mac=NULL",
+    )
+    result = await audit.verify_chain(store)
+    assert not result.ok and result.first_broken_id == 1, result.render()
+
+
+async def test_moving_or_removing_the_seal_anchor_is_a_break(store: Store, db_url: str) -> None:
+    await _sealed_chain(store)
+    await _as_owner(store, db_url, "UPDATE audit_log SET mac=NULL")
+    raw = await asyncpg.connect(db_url, server_settings={"search_path": store._db.schema})
+    try:
+        await raw.execute("UPDATE meta SET value='999' WHERE key='audit.sealed_from'")
+        assert not (await audit.verify_chain(store)).ok, "a plain anchor must not open"
+        await raw.execute("DELETE FROM meta WHERE key='audit.sealed_from'")
+        result = await audit.verify_chain(store)
+        assert not result.ok and "anchor" in str(result.reason), result.render()
+    finally:
+        await raw.close()
+
+
+async def test_the_export_carries_no_seal(store: Store) -> None:
+    await _sealed_chain(store)
+    lines, _final = await audit.export_ndjson(store)
+    assert lines and all('"mac"' not in line for line in lines)
+
+
 async def test_audit_log_is_append_only(store: Store) -> None:
     async with store.lock:
         await audit.write_event(
@@ -301,3 +386,24 @@ async def test_audit_excluded_from_general_prune_but_retained_by_admin_prune(sto
         await store.commit()
         remaining = await store.audit_all()
     assert removed == 1 and remaining == []
+
+
+async def test_the_streamed_export_is_the_chain_byte_for_byte(
+    store: Store, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """ADR #453: paged from readers instead of read whole under the write lock — same bytes, the
+    same final hash, and the export's own record is not part of what it exported."""
+    from netcorenoc.api.routes import audit as audit_routes
+
+    monkeypatch.setattr(audit_routes, "EXPORT_PAGE", 2)  # several pages from a short chain
+    await _sealed_chain(store)
+    _engine, _queue, app = await authutil.make_env(store)
+    admin = await authutil.client_as(app, "admin")
+    try:
+        lines, final_hash = await audit.export_ndjson(store)
+        resp = await admin.get("/api/audit/export")
+    finally:
+        await admin.aclose()
+    assert resp.status_code == 200 and resp.headers["x-audit-final-hash"] == final_hash
+    assert resp.text == "".join(line + "\n" for line in lines)
+    assert '"mac"' not in resp.text

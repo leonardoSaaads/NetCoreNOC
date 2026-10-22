@@ -6,6 +6,8 @@
   as its ETag — the console asks for `?v=<digest>`, so each photo is fetched once per browser.
 * `POST|DELETE /api/me/avatar`, `POST /api/me/profile` — your own photo and name.
 * `POST|DELETE /api/users/{uid}/avatar`, `POST /api/users/{uid}/profile` — an admin's, for anyone.
+* `POST /api/users/{uid}/password-reset` — an admin's one power over a password: replace it with a
+  random one shown once (ADR #453). No route returns a password or its hash; the hash is keyed.
 
 A photo is sent as the request body (`image/png`, `image/webp` or `image/jpeg`), read with a hard
 cap so an oversized body is refused before it is held, and checked by `crosscutting/avatar.py`
@@ -14,6 +16,7 @@ from its own bytes. Every change is audited; the audit row carries the digest, n
 
 from __future__ import annotations
 
+import asyncio
 import time
 from typing import Any
 
@@ -22,7 +25,7 @@ from fastapi import Depends, FastAPI, HTTPException, Request, Response
 from netcorenoc.api.context import AppContext
 from netcorenoc.api.declare import DeclaredRoutes
 from netcorenoc.api.models import ProfileIn
-from netcorenoc.crosscutting import auth, avatar, mail, shaping
+from netcorenoc.crosscutting import administration, auth, avatar, mail, shaping
 
 #: The headers every photo is served with. `sandbox` and `default-src 'none'` mean that even a file
 #: crafted to parse as something else too cannot run or load anything if opened directly.
@@ -52,6 +55,13 @@ def _checked(data: bytes) -> avatar.Avatar:
         return avatar.validate(data)
     except avatar.AvatarError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+def _within(request: Request, role: str) -> None:
+    """ADR #453: taking over an account — its password, or where its reset link goes — needs
+    everything that account could hold; a narrowed admin token cannot reach a full admin."""
+    if not administration.within_grant(request.state.capabilities, role):
+        raise HTTPException(status_code=403, detail=administration.BEYOND_GRANT)
 
 
 def register(app: FastAPI, ctx: AppContext) -> None:
@@ -109,20 +119,37 @@ def register(app: FastAPI, ctx: AppContext) -> None:
     async def _set_name(
         uid: int, body: ProfileIn, request: Request, principal: auth.Principal, action: str
     ) -> dict[str, Any]:
-        """The display name, and — v0.30.0, only when the body carries it — the recovery address."""
+        """The display name, and — v0.30.0, only when the body carries it — the recovery address.
+
+        The audit row says *that* a name or an address was set, never what it is: the audit log is
+        append-only and kept for years, so personal data written into it could never be erased
+        (ADR #453). Your own address changes only with your password (``current_password``)."""
         name = (body.display_name or "").strip() or None
-        if await store.get_user(uid) is None:
+        user = await store.get_user(uid)
+        if user is None:
             raise HTTPException(status_code=404, detail="no such user")
-        details: dict[str, Any] = {"field": "display_name", "display_name": name}
+        target = {"object_type": "user", "object_id": str(uid)}
+        details: dict[str, Any] = {"field": "display_name", "display_name_set": name is not None}
         out: dict[str, Any] = {"display_name": name}
         if "email" in body.model_fields_set:
             email = (body.email or "").strip() or None
             if email is not None and not mail.valid_address(email):
                 raise HTTPException(status_code=400, detail="that is not an email address")
+            if action == "user.update" and email != user["email"]:
+                _within(request, str(user["role"]))  # the address a reset link would go to
+            if action == "profile.update" and email != user["email"]:
+                password = body.current_password or ""
+                if not auth.verify_password(password, user["password_hash"]):
+                    denied = {"field": "email", "reason": "current password incorrect"}
+                    await audit_row(request, principal, action, "denied", **target, details=denied)
+                    await store.commit()
+                    raise HTTPException(
+                        status_code=400,
+                        detail="enter your current password to change the recovery email",
+                    )
             await store.set_user_email(uid, email, time.time())
             details["email_set"], out["email"] = email is not None, email
         await store.set_display_name(uid, name, time.time())
-        target = {"object_type": "user", "object_id": str(uid)}
         await audit_row(request, principal, action, "ok", **target, details=details)
         return out
 
@@ -188,3 +215,38 @@ def register(app: FastAPI, ctx: AppContext) -> None:
     ) -> dict[str, Any]:
         async with write_txn():
             return await _set_name(uid, body, request, principal, "user.update")
+
+    @route.post("/api/users/{uid}/password-reset")
+    async def reset_user_password(
+        uid: int, request: Request, principal: auth.Principal = Depends(security)
+    ) -> dict[str, Any]:
+        """Replace a person's password with a random one, shown here once (ADR #453).
+
+        An administrator never reads a password: the store holds a keyed hash and nothing returns
+        it. What they may do is this — the person must choose their own at the next sign-in, every
+        session of theirs ends now, and any reset link already sent stops working. Your own
+        password is changed under Account, with the current one.
+        """
+        if principal.user_id is not None and int(principal.user_id) == uid:
+            raise HTTPException(status_code=400, detail="change your own password under Account")
+        temporary = auth.temporary_password()
+        # scrypt is a fraction of a second of CPU: off the event loop, and before the store lock,
+        # which the engine's batch waits on.
+        hashed = await asyncio.to_thread(auth.hash_password, temporary)
+        async with write_txn():
+            user = await store.get_user(uid)
+            if user is None:
+                raise HTTPException(status_code=404, detail="no such user")
+            _within(request, str(user["role"]))
+            await store.replace_password(uid, hashed, time.time())
+            revoked = await store.revoke_user_sessions(uid)
+            await audit_row(
+                request,
+                principal,
+                "user.update",
+                "ok",
+                object_type="user",
+                object_id=str(uid),
+                details={"field": "password", "temporary": True, "sessions_revoked": revoked},
+            )
+        return {"temporary_password": temporary, "must_change_password": True}  # nosec B105

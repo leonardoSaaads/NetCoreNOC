@@ -66,6 +66,7 @@ MODULE_ORDER: tuple[str, ...] = (
     "routes/proposals.py",
     "routes/annotate.py",
     "routes/operate.py",
+    "routes/users.py",  # ADR #453: the account routes, split from `admin` in the same order
     "routes/admin.py",
     "routes/people.py",
     "routes/scorer.py",

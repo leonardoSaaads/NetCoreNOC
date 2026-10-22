@@ -96,6 +96,20 @@ async def test_csrf_valid_cookie_mutation_succeeds(store: Store) -> None:
         assert resp.status_code == 200
 
 
+async def test_a_non_bearer_authorization_header_does_not_exempt_a_cookie(store: Store) -> None:
+    """ADR #453: the exemption is for requests a Bearer token authenticates. Any other
+    `Authorization` value leaves the identity to the cookie, so the CSRF gate still applies."""
+    _e, _q, app = await authutil.make_env(store)
+    async with _raw_client(app) as client:
+        await _login_admin(client)
+        resp = await client.post(
+            "/api/labels",
+            json=LABEL,
+            headers={"Origin": "http://evil.example", "Authorization": "Basic Zm9vOmJhcg=="},
+        )
+        assert resp.status_code == 403 and "csrf" in resp.text.lower()
+
+
 async def test_bearer_token_mutation_needs_no_csrf_header(store: Store) -> None:
     """Service tokens are not cookie credentials, so the CSRF gate does not apply to them."""
     from netcorenoc.crosscutting import auth
@@ -164,3 +178,36 @@ async def test_all_v04_route_classes_carry_security_headers(store: Store, path: 
     async with _raw_client(app) as client:
         resp = await client.get(path)
         assert resp.headers["content-security-policy"] == CSP
+
+
+async def test_a_refused_request_never_repeats_the_password_it_carried(store: Store) -> None:
+    """ADR #453: FastAPI's 422 echoes each offending value; for a sign-in that is the password."""
+    _e, _q, app = await authutil.make_env(store)
+    secret = "hunter2-" + "x" * 200  # over the length bound, so the body is refused
+    async with _raw_client(app) as client:
+        resp = await client.post(
+            "/api/login",
+            json={"username": "adm", "password": secret},
+            headers={"Origin": ORIGIN},
+        )
+    assert resp.status_code == 422
+    assert "hunter2" not in resp.text and resp.json()["detail"][0]["loc"][-1] == "password"
+
+
+async def test_an_unhandled_error_says_nothing_and_keeps_the_headers(store: Store) -> None:
+    from fastapi import FastAPI
+
+    _e, _q, app = await authutil.make_env(store)
+    assert isinstance(app, FastAPI)
+
+    @app.get("/boom")
+    async def boom() -> None:
+        raise RuntimeError("database password is s3cret")
+
+    transport = httpx.ASGITransport(app=app, raise_app_exceptions=False)
+    async with httpx.AsyncClient(transport=transport, base_url=f"http://{HOST}") as client:
+        resp = await client.get("/boom")
+    assert resp.status_code == 500 and "s3cret" not in resp.text
+    assert resp.headers["x-content-type-options"] == "nosniff"
+    assert resp.headers["cache-control"] == "no-store"
+    assert resp.headers["content-security-policy"] == CSP

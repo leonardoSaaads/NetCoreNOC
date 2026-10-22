@@ -1,7 +1,7 @@
 """Fitting the tree members of the league: histogram CART, a random forest, Newton-boosted trees.
 
-v0.27.0 (ADR #424). Pure Python, because the appliance ships five runtime dependencies and a fit
-is not a reason for a sixth — the same reasoning as `gam_fit`. What makes it fast enough is the
+v0.27.0 (ADR #424). Pure Python, because the appliance ships six runtime dependencies and a fit
+is not a reason for a seventh — the same reasoning as `gam_fit`. What makes it fast enough is the
 technique LightGBM made standard (Ke et al., *LightGBM: A Highly Efficient Gradient Boosting
 Decision Tree*, NeurIPS 2017):
 

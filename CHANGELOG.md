@@ -15,14 +15,44 @@ What to do to upgrade is in [`MIGRATION.md`](MIGRATION.md).
 
 Every trap is kept until it is classified, and each one is timed against a KPI an administrator
 sets — a target and a limit from its own arrival — through a storm. The store moves from SQLite to
-**PostgreSQL** (#452), so the console's reads no longer queue behind the engine's batch. The
-schema is PostgreSQL's baseline, **migration 0031** (schema 31), which includes SQLite's 0030. See
+**PostgreSQL** (#452), so the console's reads no longer queue behind the engine's batch, and a copy
+of that database gives away no secret, no password and no way to rewrite history (#453): personal
+data and secrets are sealed with a key the database never sees, the appliance's database role owns
+nothing, and administrators reset passwords without ever reading one. The schema is PostgreSQL's
+baseline, **migration 0031**, which includes SQLite's 0030, and **0032** (schema 32). See
 [`MIGRATION.md`](MIGRATION.md): the SQLite file is **imported once**, before the first start; the
 appliance is three processes and a spool on disk, and a container needs two CPUs. No grouping
 decision changes (`make eval` is byte-identical).
 
 ⚠ **Breaking:** `NETCORENOC_DB` is removed. Set, it stops the appliance and names the command that
-imports the file. Backups are `pg_dump` archives.
+imports the file. Backups are `pg_dump` archives — and **the secret key file** (`secret.key` in the
+data directory), without which sealed values and every password are unreadable (#453).
+
+### Security (#453)
+
+- **A secret key the database never sees** seals, with AES-256-GCM, every person's recovery email,
+  display name and photo, the SMTP and SNMPv3 settings and the community HMAC key; keys password
+  hashes (`scrypt-p1`: a dump alone cannot test a guess; an older hash is rewritten at sign-in);
+  and seals each audit row with an HMAC, so rewriting the chain needs the key too. Created
+  owner-only on the first start (`NETCORENOC_SECRET_KEY_FILE`, default `<data dir>/secret.key`);
+  values an earlier release left plain are sealed at start; a different key stops the start.
+- **Administrators reset passwords and never read one**: People & access → *Reset password…*
+  (`POST /api/users/{uid}/password-reset`) issues a one-time password, shown once, that must be
+  changed at the next sign-in; the account's sessions and reset links end. Changing your own
+  recovery email takes your current password.
+- **The appliance's role owns nothing** (`0032_hardening.sql`): a schema owner migrates and grants
+  (`NETCORENOC_DATABASE_OWNER_URL`, `NETCORENOC_DB_RUNTIME_ROLE`); the runtime role reads and
+  writes rows, and cannot alter, drop or truncate a table, disable a trigger, or delete an audit
+  row. Compose runs `db-migrate` as `netcorenoc` and the appliance as `netcorenoc_app`. TRUNCATE
+  is refused on append-only tables even for the owner; the audit log is pruned by a function that
+  refuses the last day.
+- **Escalation and leak fixes**: a narrowed admin token cannot mint, promote to or take over a
+  wider account; the event stream ends with its session; maintenance windows and move/split respect
+  the caller's scope; a confirmed window made longer needs confirming again; CSRF on every
+  cookie-authenticated mutation; 422 answers no longer repeat the submitted values (passwords
+  included); a 500 carries the security headers; quarantine keeps no hash or prefix of a
+  community; slow-query logs omit bound values; `?password=` in a URL is redacted; an unverified
+  remote database is a posture warning; the SQLite import brings no session or reset link.
 
 ### Added
 
@@ -149,6 +179,15 @@ imports the file. Backups are `pg_dump` archives.
   4 032 of 20 000 at 5 000/s into a 4 MiB buffer with the in-process receiver, and 4 238 into an
   8 MiB buffer with a receiver that decoded before spooling. Spooling raw: none.
 - `NETCORENOC_CLASSIFY_DEADLINE_S` (unreleased) is replaced by the two KPI settings.
+- **The once-a-minute prune held the store lock for seconds on a year of history** (#453): its
+  `NOT IN (SELECT ...)` rescanned two million dataset pairs per candidate (7.1 s; now 0.17 ms as an
+  anti-join), and a resolved-situation id list past 32 767 ids failed the pass outright. The
+  situation list aggregated every membership before its `LIMIT` (290 ms → 24 ms, every 2 s per open
+  console); the audit export read the whole log into memory under the lock (7.6 s, 570 MiB at 500k
+  rows; now streamed from readers, the same bytes). Two indexes added, two no query read dropped.
+- **A maintenance pass that failed half-way left its transaction open** for the next batch to
+  commit (#453); it now rolls back and memory is reloaded. A writer that cannot re-take its instance
+  lock after reconnecting stops instead of writing beside another appliance.
 
 ### Removed
 

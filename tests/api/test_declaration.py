@@ -687,11 +687,13 @@ async def test_f43_every_path_served_today_still_registers(store: Store) -> None
     # Unreleased: 227 -> 228 — one UI module, `parts/pipeline.js` (the trap pipeline, ADRs #450,
     # #451); no /api pair (the KPI is set through `POST /api/config`, the pipeline read through
     # `/api/stats` and `/api/resources`).
-    assert len(served) == 228, f"the served surface moved: {len(served)} method/path pairs"
+    # Unreleased: 228 -> 229 and 117 -> 118 — `POST /api/users/{uid}/password-reset` (ADR #453): an
+    # admin replaces a password with a one-time one, and never reads one.
+    assert len(served) == 229, f"the served surface moved: {len(served)} method/path pairs"
     api_pairs = {(method, path) for method, path in served if path.startswith("/api")}
     # **v0.19.0: 53 -> 55.** `GET /api/models` and `POST /api/models/register`: what the
     # models are doing, and turning one of this appliance's own fits into an artefact.
-    assert len(api_pairs) == 117, (
+    assert len(api_pairs) == 118, (
         f"the /api surface moved: {len(api_pairs)} pairs. v0.16.0 adds exactly five — the "
         f"operator's five gestures — v0.16.2 adds exactly one, `POST …/promote` (DECISIONS #273), "
         f"v0.16.5 adds exactly one, `POST /api/alarms/clear` (DECISIONS #301), "
@@ -854,11 +856,13 @@ async def test_f42_every_path_served_today_still_registers(store: Store) -> None
     # Unreleased: 227 -> 228 — one UI module, `parts/pipeline.js` (the trap pipeline, ADRs #450,
     # #451); no /api pair (the KPI is set through `POST /api/config`, the pipeline read through
     # `/api/stats` and `/api/resources`).
-    assert len(served) == 228, f"the served surface moved: {len(served)} method/path pairs"
+    # Unreleased: 228 -> 229 and 117 -> 118 — `POST /api/users/{uid}/password-reset` (ADR #453): an
+    # admin replaces a password with a one-time one, and never reads one.
+    assert len(served) == 229, f"the served surface moved: {len(served)} method/path pairs"
     api_pairs = {(method, path) for method, path in served if path.startswith("/api")}
     # **v0.19.0: 53 -> 55.** `GET /api/models` and `POST /api/models/register`: what the
     # models are doing, and turning one of this appliance's own fits into an artefact.
-    assert len(api_pairs) == 117, (
+    assert len(api_pairs) == 118, (
         f"the /api surface moved: {len(api_pairs)} pairs. v0.16.0 adds exactly five — the "
         f"operator's five gestures — v0.16.2 adds exactly one, `POST …/promote` (DECISIONS #273), "
         f"v0.16.5 adds exactly one, `POST /api/alarms/clear` (DECISIONS #301), "
@@ -1066,7 +1070,8 @@ def test_the_three_postures_are_all_populated() -> None:
     # starting and stopping a search — each capability's minimum role is `admin`.
     # v0.30.0: 37 -> 43. The SNMP policy (read, write), the SMTP server (read, write, test) and the
     # API reference — `config.*` and `tokens.manage`, whose minimum role is `admin`.
-    assert len(ADMIN_ONLY) == 43, len(ADMIN_ONLY)
+    # Unreleased: 43 -> 44. Resetting a person's password, by `users.manage` (ADR #453).
+    assert len(ADMIN_ONLY) == 44, len(ADMIN_ONLY)
     # v0.18.0: 6 -> 7. `GET /api/correlation` is `unscoped` for `GET /api/scorer`'s reason
     # — counters over the scorer's own decisions are a statement about arithmetic and
     # name no network element (Part II).

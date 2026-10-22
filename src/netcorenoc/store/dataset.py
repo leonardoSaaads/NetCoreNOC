@@ -40,9 +40,14 @@ MAX_CLIENT_MEMBERS = 512
 # dataset row whose raw material is gone, which is silent corruption of the thing the release exists
 # to produce. Deliberately checks `dataset_pair` as a whole rather than the matching lifecycle — a
 # sink pair referencing an observation is reason enough to keep it.
+#
+# `NOT EXISTS`, not `NOT IN (SELECT ...)`: at the two-million-pair cap the planner cannot hash the
+# subquery and rescans it per candidate — one minute's prune measured 7.1 s under the store lock,
+# against 0.17 ms as an anti-join on the two partial indexes (ADR #453). Same rows: a NULL never
+# matches.
 _UNREFERENCED = (
-    "id NOT IN (SELECT observation_a FROM dataset_pair WHERE observation_a IS NOT NULL) "
-    "AND id NOT IN (SELECT observation_b FROM dataset_pair WHERE observation_b IS NOT NULL)"
+    "NOT EXISTS (SELECT 1 FROM dataset_pair p WHERE p.observation_a = dataset_observation.id) "
+    "AND NOT EXISTS (SELECT 1 FROM dataset_pair p WHERE p.observation_b = dataset_observation.id)"
 )
 
 
@@ -179,33 +184,41 @@ class DatasetMixin(StoreBase):
         """
         counts = {"pairs_aged": 0, "pairs_capped": 0, "observations": 0}
         cur = await self.conn.execute(
-            "DELETE FROM dataset_pair WHERE lifecycle='sink' AND evaluated_at < ? RETURNING id",
-            (cutoff,),
+            "DELETE FROM dataset_pair WHERE lifecycle='sink' AND evaluated_at < ?", (cutoff,)
         )
-        counts["pairs_aged"] = len(list(await cur.fetchall()))
-        cur = await self.conn.execute("SELECT COUNT(*) FROM dataset_pair WHERE lifecycle='sink'")
-        row = await cur.fetchone()
-        assert row is not None
-        excess = int(row[0]) - row_cap
+        counts["pairs_aged"] = cur.rowcount
+        # The exact count read two million rows every minute under the lock (200 ms). The
+        # planner's estimate of the WHOLE table bounds the sink tier from above, and autovacuum
+        # keeps it within ~10%: well under the cap, there is nothing to trim (ADR #453).
+        cur = await self.conn.execute(
+            "SELECT reltuples FROM pg_class WHERE oid = 'dataset_pair'::regclass"
+        )
+        estimate = float((await cur.fetchone())[0])  # type: ignore[index]
+        excess = 0
+        if not 0 <= estimate < 0.8 * row_cap:
+            cur = await self.conn.execute(
+                "SELECT COUNT(*) FROM dataset_pair WHERE lifecycle='sink'"
+            )
+            excess = int((await cur.fetchone())[0]) - row_cap  # type: ignore[index]
         if excess > 0:
             cur = await self.conn.execute(
                 "DELETE FROM dataset_pair WHERE id IN ("
                 "  SELECT id FROM dataset_pair WHERE lifecycle='sink' "
                 "  ORDER BY evaluated_at, id LIMIT ?"
-                ") RETURNING id",
+                ")",
                 (excess,),
             )
-            counts["pairs_capped"] = len(list(await cur.fetchall()))
+            counts["pairs_capped"] = cur.rowcount
         # An observation is dropped only once no sink pair references it. Promoted observations are
         # excluded by the lifecycle clause, so a promoted pair's raw material is never collected.
         cur = await self.conn.execute(
             # nosec B608 - `_UNREFERENCED` is a module constant of literal SQL; the only value
             # that crosses the boundary is `cutoff`, which is a bound parameter.
             "DELETE FROM dataset_observation WHERE lifecycle='sink' AND observed_at < ? "
-            f"AND {_UNREFERENCED} RETURNING id",  # nosec B608
+            f"AND {_UNREFERENCED}",  # nosec B608
             (cutoff,),
         )
-        counts["observations"] = len(list(await cur.fetchall()))
+        counts["observations"] = cur.rowcount
         return counts
 
     async def prune_dataset_audit(self, cutoff: float) -> dict[str, int]:
@@ -235,21 +248,18 @@ class DatasetMixin(StoreBase):
         """
         counts = {"pairs": 0, "observations": 0, "labels": 0, "events": 0}
         cur = await self.conn.execute(
-            "DELETE FROM dataset_pair WHERE lifecycle='dataset' AND evaluated_at < ? RETURNING id",
-            (cutoff,),
+            "DELETE FROM dataset_pair WHERE lifecycle='dataset' AND evaluated_at < ?", (cutoff,)
         )
-        counts["pairs"] = len(list(await cur.fetchall()))
+        counts["pairs"] = cur.rowcount
         cur = await self.conn.execute(
             # nosec B608 - as above: a literal module constant, and `cutoff` is bound.
             "DELETE FROM dataset_observation WHERE lifecycle='dataset' AND observed_at < ? "
-            f"AND {_UNREFERENCED} RETURNING id",  # nosec B608
+            f"AND {_UNREFERENCED}",  # nosec B608
             (cutoff,),
         )
-        counts["observations"] = len(list(await cur.fetchall()))
-        cur = await self.conn.execute(
-            "DELETE FROM feedback WHERE created_at < ? RETURNING id", (cutoff,)
-        )
-        counts["labels"] = len(list(await cur.fetchall()))
+        counts["observations"] = cur.rowcount
+        cur = await self.conn.execute("DELETE FROM feedback WHERE created_at < ?", (cutoff,))
+        counts["labels"] = cur.rowcount
         # **v0.16.0: the operator-gesture history, at the same bound and for the same reason.**
         # `situation_event` is append-only *within its retention tier* — nothing edits a row and
         # nothing deletes one on the operational schedule — and this is the outer bound of the
@@ -257,10 +267,8 @@ class DatasetMixin(StoreBase):
         # it justifies, exactly as `feedback` does: a crash mid-sweep leaves features without their
         # gesture, which the report already counts, rather than a gesture whose evidence is gone.
         # `situation_event_member` follows by `ON DELETE CASCADE`.
-        cur = await self.conn.execute(
-            "DELETE FROM situation_event WHERE at < ? RETURNING id", (cutoff,)
-        )
-        counts["events"] = len(list(await cur.fetchall()))
+        cur = await self.conn.execute("DELETE FROM situation_event WHERE at < ?", (cutoff,))
+        counts["events"] = cur.rowcount
         return counts
 
     async def orphaned_promoted_pairs(self) -> int:

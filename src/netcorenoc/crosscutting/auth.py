@@ -17,6 +17,8 @@ import secrets
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
+from netcorenoc.crosscutting import vault
+
 if TYPE_CHECKING:
     from netcorenoc.store import Store
 
@@ -54,11 +56,23 @@ _DUMMY_SALT = b"\x00" * 16
 # -- passwords -----------------------------------------------------------------------
 
 
+#: The current scheme: scrypt over the password keyed with the secret key's pepper (ADR #453), so
+#: the hashes in a copy of the database cannot be tested offline without the key file. Hashes in the
+#: unkeyed `scrypt` scheme (v0.31.0 and earlier) still verify, and a successful sign-in rewrites
+#: them in this one.
+SCHEME = "scrypt-p1"
+LEGACY_SCHEME = "scrypt"
+
+
+def _scrypt_input(password: str, scheme: str) -> bytes:
+    return vault.current().pepper(password) if scheme == SCHEME else password.encode("utf-8")
+
+
 def hash_password(password: str) -> str:
-    """scrypt$<n>$<r>$<p>$<salt_b64>$<hash_b64> using the current cost parameters."""
+    """scrypt-p1$<n>$<r>$<p>$<salt_b64>$<hash_b64> using the current cost parameters."""
     salt = os.urandom(16)
     derived = hashlib.scrypt(
-        password.encode("utf-8"),
+        _scrypt_input(password, SCHEME),
         salt=salt,
         n=SCRYPT_N,
         r=SCRYPT_R,
@@ -68,14 +82,14 @@ def hash_password(password: str) -> str:
     )
     salt_b64 = base64.b64encode(salt).decode("ascii")
     hash_b64 = base64.b64encode(derived).decode("ascii")
-    return f"scrypt${SCRYPT_N}${SCRYPT_R}${SCRYPT_P}${salt_b64}${hash_b64}"
+    return f"{SCHEME}${SCRYPT_N}${SCRYPT_R}${SCRYPT_P}${salt_b64}${hash_b64}"
 
 
 def verify_password(password: str, stored: str) -> bool:
-    """Constant-time verify against a stored hash, reading its embedded parameters."""
+    """Constant-time verify against a stored hash, reading its scheme and parameters."""
     try:
         scheme, n_s, r_s, p_s, salt_b64, hash_b64 = stored.split("$")
-        if scheme != "scrypt":
+        if scheme not in (SCHEME, LEGACY_SCHEME):
             return False
         n, r, p = int(n_s), int(r_s), int(p_s)
         salt = base64.b64decode(salt_b64)
@@ -83,7 +97,7 @@ def verify_password(password: str, stored: str) -> bool:
     except (ValueError, TypeError):
         return False
     derived = hashlib.scrypt(
-        password.encode("utf-8"),
+        _scrypt_input(password, scheme),
         salt=salt,
         n=n,
         r=r,
@@ -92,6 +106,11 @@ def verify_password(password: str, stored: str) -> bool:
         maxmem=SCRYPT_MAXMEM,
     )
     return hmac.compare_digest(derived, expected)
+
+
+def needs_rehash(stored: str) -> bool:
+    """True for a hash an earlier release wrote: unkeyed (ADR #453)."""
+    return not stored.startswith(SCHEME + "$")
 
 
 def dummy_verify(password: str) -> bool:
@@ -263,6 +282,13 @@ def new_session_token() -> str:
     return secrets.token_urlsafe(32)
 
 
+def temporary_password() -> str:
+    """A password an administrator hands over once (ADR #453): 120 random bits, in 20 characters
+    that survive being read aloud or pasted, and inside the length rule `validate_password` keeps.
+    """
+    return secrets.token_urlsafe(15)
+
+
 async def open_session(store: Store, user_id: int, source_ip: str | None, now: float) -> str:
     """Mint a fresh session (new id every login — fixation defence) and persist its hash."""
     token = new_session_token()
@@ -278,15 +304,19 @@ async def open_session(store: Store, user_id: int, source_ip: str | None, now: f
     return token
 
 
-async def resolve_session(store: Store, token: str, now: float) -> Principal | None:
-    """Resolve a session cookie to a Principal, sliding idle expiry; None if invalid."""
+async def resolve_session(
+    store: Store, token: str, now: float, *, touch: bool = True
+) -> Principal | None:
+    """Resolve a session cookie to a Principal, sliding idle expiry; None if invalid.
+    ``touch=False`` only checks: no sliding, no deletion of an expired row."""
     row = await store.get_session(hash_token(token))
     if row is None or row["disabled"]:
         return None
     if now > row["absolute_expiry"] or now > row["idle_expiry"]:
-        await store.delete_session(row["session_hash"])
+        if touch:
+            await store.delete_session(row["session_hash"])
         return None
-    if now - (row["idle_expiry"] - IDLE_TIMEOUT_S) >= TOUCH_EVERY_S:
+    if touch and now - (row["idle_expiry"] - IDLE_TIMEOUT_S) >= TOUCH_EVERY_S:
         await store.touch_session(row["session_hash"], now, now + IDLE_TIMEOUT_S)
     return Principal(
         actor=row["username"],
@@ -297,13 +327,15 @@ async def resolve_session(store: Store, token: str, now: float) -> Principal | N
     )
 
 
-async def resolve_bearer(store: Store, token: str, now: float) -> Principal | None:
+async def resolve_bearer(
+    store: Store, token: str, now: float, *, touch: bool = True
+) -> Principal | None:
     """Resolve a Bearer token to a service-token identity (the legacy shared token was
     removed in v0.3.0, §5.8)."""
     row = await store.get_token(hash_token(token))
     if row is not None and not row["revoked"]:
         last = row["last_used_at"]
-        if last is None or now - last >= TOUCH_EVERY_S:
+        if touch and (last is None or now - last >= TOUCH_EVERY_S):
             await store.touch_token_used(row["token_hash"], now)
         return Principal(actor=row["name"], role=row["role"], kind="token", token_id=int(row["id"]))
     return None
@@ -347,6 +379,8 @@ async def perform_login(
 
     throttle.record_success(username, source_ip)
     user_id = int(user["id"])
+    if not user["must_change_password"] and needs_rehash(user["password_hash"]):
+        await store.rehash_password(user_id, hash_password(password))  # keyed from now on
     if user["must_change_password"]:
         if not new_password:
             return LoginOutcome("must_change", message="password change required")

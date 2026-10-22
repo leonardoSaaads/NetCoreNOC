@@ -763,3 +763,62 @@ async def test_the_patch_band_defaults_to_one_minute(store: Store) -> None:
     body.pop("patch_s", None)
     created = await editor.post("/api/maintenance-windows", json=body)
     assert created.json()["patch_s"] == 60.0, created.json()
+
+
+async def test_a_scoped_editor_neither_sees_nor_drops_another_scopes_targets(store: Store) -> None:
+    """ADR #453: a window an admin aimed at two scopes, read and edited by an editor who sees one.
+    The detail shows the element they can see; saving their view keeps the one they cannot."""
+    _engine, _q, app = await authutil.make_env(store)
+    visible, hidden = await _seed_hosts(store, "10.50.0.1", "10.99.0.1")
+    admin = await authutil.client_as(app, "admin")
+    rules = [{"ne_id": ne, "kind": "severity", "severity_rank": 2} for ne in (visible, hidden)]
+    made = await admin.post("/api/maintenance-windows", json=_body([visible, hidden], rules=rules))
+    assert made.status_code == 200, made.text
+    wid = made.json()["id"]
+    await authutil.set_scope(store, {"roles": {"editor": ["10.50.0.0/24"]}})
+    editor = await authutil.client_as(app, "editor")
+
+    seen = (await editor.get(f"/api/maintenance-windows/{wid}")).json()
+    assert [t["ne_id"] for t in seen["targets"]] == [visible]
+    assert {r["ne_id"] for r in seen["rules"]} == {visible}
+    assert "10.99.0.1" not in str(seen)
+
+    saved = await editor.post(
+        f"/api/maintenance-windows/{wid}",
+        json=_body(
+            [visible],
+            name="renamed",
+            rules=[{"ne_id": visible, "kind": "severity", "severity_rank": 2}],
+        ),
+    )
+    assert saved.status_code == 200, saved.text
+    assert {t["ne_id"] for t in await store.window_targets(wid)} == {visible, hidden}
+    assert {r["ne_id"] for r in await store.window_rules(wid)} == {visible, hidden}
+
+
+async def test_a_confirmed_window_made_longer_needs_confirming_again(store: Store) -> None:
+    """ADR #453: one human's yes covers the span they said yes to. An agent holding `mw.write`
+    (and, by design, not `mw.confirm`) may not stretch a confirmed eight-hour window to a week."""
+    _engine, _q, app = await authutil.make_env(store)
+    (ne,) = await _seed_hosts(store, "10.50.0.1")
+    token = await authutil.make_token(store, "agent", "editor")
+    agent = authutil.new_client(app)
+    agent.headers["Authorization"] = f"Bearer {token}"
+    human = await authutil.client_as(app, "editor")
+    made = await agent.post("/api/maintenance-windows", json=_body([ne], ends_at=_iso(18)))
+    wid = made.json()["id"]
+    assert (await human.post(f"/api/maintenance-windows/{wid}/confirm")).status_code == 200
+
+    week = (DAY + timedelta(days=7)).isoformat()
+    stretched = await agent.post(f"/api/maintenance-windows/{wid}/extend", json={"ends_at": week})
+    assert stretched.status_code == 200, stretched.text
+    assert stretched.json()["window_status"] == "pending_confirmation"
+    window = await store.maintenance_window(wid)
+    assert window is not None and window["confirmed_at"] is None
+
+    # A shorter edit of a confirmed window keeps the confirmation it is still covered by.
+    assert (await human.post(f"/api/maintenance-windows/{wid}/confirm")).status_code == 200
+    shorter = await human.post(
+        f"/api/maintenance-windows/{wid}", json=_body([ne], ends_at=_iso(20))
+    )
+    assert shorter.status_code == 200 and shorter.json()["status"] != "pending_confirmation"

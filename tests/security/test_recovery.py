@@ -195,14 +195,151 @@ async def test_a_person_sets_and_clears_their_own_recovery_address(store: Store)
     _engine, _queue, app = await authutil.make_env(store)
     viewer = await authutil.client_as(app, "viewer")
     try:
-        bad = await viewer.post("/api/me/profile", json={"display_name": "V", "email": "nope"})
+        pw = {"current_password": authutil.PW}
+        bad = await viewer.post(
+            "/api/me/profile", json={"display_name": "V", "email": "nope", **pw}
+        )
         assert bad.status_code == 400
-        ok = await viewer.post("/api/me/profile", json={"display_name": "V", "email": "v@ex.org"})
+        ok = await viewer.post(
+            "/api/me/profile", json={"display_name": "V", "email": "v@ex.org", **pw}
+        )
         assert ok.status_code == 200 and (await viewer.get("/api/me")).json()["email"] == "v@ex.org"
-        # A save that does not mention the address leaves it alone (older consoles send only names).
+        # A save that does not mention the address leaves it alone (older consoles send only names),
+        # and one that sends it unchanged needs no password.
         await viewer.post("/api/me/profile", json={"display_name": "Vera"})
-        assert (await viewer.get("/api/me")).json()["email"] == "v@ex.org"
-        await viewer.post("/api/me/profile", json={"display_name": "Vera", "email": ""})
+        same = await viewer.post("/api/me/profile", json={"display_name": "V", "email": "v@ex.org"})
+        assert (
+            same.status_code == 200 and (await viewer.get("/api/me")).json()["email"] == "v@ex.org"
+        )
+        await viewer.post("/api/me/profile", json={"display_name": "Vera", "email": "", **pw})
         assert (await viewer.get("/api/me")).json()["email"] is None
     finally:
         await viewer.aclose()
+
+
+async def test_a_session_alone_cannot_redirect_the_recovery_address(store: Store) -> None:
+    """ADR #453: whoever holds only a session — a stolen cookie — must not be able to point the
+    next reset link at their own mailbox and so turn the session into the account."""
+    with FakeSmtp() as server:
+        app, uid = await _setup(store, server)
+        editor = await authutil.client_as(app, "editor")
+        try:
+            for password in (None, "wrong password!"):
+                stolen = await editor.post(
+                    "/api/me/profile",
+                    json={"email": "attacker@evil.example", "current_password": password},
+                )
+                assert stolen.status_code == 400 and "current password" in stolen.text
+            assert (await editor.get("/api/me")).json()["email"] == "edna@example.com"
+            async with store.lock:
+                cur = await store.conn.execute(
+                    "SELECT outcome, details FROM audit_log WHERE action='profile.update' "
+                    "AND object_id=? ORDER BY id",
+                    (str(uid),),
+                )
+                rows = [(r[0], r[1]) for r in await cur.fetchall()]
+            assert [o for o, _ in rows] == ["denied", "denied"]
+            assert all("attacker" not in str(d) for _, d in rows), "no address in the audit log"
+        finally:
+            await editor.aclose()
+
+
+async def test_a_new_address_withdraws_a_link_sent_to_the_old_one(store: Store) -> None:
+    with FakeSmtp() as server:
+        app, _uid = await _setup(store, server)
+        anon = authutil.new_client(app)
+        editor = await authutil.client_as(app, "editor")
+        try:
+            await anon.post("/api/password-reset", json={"login": "edt"})
+            token = LINK.search((await _mail(server, 1))[0].get_payload()).group(1)  # type: ignore[union-attr]
+            moved = await editor.post(
+                "/api/me/profile",
+                json={"email": "edna@new.example", "current_password": authutil.PW},
+            )
+            assert moved.status_code == 200, moved.text
+            used = await anon.post(
+                "/api/password-reset/confirm",
+                json={"token": token, "new_password": "a brand new passphrase"},
+            )
+            assert used.status_code == 400, "a link sent to the old address must stop working"
+        finally:
+            await anon.aclose()
+            await editor.aclose()
+
+
+async def test_an_admin_replaces_a_password_and_never_reads_one(store: Store) -> None:
+    """ADR #453: an administrator resets; they never see a password. The one-time password works
+    once to sign in, forces a change, and every session and reset link of the account ends."""
+    with FakeSmtp() as server:
+        app, uid = await _setup(store, server)
+        admin = await authutil.client_as(app, "admin")
+        editor = await authutil.client_as(app, "editor")
+        anon = authutil.new_client(app)
+        try:
+            listing = (await admin.get("/api/users")).json()
+            assert all("password_hash" not in row for row in listing), listing
+            assert "scrypt" not in str(listing), "no route returns a password hash"
+            await anon.post("/api/password-reset", json={"login": "edt"})
+            token = LINK.search((await _mail(server, 1))[0].get_payload()).group(1)  # type: ignore[union-attr]
+
+            reset = await admin.post(f"/api/users/{uid}/password-reset", json={})
+            assert reset.status_code == 200, reset.text
+            assert reset.headers["cache-control"] == "no-store"
+            temporary = reset.json()["temporary_password"]
+            assert (
+                auth.validate_password(temporary) is None and reset.json()["must_change_password"]
+            )
+
+            assert (await editor.get("/api/me")).status_code == 401, "their sessions end"
+            stale = await anon.post(
+                "/api/password-reset/confirm",
+                json={"token": token, "new_password": "a brand new passphrase"},
+            )
+            assert stale.status_code == 400, "a link already emailed stops working"
+            old = await authutil.login(anon, "editor")
+            assert old.status_code == 401, "the old password no longer signs in"
+            signed = await anon.post("/api/login", json={"username": "edt", "password": temporary})
+            assert signed.status_code == 200 and signed.json()["must_change_password"] is True
+            chosen = await anon.post(
+                "/api/login",
+                json={
+                    "username": "edt",
+                    "password": temporary,
+                    "new_password": "edna's own choice",
+                },
+            )
+            assert chosen.status_code == 200 and chosen.json()["must_change_password"] is False
+
+            async with store.lock:
+                cur = await store.conn.execute(
+                    "SELECT password_hash FROM app_user WHERE id=?", (uid,)
+                )
+                stored = str((await cur.fetchone())[0])  # type: ignore[index]
+                cur = await store.conn.execute(
+                    "SELECT details FROM audit_log WHERE action='user.update' AND object_id=? "
+                    "ORDER BY id DESC LIMIT 1",
+                    (str(uid),),
+                )
+                details = str((await cur.fetchone())[0])  # type: ignore[index]
+            assert stored.startswith("scrypt-p1$") and temporary not in stored
+            assert '"password"' in details and temporary not in details
+        finally:
+            await admin.aclose()
+            await editor.aclose()
+            await anon.aclose()
+
+
+async def test_only_an_admin_resets_and_never_their_own(store: Store) -> None:
+    _engine, _queue, app = await authutil.make_env(store)
+    admin = await authutil.client_as(app, "admin")
+    editor = await authutil.client_as(app, "editor")
+    try:
+        me = (await admin.get("/api/me")).json()["user_id"]
+        users = {u["username"]: u["id"] for u in (await admin.get("/api/users")).json()}
+        assert (await editor.post(f"/api/users/{users['vwr']}/password-reset")).status_code == 403
+        own = await admin.post(f"/api/users/{me}/password-reset")
+        assert own.status_code == 400 and "Account" in own.text
+        assert (await admin.post("/api/users/999999/password-reset")).status_code == 404
+    finally:
+        await admin.aclose()
+        await editor.aclose()

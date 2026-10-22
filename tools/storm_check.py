@@ -313,6 +313,7 @@ def main(argv: list[str] | None = None) -> int:
         return send(args.sender, args.traps, args.devices, args.classes, args.rate)
     if Kpi.problems(args.target, args.limit):
         parser.error("; ".join(Kpi.problems(args.target, args.limit)))
+    pgtemp.throwaway_vault()  # the engine seals what it audits (ADR #453)
     report = asyncio.run(check(args))
     print(json.dumps(report, indent=2))
     failed = report["not_kept"] or (args.require_kpi and report["over_limit"])

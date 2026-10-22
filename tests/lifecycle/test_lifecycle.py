@@ -917,3 +917,80 @@ async def test_a_move_does_not_promote_the_destination(store: Store) -> None:
         "the move promoted the situation the alarm was moved INTO. Nobody read it; its id was "
         "typed, and promoting it hides the card from the tab that exists to surface it."
     )
+
+
+async def test_a_scoped_editor_cannot_move_or_split_off_members_they_cannot_see(
+    store: Store,
+) -> None:
+    """ADR #453: the situation is in scope when ANY member is, but a member on an element the
+    caller's scope hides is not theirs to move. Naming one is answered like naming an alarm that
+    is not a member at all — 409, nothing changed, nothing revealed."""
+    _engine, _queue, app = await seeded(store)
+    sid = int((await live_situations(store))[0]["id"])
+    member_ne = await store.situation_member_ne(sid)
+    admin = await authutil.client_as(app, "admin")
+    try:
+        ips = {int(e["id"]): e["ip"] for e in (await admin.get("/api/entities")).json()}
+    finally:
+        await admin.aclose()
+    seen_ne = next(ne for ne in member_ne.values() if ne is not None)
+    hidden = [a for a, ne in member_ne.items() if ne != seen_ne]
+    visible = [a for a, ne in member_ne.items() if ne == seen_ne]
+    assert hidden and visible, "the seed must put members on more than one element"
+    await authutil.set_scope(store, {"roles": {"editor": [f"{ips[seen_ne]}/32"]}})
+    editor = await authutil.client_as(app, "editor")
+    try:
+        # A member they can see splits off as before, and gives the move a destination.
+        own = await editor.post(
+            f"/api/situations/{sid}/split", json={"alarm_ids": visible[:1], "confidence": SURE}
+        )
+        assert own.status_code == 200, own.text
+        destination = int((await _one_event(store, "operator_split"))["peer_situation_id"])
+        before = set(await store.situation_member_ids(sid))
+        split = await editor.post(
+            f"/api/situations/{sid}/split", json={"alarm_ids": hidden[:1], "confidence": SURE}
+        )
+        assert split.status_code == 409, split.text
+        absent = await editor.post(
+            f"/api/situations/{sid}/split", json={"alarm_ids": [999_999], "confidence": SURE}
+        )
+        assert (absent.status_code, absent.json()) == (409, split.json()), "no oracle"
+        moved = await editor.post(
+            f"/api/situations/{sid}/move",
+            json={"alarm_ids": hidden[:1], "to_situation_id": destination, "confidence": SURE},
+        )
+        assert moved.status_code == 409, moved.text
+    finally:
+        await editor.aclose()
+    assert set(await store.situation_member_ids(sid)) == before
+
+
+async def test_a_failed_maintenance_pass_commits_nothing_and_memory_follows(
+    store: Store, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """ADR #453: a pass that fails half-way rolls back what it wrote — the stale situation it
+    resolved is still live, even after the next batch commits — and memory is reloaded to match,
+    instead of the half-pass waiting in an open transaction for someone else's commit."""
+    engine, _queue, _app = await seeded(store)
+    now = BASE + IDLE_CLOSE_S + 60
+    async with store.lock:
+        quiet = await store.create_situation(BASE, None)
+        stale = await store.ingest(util.event(device="10.4.4.3", ts=BASE))
+        await store.add_alarm_to_situation(quiet, stale.alarm_id)
+        await store.conn.execute(
+            "UPDATE alarm SET status='cleared', cleared_at=? WHERE id=?",
+            (BASE + 10.0, stale.alarm_id),
+        )
+        await store.touch_situation(quiet, BASE)
+        await store.commit()
+
+    async def broken(_store: Store, _now: float) -> None:
+        raise RuntimeError("disk full")
+
+    monkeypatch.setattr(engine.learner, "save", broken)
+    with pytest.raises(RuntimeError, match="disk full"):
+        await engine.maintenance(now, 365.0)
+    async with store.lock:  # the next batch's commit must not carry half a pass with it
+        await store.conn.execute("SELECT 1")
+        await store.commit()
+    assert quiet in {int(s["id"]) for s in await live_situations(store)}, "the close leaked"

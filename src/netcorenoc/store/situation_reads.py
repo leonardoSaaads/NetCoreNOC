@@ -231,14 +231,18 @@ class SituationReadsMixin(GovernanceMixin, SituationEventMixin):
         where, args = ("WHERE s.status=?", [status]) if status else ("", [])
         # `_lifecycle_columns` is a literal; no value from outside this class reaches it, and every
         # user value below is a bound parameter.
+        # The member count per LISTED row, not a join aggregated over every member of every
+        # situation before the `LIMIT` (ADR #453): the default list read all 511k memberships of a
+        # year's history to return fifty rows, every two seconds per open console — 290 ms, now
+        # 24 ms, the same rows.
         head = (
             f"SELECT s.id, s.status, {self._lifecycle_columns}"  # nosec B608 - see above
             "s.created_at, s.updated_at, s.root_alarm_id, "
-            "COUNT(sa.alarm_id) AS alarm_count FROM situation s "
-            "LEFT JOIN situation_alarm sa ON sa.situation_id=s.id "
+            "(SELECT COUNT(*) FROM situation_alarm sa WHERE sa.situation_id=s.id) AS alarm_count "
+            "FROM situation s "
         )
         # `LIMIT NULL` is PostgreSQL's `LIMIT ALL`: `limit=None` is the unbounded read.
-        tail = "GROUP BY s.id ORDER BY s.updated_at DESC, s.id DESC LIMIT ?"
+        tail = "ORDER BY s.updated_at DESC, s.id DESC LIMIT ?"
         if ne_ids is None:
             search, search_args = self._search_clause(
                 query, addresses=match_addresses, scope_ids=None

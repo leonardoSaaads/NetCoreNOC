@@ -186,15 +186,21 @@ jobs:
         run: make dist PYTHON=python
 
       - name: PostgreSQL, as a host would run it
-        # The runner's own service, a role with a password, the password in a file only this job
-        # reads (`NETCORENOC_DATABASE_PASSWORD_FILE`), and the lab's database beside it.
+        # The runner's own service, two roles with passwords in files only this job reads
+        # (`NETCORENOC_DATABASE_PASSWORD_FILE`): the schema's owner, and the appliance's runtime
+        # role, which owns nothing (ADR #453). The lab's database beside them.
         run: |
           sudo systemctl start postgresql.service
           umask 077
           python -c "import secrets; print(secrets.token_urlsafe(24))" > /tmp/db_password
-          sudo -u postgres psql -v ON_ERROR_STOP=1 -v pw="$(cat /tmp/db_password)" <<'SQL'
+          python -c "import secrets; print(secrets.token_urlsafe(24))" > /tmp/db_app_password
+          sudo -u postgres psql -v ON_ERROR_STOP=1 -v pw="$(cat /tmp/db_password)" \
+            -v apw="$(cat /tmp/db_app_password)" <<'SQL'
           CREATE ROLE netcorenoc LOGIN PASSWORD :'pw';
+          CREATE ROLE netcorenoc_app LOGIN PASSWORD :'apw';
           CREATE DATABASE netcorenoc OWNER netcorenoc;
+          REVOKE ALL ON DATABASE netcorenoc FROM PUBLIC;
+          GRANT CONNECT ON DATABASE netcorenoc TO netcorenoc_app;
           CREATE DATABASE lab OWNER netcorenoc;
           SQL
 
@@ -204,8 +210,12 @@ jobs:
         run: |
           python -m venv /tmp/clean
           /tmp/clean/bin/pip install --quiet dist/*.whl
-          export NETCORENOC_DATABASE_URL=postgresql://netcorenoc@127.0.0.1:5432/netcorenoc
-          export NETCORENOC_DATABASE_PASSWORD_FILE=/tmp/db_password
+          # ADR #453: the owner migrates and grants; the appliance runs as a role that owns nothing.
+          NETCORENOC_DATABASE_URL=postgresql://netcorenoc@127.0.0.1:5432/netcorenoc \
+            NETCORENOC_DATABASE_PASSWORD_FILE=/tmp/db_password \
+            NETCORENOC_DB_RUNTIME_ROLE=netcorenoc_app /tmp/clean/bin/python -m netcorenoc db migrate
+          export NETCORENOC_DATABASE_URL=postgresql://netcorenoc_app@127.0.0.1:5432/netcorenoc
+          export NETCORENOC_DATABASE_PASSWORD_FILE=/tmp/db_app_password
           NETCORENOC_DATA_DIR=/tmp/ci-data NETCORENOC_TRAP_PORT=1162 \
             /tmp/clean/bin/python -m netcorenoc.main &
           for i in $(seq 1 60); do
@@ -219,11 +229,17 @@ jobs:
           curl -fsS -o /dev/null http://127.0.0.1:8080/app/views/overview.js
           # The schema version, as a literal (v0.21.0's rule): a release that adds a migration changes
           # this line in the same commit, which is what makes the schema a reviewable diff rather
-          # than a thing that grew. 31 is the PostgreSQL baseline (ADR #452); SQLite's last was 30.
-          # `tests/store/test_store.py` carries the same pin for the same reason.
-          v=$(/tmp/clean/bin/python -m netcorenoc db status | awk '$1 == "version" {print $2}')
-          test "$v" = 31 || { echo "::error::the appliance booted at schema $v, not 31"; exit 1; }
+          # than a thing that grew. 31 is the PostgreSQL baseline (ADR #452), 32 the hardening (#453);
+          # SQLite's last was 30. `tests/store/test_store.py` carries the same pin for the same reason.
+          v=$(NETCORENOC_SECRET_KEY_FILE=/tmp/ci-data/secret.key \
+            /tmp/clean/bin/python -m netcorenoc db status | awk '$1 == "version" {print $2}')
+          test "$v" = 32 || { echo "::error::the appliance booted at schema $v, not 32"; exit 1; }
           echo "schema version $v, all migrations applied"
+          # The key was created owner-only beside the spool, and the runtime role owns no table.
+          test "$(stat -c %a /tmp/ci-data/secret.key)" = 600
+          owned=$(PGPASSWORD="$(cat /tmp/db_password)" psql -h 127.0.0.1 -U netcorenoc -d netcorenoc \
+            -Atc "SELECT count(*) FROM pg_tables WHERE schemaname='netcorenoc' AND tableowner='netcorenoc_app'")
+          test "$owned" = 0 || { echo "::error::the runtime role owns $owned tables"; exit 1; }
           # v0.27.0: the league is package data (ADR #424). A wheel that dropped a member would boot
           # on fewer models, or on the fail-safe formula, and say so in the bell — correct, and
           # exactly the silent loss F85 was. So the wheel must carry every member the tree carries,
@@ -368,22 +384,37 @@ jobs:
       - name: The database is PostgreSQL, migrated, and not reachable from the host
         run: |
           docker compose exec -T netcorenoc python -m netcorenoc db status | tee status.txt
-          grep -q '^version *31 ' status.txt
+          grep -q '^version *32 ' status.txt
           docker compose ps --format '{{.Service}} {{.Ports}}' | tee ports.txt
           ! grep -E '^postgres .*->5432' ports.txt  # exposed on the network, published nowhere
-          docker compose logs netcorenoc | grep -q 'applying migration 0031_postgresql.sql'
-      - name: The appliance's role is not a superuser and owns only its database
+          docker compose logs db-migrate | grep -q 'at version 32: migrations applied'
+      - name: Neither role is a superuser, and the appliance's owns nothing (ADR #453)
         run: |
           docker compose exec -T postgres sh -c 'PGPASSWORD="$(cat /run/netcorenoc-secrets/db_password)" \
             psql -h 127.0.0.1 -U netcorenoc -d netcorenoc -Atc \
-            "SELECT rolsuper, rolcreatedb, rolcreaterole FROM pg_roles WHERE rolname = current_user"' \
+            "SELECT rolname, rolsuper, rolcreatedb, rolcreaterole FROM pg_roles
+             WHERE rolname IN ('"'"'netcorenoc'"'"', '"'"'netcorenoc_app'"'"') ORDER BY 1"' \
             | tee role.txt
-          grep -qx 'f|f|f' role.txt
+          grep -qx 'netcorenoc|f|f|f' role.txt
+          grep -qx 'netcorenoc_app|f|f|f' role.txt
+          docker compose exec -T postgres sh -c 'PGPASSWORD="$(cat /run/netcorenoc-secrets/db_password)" \
+            psql -h 127.0.0.1 -U netcorenoc -d netcorenoc -Atc \
+            "SELECT count(*) FROM pg_tables WHERE tableowner = '"'"'netcorenoc_app'"'"'"' | tee owned.txt
+          grep -qx '0' owned.txt
+          # The appliance connects as the runtime role, which may not truncate the audit log.
+          ! docker compose exec -T postgres sh -c 'PGPASSWORD="$(cat /run/netcorenoc-secrets/db_app_password)" \
+            psql -h 127.0.0.1 -U netcorenoc_app -d netcorenoc -v ON_ERROR_STOP=1 -c \
+            "TRUNCATE netcorenoc.audit_log"'
+      - name: The secret key exists, owner-only, in the appliance's volume
+        run: |
+          docker compose exec -T netcorenoc sh -c 'test "$(stat -c %a /home/netcorenoc/secret.key)" = 600'
+          docker compose exec -T netcorenoc python -m netcorenoc audit verify
       - name: The password was generated, and is in no environment
         run: |
           docker compose exec -T postgres sh -c 'test -s /run/netcorenoc-secrets/db_password'
           docker compose exec -T postgres sh -c 'test -s /run/netcorenoc-secrets/db_admin_password'
           ! docker compose exec -T netcorenoc test -r /run/netcorenoc-secrets/db_admin_password
+          ! docker compose exec -T netcorenoc test -r /run/netcorenoc-secrets/db_password  # the owner's
           ! docker compose exec -T netcorenoc env | grep -i -E 'password=.+'
           ! docker compose exec -T postgres env | grep -E '^POSTGRES_PASSWORD='
       - name: The managed-database override parses

@@ -16,7 +16,7 @@ temptation arrives.
 
 The DOM harness (`tests/support/domharness/`) runs under Node. It is stdlib-only, needs no `npm
 install`, vendors nothing, and produces nothing that ships: `pyproject.toml`'s `package-data` names
-`ui/*` and `migrations/*`, and no `.mjs` file is inside it. The appliance still runs on five runtime
+`ui/*` and `migrations/*`, and no `.mjs` file is inside it. The appliance still runs on six runtime
 dependencies and a static UI a browser loads directly.
 
 What principle 6 forbids is a **transformation between the source and what a browser receives**: a
@@ -392,7 +392,7 @@ UI_HASHES: dict[str, str] = {
     "app/store.js": "4b83a23f2e22bb63717a9c6d5612fed3efeef4508501c80f3dfbdc7e358d696e",
     "app/theme.js": "0971f3067a744fd448517fcc2ce230fa468e6ca1e2bf813839b7378bad699419",
     "app/views/access.js": "66ffc83757c7f630b603723c935cbea6648a0375a1c2930156f1a9955550271d",
-    "app/views/account.js": "2c9dcb3aea035eab9eca968a187bcc511015c6403ac1dafc7f0254d41c13747c",
+    "app/views/account.js": "e7011fdf95debe90c6442ca94a8e50f29de41d655c8a43b22c114b17938d34aa",
     "app/views/audit.js": "5f6de01c2eb9ed02f920f9c0165be345ea127aafe186e6d67ad05f7e00b5ce71",
     "app/views/classes.js": "3e99c1fd9d0f7a98a526d913107cdb2de24954656de525f213c4aea284358970",
     "app/views/corpus.js": "ccaae5cbf03bca4a13b9a8c96a420185eaf930459a5e72110d4f3ec05e29b1de",
@@ -481,7 +481,7 @@ UI_HASHES: dict[str, str] = {
     "app/views/parts/oidtree.js": (
         "3458a69deca0eab3513684c67b37e2409f16b4db60d6713b64622f1cd8bb41e9"
     ),
-    "app/views/parts/people.js": "05ea4956f76046232a2ba65926e96e3bc9909b8d03f3cb56bd8bb07462c431d3",
+    "app/views/parts/people.js": "da247c7bbc83ef2db76320d39f0878efaccb08f03e9da7fd3c36842e0b51d43a",
     "app/views/parts/pipeline.js": (
         "7c5e43f7d1368717caa9186555cf9fda0be4266910e2cb75a3d6a7c5c1496a2c"
     ),
@@ -541,7 +541,7 @@ UI_HASHES: dict[str, str] = {
     "favicon.svg": "c11ec68d389057cc4d4145b3cdf77f3ebfec40150e9f409ff35a7cf419f524b7",
     "index.html": "d057123e5cfc1ab497db465df016c598e38b049fbde26ecc9ee868eb4899fad7",
     "login-bg.svg": "5f677f3371a2828c8d21668cd83381c105ccdc1780a66dc09fc6f6bc19d211d6",
-    "style.css": "06fd3ffa8ec6a4ae000ee8da755ea6eaf7b3e1ca14c873ed8768668644ce0dd0",
+    "style.css": "182606624892aff4815bc43ff79bf06916c42049cec0c74ec88e4a504a60424c",
     "vendor/CHECKSUMS.txt": "408939056400f45a215cb576dc324bfc64f1b6bfae2d1b45bfce061b508128e8",
     "vendor/htm-3.1.1.module.js": (
         "ab33dd3f38059b9be4d5f5350128eefb2356639c4e0bbe9d9e8b3ba75847e9e4"
@@ -585,7 +585,7 @@ UI_SIZES: dict[str, int] = {
     "app/store.js": 5_978,
     "app/theme.js": 8_134,
     "app/views/access.js": 4_940,
-    "app/views/account.js": 8_349,
+    "app/views/account.js": 8_909,
     "app/views/audit.js": 6_490,
     "app/views/classes.js": 8_085,
     "app/views/corpus.js": 5_527,
@@ -630,7 +630,7 @@ UI_SIZES: dict[str, int] = {
     "app/views/parts/mwwhen.js": 5_830,
     "app/views/parts/nedetail.js": 7_880,
     "app/views/parts/oidtree.js": 6_358,
-    "app/views/parts/people.js": 11_378,
+    "app/views/parts/people.js": 14_288,
     "app/views/parts/pipeline.js": 9_526,
     "app/views/parts/pulse.js": 5_701,
     "app/views/parts/restructure.js": 13_548,
@@ -660,7 +660,7 @@ UI_SIZES: dict[str, int] = {
     "favicon.svg": 608,
     "index.html": 1_549,
     "login-bg.svg": 18_884,
-    "style.css": 187_227,
+    "style.css": 187_314,
     "vendor/CHECKSUMS.txt": 2_016,
     "vendor/htm-3.1.1.module.js": 1_207,
     "vendor/htm.LICENSE": 11_341,
