@@ -219,6 +219,34 @@ SELECT pg_terminate_backend(<pid>);
 
 The maintenance CLI never takes the lock, so it runs beside the appliance.
 
+### "pending migrations … run python -m netcorenoc db migrate"
+
+The appliance's role does not own its schema (ADR #453) and so may not migrate it. With Compose,
+`db-migrate` runs first and does it — check its log (`docker compose logs db-migrate`). Elsewhere,
+run `db migrate` with the owner's URL and `NETCORENOC_DB_RUNTIME_ROLE` set to the appliance's role,
+or give the appliance `NETCORENOC_DATABASE_OWNER_URL`
+([`configure.md`](configure.md#two-roles-one-owns-the-schema-the-appliances-owns-nothing)).
+
+### The secret key
+
+**"this database was sealed with secret key … and the key file holds key …"** — the appliance was
+given another key file than the one that sealed the database: a new data volume, a restore onto a
+new host, a changed `NETCORENOC_SECRET_KEY_FILE`. Restore the original `secret.key` (your backup,
+`operate.md` §8) and start again. Nothing was changed by the refused start.
+
+**"… may be read by other users; chmod 600"** — the key file's mode lets anyone on the host read
+it. `chmod 600` it (or `440` for a secret mounted with a group).
+
+**The key is lost for good.** Personal data and secrets in the database cannot be recovered, and no
+password signs in. Recover the appliance, not the values: stop it; move `meta` rows `vault.kid` and
+`audit.sealed_from` aside as the schema owner (`DELETE FROM netcorenoc.meta WHERE key IN
+('vault.kid', 'audit.sealed_from', 'config.email', 'config.snmp', 'community_hmac_key')`); clear the
+sealed columns (`UPDATE netcorenoc.app_user SET email=NULL, email_index=NULL, display_name=NULL`;
+`DELETE FROM netcorenoc.user_avatar`); start it with a new key; then set each password with
+`python -m netcorenoc admin reset-password <user>`, and re-enter Settings → Email and SNMP. The
+seals the lost key wrote cannot be checked any more: `audit verify` stops at the first of them —
+keep that report with the incident's record; the hash chain itself is unchanged.
+
 ### The CLI says "no NetCoreNOC database at … has no NetCoreNOC tables"
 
 The CLI **refuses a schema that is not there** instead of creating it, so a command pointed at the

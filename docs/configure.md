@@ -95,11 +95,47 @@ database on a host.
 | `NETCORENOC_DB_SCHEMA` | `netcorenoc` | The schema the tables live in: lower-case letters, digits and `_`. **One appliance per schema**: the appliance holds a session advisory lock on it, and a second one started against the same schema stops at start. Two appliances may share a database in two schemas |
 | `NETCORENOC_DB_READERS` | `4` | Connections, 1–64, that the console's reads run on besides the one writer. Each read is its own `REPEATABLE READ READ ONLY` snapshot and never waits for the engine's batch. The appliance holds at most 1 + this many connections |
 | `NETCORENOC_DB_STATEMENT_CACHE` | `1024` | Prepared statements the driver (`asyncpg`) keeps per connection; `0` turns the cache off. Lowering it saves server memory and costs a parse per statement |
+| `NETCORENOC_DATABASE_OWNER_URL` | *(unset)* | The **schema owner's** URL, when the appliance's own role (`NETCORENOC_DATABASE_URL`) is not the owner. Used at start, and by `db migrate`, to create and migrate the schema and grant the runtime role its privileges; then closed. Unset, the appliance's role must own the schema (it is then warned about) |
+| `NETCORENOC_DATABASE_OWNER_PASSWORD_FILE` | *(unset)* | The owner's password, from a file, as for the runtime role |
+| `NETCORENOC_DB_RUNTIME_ROLE` | *(unset)* | For `db migrate` run as the owner: the role to grant the runtime privileges to (Compose: `netcorenoc_app`) |
+| `NETCORENOC_SECRET_KEY_FILE` | `<NETCORENOC_DATA_DIR>/secret.key` | The key that seals personal data and secrets in the database and keys the password hashes and the audit chain (ADR #453). Created owner-only (`0600`) on the first start; a file any user may read is refused. **Back it up apart from the database**: without it every sealed value and every password is unreadable |
 
 The maintenance CLI (`python -m netcorenoc …`) reads the same variables and **refuses a schema
 that is not there** rather than creating it — an `audit verify` run against an empty schema would
 report someone else's empty chain as intact. `db migrate` and `db import-sqlite` are the two
 commands that create it.
+
+### Two roles: one owns the schema, the appliance's owns nothing
+
+A role that owns its tables can alter, drop and truncate them, disable the append-only triggers and
+rewrite the audit log — and so can any injection or code-execution bug running as it. Give the
+appliance a role that only reads and writes rows (ADR #453):
+
+```sql
+-- as an administrator of the database
+CREATE ROLE netcorenoc     LOGIN PASSWORD '...' NOSUPERUSER NOCREATEDB NOCREATEROLE;  -- owner
+CREATE ROLE netcorenoc_app LOGIN PASSWORD '...' NOSUPERUSER NOCREATEDB NOCREATEROLE;  -- runtime
+GRANT CREATE, CONNECT ON DATABASE netcorenoc TO netcorenoc;
+GRANT CONNECT ON DATABASE netcorenoc TO netcorenoc_app;
+```
+
+Then either run the migrations as the owner before each upgrade —
+`NETCORENOC_DATABASE_URL=<owner URL> NETCORENOC_DB_RUNTIME_ROLE=netcorenoc_app python -m netcorenoc
+db migrate` — or give the appliance `NETCORENOC_DATABASE_OWNER_URL` as well, and it migrates and
+grants at start. The runtime role gets `SELECT, INSERT, UPDATE, DELETE` on the tables and nothing
+on the twelve append-only ones beyond reading and appending; it cannot run DDL, truncate, disable a
+trigger or delete an audit row (`prune_audit_log` prunes, and refuses the last day). Started with a
+role that owns the schema, the appliance works as before and logs that it does. **Compose does this
+for you** (`db-migrate` and `netcorenoc_app`). On Supabase the `postgres` role is the owner: create
+`netcorenoc_app` as above in the SQL editor and give the appliance its URL.
+
+### The secret key
+
+`secret.key` (or `NETCORENOC_SECRET_KEY_FILE`) never enters the database, so a stolen backup or
+snapshot holds sealed values, keyed password hashes and a keyed audit chain — not what they protect.
+Keep it with the appliance and back it up **separately** from the database (`operate.md`). The
+appliance records which key sealed the database and refuses to start with another one. A key lost
+for good: see `troubleshoot.md`, "The secret key".
 
 What PostgreSQL does with the data — durability, vacuum, replication, point-in-time recovery — is
 the server's configuration, not the appliance's. The bundled server's settings are in
@@ -137,8 +173,10 @@ rule is the same too: a direct or session-mode endpoint, never a transaction-mod
 with `pool_mode = transaction`). Without Docker, set `NETCORENOC_DATABASE_URL` and
 `NETCORENOC_DATABASE_PASSWORD_FILE` directly.
 
-* **TLS.** `sslmode=require` encrypts the connection. To also verify the server, mount the
-  provider's CA certificate and use `sslmode=verify-full&sslrootcert=<path in the container>`.
+* **TLS.** `sslmode=require` encrypts the connection but would talk to any server that answers.
+  Mount the provider's CA certificate and use `sslmode=verify-full&sslrootcert=<path in the
+  container>`: until then the console shows a security-posture warning for a database on another
+  host (ADR #453).
 * **Isolation.** The tables live in their own schema, which Supabase's Data API does not expose (it
   serves `public` and `graphql_public`), and the schema's privileges are revoked from `PUBLIC` when
   it is created: the project's `anon` and `authenticated` roles cannot read a row. Do not add

@@ -6,9 +6,8 @@ is 64 zeros. The ``audit_log`` table is append-only at the storage layer (SQLite
 ``BEFORE UPDATE``/``BEFORE DELETE`` triggers, migration ``0002``), so any edit to history
 breaks the chain and is detectable by :func:`verify_chain`.
 
-**The chain is keyed since ADR #453**: each new row's ``mac`` is an HMAC of its ``entry_hash`` under
-the secret key the database never holds, so whoever can write the table cannot recompute a valid
-tail. The first id that must be sealed is anchored, itself sealed, in `meta` (`store/sealing.py`).
+**Keyed since ADR #453**: ``mac`` is an HMAC of ``entry_hash`` under a key the database never holds,
+so a writer of the table cannot forge a valid tail; the first sealed id is anchored, sealed too.
 
 The event catalog (frozen in ``docs/gates/v0.2-phase-1.md``) is enumerated in
 :data:`ACTIONS`. Writers live at the API call sites (Phase 3 S4); this module owns the
@@ -403,7 +402,13 @@ def verify_rows(
 async def export_ndjson(store: Store) -> tuple[list[str], str]:
     """Return (NDJSON lines, final chain hash). Each line is one audit row without its seal:
     the export's contract is the hash chain, which anyone can check without the key."""
-    rows = [{k: v for k, v in dict(row).items() if k != "mac"} for row in await store.audit_all()]
-    lines = [json.dumps(row, sort_keys=True, separators=(",", ":")) for row in rows]
+    rows = await store.audit_all()
+    lines = [export_line(row) for row in rows]
     final_hash = rows[-1]["entry_hash"] if rows else GENESIS_HASH
     return lines, final_hash
+
+
+def export_line(row: Mapping[str, Any]) -> str:
+    """One exported row: every stored field but the seal, as canonical JSON."""
+    fields = {k: v for k, v in dict(row).items() if k != "mac"}
+    return json.dumps(fields, sort_keys=True, separators=(",", ":"))

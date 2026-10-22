@@ -6252,3 +6252,58 @@ From this release an entry is about six lines: decision, reason, release.*
   §3.4): one connection and one lock shared by the engine and the console made every console read
   wait for the engine's batch, and SQLite offers no replication, no second process writing, and no
   time-series tooling. Measured before and after in `docs/plans/postgresql.md`.
+
+## 453. A breach of the database hands over no secret, no password and no way to rewrite history (unreleased)
+
+- **Decision — one key the database never sees** (`crosscutting/vault.py`): 32 random bytes in
+  `NETCORENOC_SECRET_KEY_FILE` (default `<data dir>/secret.key`), created owner-only on the first
+  start beside the spool; a file any user may read is refused. HKDF-SHA256 derives a subkey per use:
+  - **sealed values** — AES-256-GCM, a fresh nonce per value, the column as associated data, the
+    key's identifier in the token (`nc1:…`) so the wrong key says so. Sealed: a person's recovery
+    email, display name and photo; the SMTP and SNMPv3 documents; the community HMAC key. A blind
+    index (`app_user.email_index`, HMAC) serves the one lookup a sealed address needs;
+  - **the password pepper** — HMAC of the password before scrypt (`scrypt-p1`), so a dump alone
+    cannot test a guess. An unkeyed hash still signs in and is rewritten keyed;
+  - **the audit seal** — HMAC of each new row's `entry_hash` (`audit_log.mac`). Once a row is sealed
+    every later one must be, and the first id that had to be is anchored, sealed, in `meta`: an
+    editor with the table's owner rights can no longer rewrite a row and recompute the chain.
+  The key's identifier is recorded (`vault.kid`); a start with another key stops and says which.
+  Plain values an earlier release wrote are sealed at start. **Principle 5 amended**: `cryptography`
+  is a core dependency (six) — the standard library has no AEAD.
+- **No one reads a password, an administrator included.** The store holds a keyed hash and no route
+  returns it. `POST /api/users/{uid}/password-reset` replaces a password with a random one shown
+  once, which must be changed at the next sign-in; the account's sessions and unused reset links
+  end. Changing your own recovery address takes your current password, and a new address withdraws
+  links sent to the old one. Audit rows say that a name or an address was set, never what it is.
+- **The appliance's role owns nothing.** `0032_hardening.sql` and `store/privileges.py`: the schema
+  owner (`NETCORENOC_DATABASE_OWNER_URL`, or `db migrate` run as it) migrates and grants; the runtime
+  role gets `SELECT, INSERT, UPDATE, DELETE` and nothing on `schema_migrations` or the twelve
+  append-only tables beyond reading and appending. TRUNCATE is refused by statement triggers even
+  for the owner; the audit log is pruned only by `prune_audit_log`, `SECURITY DEFINER`, which
+  refuses the last day. Compose runs `db-migrate` as `netcorenoc` and the appliance as
+  `netcorenoc_app`; a one-off `db-import` service runs the SQLite import as the owner.
+- **Escalation closed** (each with a test): a narrowed admin token may not create, promote to or
+  take over (password, recovery address) an account whose role holds more than it does; the event
+  stream ends when its session or token does; a scoped editor neither sees nor removes a maintenance
+  window's targets outside their scope, nor moves or splits off members their scope hides;
+  lengthening a confirmed window needs confirming again; CSRF applies to every mutation the cookie
+  authenticates; the rate limit runs before a denial is audited; a 422 never repeats what was sent
+  and a 500 carries the security headers; the SQLite import leaves sessions and reset links behind.
+- **Database errors and leaks closed**: a failed maintenance pass rolls back and reloads memory;
+  a writer that cannot re-take its instance lock after reconnecting stops; audit appends take an
+  advisory lock, so the CLI cannot fork the chain; quarantined packets keep the hash and prefix of
+  the community-blanked bytes; traffic counters are 64-bit; trigger functions pin `search_path`;
+  slow-query logs omit bound values; a `?password=` in the URL is redacted and kept off `pg_dump`'s
+  command line; a remote database without a verified certificate is a posture warning.
+- **Measured and fixed in the same pass** (a year of synthetic history: 511k alarms, 2M pairs): the
+  prunes as anti-joins (`NOT IN` rescanned two million pairs per candidate — 7.1 s under the lock,
+  now 0.17 ms) with the resolved set as a subquery (a bound id list broke past 32 767 ids); the
+  situation list counts members per listed row (290 ms → 24 ms, run every 2 s per console); the
+  audit export streams pages from readers (it held the lock 7.6 s and 570 MiB); two indexes the
+  activity views and situation history needed, two dropped that no query read.
+- **Not changed, and why**: a bulk hand-clear writes one member snapshot per cleared alarm
+  (`gestures.py`), N × M rows under the lock — a different event shape is a product decision, left
+  to its owner. Usernames stay plain: they sign in and name the actor of every audit row.
+- **Reason**: the audit the owner asked for after #452 — privilege escalation, database errors, and
+  what a stolen database would give away — found the runtime role owning its schema, secrets in
+  `meta` readable as text, an unkeyed audit chain and the escalations above.

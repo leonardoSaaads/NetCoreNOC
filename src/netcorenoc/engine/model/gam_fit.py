@@ -2,7 +2,7 @@
 
 The algorithm is the one InterpretML's Explainable Boosting Machine uses (Lou, Caruana & Gehrke,
 KDD 2012 and 2013; Nori et al., *InterpretML*, arXiv:1909.09223), written out in pure Python
-because the appliance ships five runtime dependencies and a model fit is not a reason for a sixth:
+because the appliance ships six runtime dependencies and a model fit is not a reason for a seventh:
 
 1. **Bin** every feature once, at quantiles of the training rows (a discrete feature keeps one bin
    per value).

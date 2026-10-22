@@ -73,6 +73,25 @@ class AuditLogMixin(StoreBase):
         )
         return [dict(r) for r in await cur.fetchall()]
 
+    async def audit_tail(self) -> tuple[int, str]:
+        """``(id, entry_hash)`` of the newest row; ``(0, genesis)`` for an empty chain."""
+        cur = await self.conn.execute(
+            "SELECT id, entry_hash FROM audit_log ORDER BY id DESC LIMIT 1"
+        )
+        row = await cur.fetchone()
+        return (int(row[0]), str(row[1])) if row else (0, "0" * 64)
+
+    async def audit_page(self, after: int, upto: int, limit: int) -> list[dict[str, Any]]:
+        """Rows ``after < id <= upto`` in chain order, at most ``limit``: the export, a page at a
+        time from a reader, instead of the whole log in memory under the write lock (ADR #453)."""
+        cur = await self.conn.execute(
+            "SELECT id, ts, actor, role, source_ip, action, object_type, object_id, outcome, "
+            "details, prev_hash, entry_hash FROM audit_log WHERE id > ? AND id <= ? "
+            "ORDER BY id LIMIT ?",
+            (after, upto, limit),
+        )
+        return [dict(r) for r in await cur.fetchall()]
+
     async def list_audit(self, limit: int) -> list[dict[str, Any]]:
         """Most-recent audit rows for the viewer (no hashes; details left as JSON text)."""
         cur = await self.conn.execute(

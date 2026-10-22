@@ -9,13 +9,18 @@ of the four return data rather than changing it.
 from __future__ import annotations
 
 import time
+from collections.abc import AsyncIterator
 from typing import Any
 
 from fastapi import Depends, FastAPI, Request, Response
+from fastapi.responses import StreamingResponse
 
 from netcorenoc.api.context import AppContext
 from netcorenoc.api.declare import DeclaredRoutes
 from netcorenoc.crosscutting import audit, auth
+
+#: Audit rows per page of a streamed export.
+EXPORT_PAGE = 2000
 
 
 def register(app: FastAPI, ctx: AppContext) -> None:
@@ -57,16 +62,28 @@ def register(app: FastAPI, ctx: AppContext) -> None:
     async def export_audit(
         request: Request, principal: auth.Principal = Depends(security)
     ) -> Response:
+        """The chain up to its newest row, as NDJSON. The export is recorded first, under the write
+        lock, and the rows are then streamed a page at a time from readers (ADR #453): a year's
+        500k rows held the lock 7.6 s and 570 MiB — more than the container's limit — when they
+        were read whole inside the transaction. The bytes are the same."""
         async with write_txn():
-            lines, final_hash = await audit.export_ndjson(store)
+            last_id, final_hash = await store.audit_tail()
             await audit_row(
                 request, principal, "audit.export", "ok", details={"final_hash": final_hash}
             )
-        body = "\n".join(lines) + ("\n" if lines else "")
-        return Response(
-            content=body,
-            media_type="application/x-ndjson",
-            headers={"X-Audit-Final-Hash": final_hash},
+
+        async def lines() -> AsyncIterator[str]:
+            after = 0
+            while after < last_id:
+                async with store.reading():
+                    page = await store.audit_page(after, last_id, EXPORT_PAGE)
+                if not page:
+                    return
+                yield "".join(audit.export_line(row) + "\n" for row in page)
+                after = int(page[-1]["id"])
+
+        return StreamingResponse(
+            lines(), media_type="application/x-ndjson", headers={"X-Audit-Final-Hash": final_hash}
         )
 
     @route.post("/api/audit/prune")

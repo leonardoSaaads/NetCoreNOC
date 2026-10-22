@@ -249,8 +249,8 @@ async def _reset_password(settings: Settings, username: str) -> int:
             password = secrets.token_urlsafe(BOOTSTRAP_PASSWORD_CHARS)[:BOOTSTRAP_PASSWORD_CHARS]
             now = time.time()
             uid = int(user["id"])
-            await store.update_user_password(uid, hash_password(password), now)
-            await store.set_must_change_password(uid, True, now)
+            # Must be changed at the next sign-in, and no reset link left to race it (ADR #453).
+            await store.replace_password(uid, hash_password(password), now)
             revoked = await store.revoke_user_sessions(uid)
             await audit.write_event(
                 store,

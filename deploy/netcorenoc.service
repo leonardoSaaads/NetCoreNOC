@@ -33,6 +33,13 @@ Environment=NETCORENOC_DATA_DIR=/var/lib/netcorenoc
 Environment=NETCORENOC_DATABASE_URL=postgresql://netcorenoc@localhost:5432/netcorenoc?sslmode=prefer
 LoadCredential=db_password:/etc/netcorenoc/db_password
 Environment=NETCORENOC_DATABASE_PASSWORD_FILE=%d/db_password
+# ADR #453: the secret key that seals personal data and secrets is created on the first start as
+# /var/lib/netcorenoc/secret.key (0600). Back it up apart from the database (docs/operate.md §8).
+# A runtime role that does not own the schema (docs/configure.md, "Two roles"): uncomment, and
+# create /etc/netcorenoc/db_owner_password; the owner then migrates and grants at start.
+# LoadCredential=db_owner_password:/etc/netcorenoc/db_owner_password
+# Environment=NETCORENOC_DATABASE_OWNER_URL=postgresql://netcorenoc@localhost:5432/netcorenoc
+# Environment=NETCORENOC_DATABASE_OWNER_PASSWORD_FILE=%d/db_owner_password
 # Example config (uncomment/edit, or use an EnvironmentFile for anything sensitive):
 # Environment=NETCORENOC_ALLOWLIST=10.20.0.0/16
 # Environment=NETCORENOC_TLS_CERT=/etc/netcorenoc/tls.crt

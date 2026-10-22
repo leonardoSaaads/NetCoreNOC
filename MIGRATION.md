@@ -116,11 +116,16 @@ file while it is read.
 ```sh
 docker compose stop netcorenoc                # the old release, stopped cleanly
 git pull && docker compose build netcorenoc
-docker compose up -d postgres                 # generates the database password, starts PostgreSQL
-docker compose run --rm netcorenoc \
-  python -m netcorenoc db import-sqlite /home/netcorenoc/netcorenoc.db
+docker compose up -d postgres                 # generates the database passwords, starts PostgreSQL
+docker compose --profile import run --rm db-import   # the import, as the schema's owner
 docker compose up -d                          # the appliance, on the imported data
 ```
+
+`db-import` is a one-off service, never started by `up`: it runs the import as the schema's owner
+(the appliance's own role owns nothing, ADR #453), with the data volume, where it creates the
+secret key the appliance will use. It prints the admin accounts and active service tokens it
+brought: read them before the first start. Sessions and unused reset links are not imported —
+everyone signs in again.
 
 The new compose file does not pass `NETCORENOC_DB` to the container; delete it from `.env` if it is
 there.
@@ -146,7 +151,17 @@ What else changes:
 * **New variables** ([`docs/configure.md`](docs/configure.md#database)): `NETCORENOC_DATABASE_URL`,
   `NETCORENOC_DATABASE_PASSWORD_FILE`, `NETCORENOC_DB_SCHEMA`, `NETCORENOC_DB_READERS`,
   `NETCORENOC_DB_STATEMENT_CACHE`, and `NETCORENOC_DATA_DIR`, the directory the spool lives in
-  (`<data dir>/spool`; it was beside the database file).
+  (`<data dir>/spool`; it was beside the database file); for the owner/runtime split (#453),
+  `NETCORENOC_DATABASE_OWNER_URL`, `NETCORENOC_DATABASE_OWNER_PASSWORD_FILE` and
+  `NETCORENOC_DB_RUNTIME_ROLE`; and `NETCORENOC_SECRET_KEY_FILE`.
+* **A secret key** (#453) is created on the first start, `secret.key` in the data directory: it
+  seals personal data and secrets in the database and keys the password hashes and the audit chain.
+  **Back it up apart from the database** ([`docs/operate.md`](docs/operate.md#8-backups-upgrades-and-checks)).
+  What the import copied in plain text is sealed when the import ends; password hashes are rewritten
+  keyed at each person's next sign-in.
+* **Compose's database roles** (#453): `netcorenoc` owns the schema and only `db-migrate` (and
+  `db-import`) use it; the appliance connects as `netcorenoc_app`, which owns nothing. A third
+  password file, `db_app_password`, is generated beside the other two.
 * **Backups are `pg_dump` archives.** `python -m netcorenoc backup <file>` needs the PostgreSQL
   client tools (`pg_dump`, `pg_restore`); with Compose, back up through the `postgres` container
   ([`docs/operate.md`](docs/operate.md#8-backups-upgrades-and-checks)). Restore with `pg_restore`.

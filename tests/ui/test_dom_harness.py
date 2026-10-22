@@ -251,7 +251,8 @@ def test_the_harness_is_a_test_tool_and_never_a_runtime_dependency() -> None:
     """
     config = (REPO_ROOT / "pyproject.toml").read_text(encoding="utf-8")
     dependencies = config.split("dependencies = [", 1)[1].split("]", 1)[0]
-    assert dependencies.count('"') == 10, f"the runtime dependency list changed: {dependencies}"
+    # Six since ADR #453 (`cryptography`, for the secret key); five from v0.2.0.
+    assert dependencies.count('"') == 12, f"the runtime dependency list changed: {dependencies}"
     for name in ("node", "jsdom", "playwright", "puppeteer"):
         assert name not in dependencies.lower()
     package_data = config.split("[tool.setuptools.package-data]", 1)[1].split("[tool.", 1)[0]

@@ -29,6 +29,13 @@
 --    are rewritten; a packet whose community could not be located keeps four bytes, not eight.
 --
 -- 7. The trigger functions resolve nothing through the caller's `search_path`.
+--
+-- 8. Indexes, from measuring the read paths against a year of history (511k alarms, 2M pairs):
+--    alarms still uncleared by when they began (the activity views' "active at" OR could use no
+--    index: 50 ms -> 3 ms); the peer side of a situation's history (a sequential scan on every
+--    detail view: 14 ms -> 0.1 ms); and two that cost more than they serve — the GIN index on
+--    `alarm.varbinds`, which no query reads and every repeat trap rewrites, and the full
+--    `(alarm_b, alarm_a)` pair index, whose every reader is in the dataset tier (90 MB -> 0.3 MB).
 
 CREATE FUNCTION forbid_truncate() RETURNS trigger
     LANGUAGE plpgsql AS $$
@@ -107,3 +114,10 @@ UPDATE quarantine SET first8 = left(first8, 8) WHERE NOT sanitized;
 
 ALTER FUNCTION forbid_change() SET search_path = pg_catalog, pg_temp;
 ALTER FUNCTION forbid_truncate() SET search_path = pg_catalog, pg_temp;
+
+CREATE INDEX idx_alarm_uncleared_first ON alarm (first_seen) WHERE cleared_at IS NULL;
+CREATE INDEX idx_situation_event_peer ON situation_event (peer_situation_id)
+    WHERE peer_situation_id IS NOT NULL;
+DROP INDEX idx_alarm_varbinds;
+DROP INDEX idx_pair_alarm_ba;
+CREATE INDEX idx_pair_alarm_ba ON dataset_pair (alarm_b, alarm_a) WHERE lifecycle = 'dataset';

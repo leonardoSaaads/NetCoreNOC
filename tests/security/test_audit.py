@@ -386,3 +386,24 @@ async def test_audit_excluded_from_general_prune_but_retained_by_admin_prune(sto
         await store.commit()
         remaining = await store.audit_all()
     assert removed == 1 and remaining == []
+
+
+async def test_the_streamed_export_is_the_chain_byte_for_byte(
+    store: Store, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """ADR #453: paged from readers instead of read whole under the write lock — same bytes, the
+    same final hash, and the export's own record is not part of what it exported."""
+    from netcorenoc.api.routes import audit as audit_routes
+
+    monkeypatch.setattr(audit_routes, "EXPORT_PAGE", 2)  # several pages from a short chain
+    await _sealed_chain(store)
+    _engine, _queue, app = await authutil.make_env(store)
+    admin = await authutil.client_as(app, "admin")
+    try:
+        lines, final_hash = await audit.export_ndjson(store)
+        resp = await admin.get("/api/audit/export")
+    finally:
+        await admin.aclose()
+    assert resp.status_code == 200 and resp.headers["x-audit-final-hash"] == final_hash
+    assert resp.text == "".join(line + "\n" for line in lines)
+    assert '"mac"' not in resp.text

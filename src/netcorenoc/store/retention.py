@@ -45,49 +45,42 @@ class RetentionMixin(StoreBase):
         # with the reason in `resolution`. The set this sweep collects is unchanged: everything
         # that has left. Migration `0014` rewrote both values in place, so a database upgraded
         # mid-retention-window is collected on the same schedule it would have been.
-        cur = await self.conn.execute(
-            "SELECT id FROM situation WHERE status='resolved' AND closed_at < ?",
+        # ADR #453: the resolved set is a subquery, not a bound id list — asyncpg takes at most
+        # 32 767 arguments, and the first prune after an import or a long stop had more — and the
+        # exclusions are anti-joins, not `NOT IN (SELECT ...)`, which hashed whole tables per pass.
+        gone = "SELECT id FROM situation WHERE status='resolved' AND closed_at < ?"
+        await self.conn.execute(
+            f"DELETE FROM situation_alarm WHERE situation_id IN ({gone})",  # nosec B608
             (cutoff,),
         )
-        gone = [int(r[0]) for r in await cur.fetchall()]
-        counts["situations"] = 0
-        if gone:
-            # nosec B608 - `marks` is only "?" placeholders; ids are bound parameters
-            marks = ",".join("?" * len(gone))
-            await self.conn.execute(
-                f"DELETE FROM situation_alarm WHERE situation_id IN ({marks})",  # nosec B608
-                gone,
-            )
-            await self.conn.execute(
-                f"DELETE FROM link WHERE situation_id IN ({marks})",  # nosec B608
-                gone,
-            )
-            # No `DELETE FROM feedback` here. See the docstring: that line was F44.
-            #
-            # **v0.16.0 adds the second shell-retaining reason, for F44's reason exactly.**
-            # `situation_event` is the append-only record of every operator gesture and it carries
-            # no foreign key, precisely so history outlives its subject — but an event whose
-            # `situation_id` names a row this sweep deleted is an event nothing can join. So a
-            # situation carrying an event keeps its one row, like a situation carrying a label, and
-            # both shells are collected by the ordinary later pass once the **audit sweep**
-            # (`prune_dataset_audit`) has removed what was holding them.
-            cur = await self.conn.execute(
-                f"DELETE FROM situation WHERE id IN ({marks}) "  # nosec B608
-                "AND id NOT IN (SELECT situation_id FROM feedback) "
-                "AND id NOT IN (SELECT situation_id FROM situation_event) RETURNING id",
-                gone,
-            )
-            # The count is what was actually collected, not what was eligible: a labelled
-            # situation is retained, and reporting it as pruned would misdescribe the sweep.
-            counts["situations"] = len(list(await cur.fetchall()))
+        await self.conn.execute(
+            f"DELETE FROM link WHERE situation_id IN ({gone})",
+            (cutoff,),  # nosec B608
+        )
+        # No `DELETE FROM feedback` here. See the docstring: that line was F44.
+        #
+        # **v0.16.0 adds the second shell-retaining reason, for F44's reason exactly.**
+        # `situation_event` is the append-only record of every operator gesture and it carries
+        # no foreign key, precisely so history outlives its subject — but an event whose
+        # `situation_id` names a row this sweep deleted is an event nothing can join. So a
+        # situation carrying an event keeps its one row, like a situation carrying a label, and
+        # both shells are collected by the ordinary later pass once the **audit sweep**
+        # (`prune_dataset_audit`) has removed what was holding them.
         cur = await self.conn.execute(
-            "DELETE FROM alarm WHERE status='cleared' AND last_seen < ? AND id NOT IN "
-            "(SELECT alarm_id FROM situation_alarm) RETURNING id",
+            "DELETE FROM situation s WHERE s.status='resolved' AND s.closed_at < ? "
+            "AND NOT EXISTS (SELECT 1 FROM feedback f WHERE f.situation_id = s.id) "
+            "AND NOT EXISTS (SELECT 1 FROM situation_event e WHERE e.situation_id = s.id)",
             (cutoff,),
         )
-        counts["alarms"] = len(list(await cur.fetchall()))
+        # The count is what was actually collected, not what was eligible: a labelled
+        # situation is retained, and reporting it as pruned would misdescribe the sweep.
+        counts["situations"] = cur.rowcount
         cur = await self.conn.execute(
-            "DELETE FROM quarantine WHERE received_at < ? RETURNING id", (cutoff,)
+            "DELETE FROM alarm a WHERE a.status='cleared' AND a.last_seen < ? "
+            "AND NOT EXISTS (SELECT 1 FROM situation_alarm sa WHERE sa.alarm_id = a.id)",
+            (cutoff,),
         )
-        counts["quarantine"] = len(list(await cur.fetchall()))
+        counts["alarms"] = cur.rowcount
+        cur = await self.conn.execute("DELETE FROM quarantine WHERE received_at < ?", (cutoff,))
+        counts["quarantine"] = cur.rowcount
         return counts

@@ -176,6 +176,20 @@ environment rather than on a command line `ps` can read, and reads the file back
 `pg_restore --list` before it says `ok`. A managed provider's own backups (Supabase, RDS and the
 rest) are theirs to restore; a dump is the copy you hold.
 
+**Back up the secret key too — once, and apart from the dumps** (ADR #453). It seals personal data
+and secrets in the database and keys every password hash: a dump restored without it has unreadable
+values and no password that signs in. It never changes, so one copy, kept where the dumps are not,
+is enough:
+
+```sh
+docker compose cp netcorenoc:/home/netcorenoc/secret.key ./netcorenoc-secret.key
+chmod 600 ./netcorenoc-secret.key     # then move it to your secrets vault, not beside the dumps
+```
+
+Elsewhere it is `secret.key` in `NETCORENOC_DATA_DIR`, or `NETCORENOC_SECRET_KEY_FILE`. Restoring
+onto a new host means restoring this file before the first start: the appliance refuses a key that
+is not the one that sealed its database.
+
 **Restore** replaces the schema: stop the appliance, drop the schema, restore the dump, start.
 
 ```sh
@@ -193,12 +207,12 @@ Elsewhere, `pg_restore --dbname=<database URL> <file>` into a database where the
 
 ```sh
 docker compose exec netcorenoc python -m netcorenoc db status       # server, schema version, size
-docker compose exec netcorenoc python -m netcorenoc audit verify    # is the audit log intact?
+docker compose exec netcorenoc python -m netcorenoc audit verify    # intact, and sealed by our key?
 docker compose exec netcorenoc python -m netcorenoc --help          # every maintenance command
 ```
 
 `db status` names the server, the database, the role and the schema it reached, then the schema's
-version beside this release's — `version 31 (this release: 31)` — and the schema's size on disk. A
+version beside this release's — `version 32 (this release: 32)` — and the schema's size on disk. A
 lower first number is migrations not yet applied (start the appliance, or run `db migrate`); a
 higher one is a database a newer release migrated, which the console also warns about.
 

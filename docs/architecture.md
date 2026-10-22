@@ -263,7 +263,8 @@ disabled menu items. The shape absorbs them; it does not announce them.
 2. **Explainability is contractual.** Every decision decomposes into per-feature contributions.
 3. **Determinism and reproducibility.** The `eval/` gate is byte-identical.
 4. **Ingestion is sacred.** The trap path never gains a lock, an I/O, or per-packet latency.
-5. **Zero new runtime dependencies in the core.** Five since v0.2.0.
+5. **Zero new runtime dependencies in the core.** Six since ADR #453 (`cryptography`, which seals
+   personal data and secrets at rest); five from v0.2.0.
 6. **One runtime identity.** One appliance — the main process, its receiving process and its
    decoding process (#449, #450) — one PostgreSQL schema it holds an advisory lock on, with one
    writer (#452), a spool directory on its own disk, a static console with no build step and no
