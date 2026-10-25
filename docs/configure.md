@@ -99,6 +99,8 @@ database on a host.
 | `NETCORENOC_DATABASE_OWNER_PASSWORD_FILE` | *(unset)* | The owner's password, from a file, as for the runtime role |
 | `NETCORENOC_DB_RUNTIME_ROLE` | *(unset)* | For `db migrate` run as the owner: the role to grant the runtime privileges to (Compose: `netcorenoc_app`) |
 | `NETCORENOC_SECRET_KEY_FILE` | `<NETCORENOC_DATA_DIR>/secret.key` | The key that seals personal data and secrets in the database and keys the password hashes and the audit chain (ADR #453). Created owner-only (`0600`) on the first start; a file any user may read is refused. **Back it up apart from the database**: without it every sealed value and every password is unreadable |
+| `NETCORENOC_SECRETS_KEY_FILE` | `<NETCORENOC_DATA_DIR>/secrets.key` (the image: `/var/lib/netcorenoc-vault/secrets.key`, on a volume of its own) | The **second** key the NOC's device credentials are sealed under (ADR #455): a credential opens only with the database row, `secret.key` **and** this file. Created owner-only on the first start; a file any user may read is refused. Keep it **apart** from `secret.key` — in one directory, a copy of that directory opens every credential, and the Secrets screen says so. Back it up separately: without it every stored credential is lost (store them again) |
+| `NETCORENOC_NOC_CHECK_S` | `300` | How often, in seconds, the vault checks that each monitored credential's endpoint answers (the status light, ADR #457). Sixteen checks at once, 5 s each, never on the trap path; `0` turns scheduled checks off (a custodian can still press *Check now*) |
 
 The maintenance CLI (`python -m netcorenoc …`) reads the same variables and **refuses a schema
 that is not there** rather than creating it — an `audit verify` run against an empty schema would
@@ -140,6 +142,15 @@ for good: see `troubleshoot.md`, "The secret key".
 What PostgreSQL does with the data — durability, vacuum, replication, point-in-time recovery — is
 the server's configuration, not the appliance's. The bundled server's settings are in
 `docker-compose.yml` (`command:`), sized for 1 GiB and commented.
+
+### The secrets key (the NOC's vault)
+
+`secrets.key` (or `NETCORENOC_SECRETS_KEY_FILE`) is the second wall around the device credentials
+the NOC keeps — SSH, SNMP, API tokens (ADR #455). Each credential is sealed under a data key wrapped
+with this key, then sealed again under `secret.key`; both layers authenticate where the credential
+works, so editing a row's host makes it unreadable rather than redirecting it. The Docker image and
+the systemd unit put it in a directory of its own; mount it from a secret store if you have one.
+The two keys and the database are three separate backups: any two of them open nothing.
 
 ### A managed PostgreSQL (Supabase and others)
 

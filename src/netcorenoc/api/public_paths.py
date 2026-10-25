@@ -172,6 +172,13 @@ UNAUTHENTICATED_PATHS: frozenset[str] = frozenset(
         "/app/views/parts/email.js",
         "/app/views/parts/apiref.js",
         "/app/views/parts/scopeexamples.js",
+        # The NOC plane (ADRs #454-#458): the plane switch and the Secrets screen's modules.
+        "/app/plane.js",
+        "/app/views/secrets.js",
+        "/app/views/parts/secretform.js",
+        "/app/views/parts/stepup.js",
+        "/app/views/parts/secretdetail.js",
+        "/app/views/parts/nocgrants.js",
         "/login-bg.svg",
         # Vendored third-party assets, pinned by CHECKSUMS.txt.
         "/vendor/htm-3.1.1.module.js",

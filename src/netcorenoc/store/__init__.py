@@ -53,6 +53,8 @@ from netcorenoc.store.maintenance_windows import MaintenanceWindowMixin
 from netcorenoc.store.mw_compile import MaintenanceCompileMixin
 from netcorenoc.store.mw_ledger import MaintenanceLedgerMixin
 from netcorenoc.store.mw_reads import MaintenanceReadMixin
+from netcorenoc.store.noc_access import NocAccessMixin
+from netcorenoc.store.noc_vault import NocVaultMixin
 from netcorenoc.store.occurrences import OccurrenceMixin
 from netcorenoc.store.organizations import OrganizationMixin
 from netcorenoc.store.people import PeopleMixin
@@ -97,6 +99,10 @@ __all__ = [
 
 
 class Store(
+    # The NOC plane's credential vault and who may hold it (ADRs #455-#458). Plain `StoreBase`
+    # mixins that override nothing.
+    NocVaultMixin,
+    NocAccessMixin,
     AutonomyMixin,
     # v0.27.0: the league's decisions and pin, and pending proposals (ADRs #425, #428). Plain
     # `StoreBase` mixins that override nothing.

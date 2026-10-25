@@ -508,6 +508,13 @@ ROUTE_ORDER_BASELINE: list[tuple[str, str]] = [
     ("GET", "/app/views/parts/email.js"),
     ("GET", "/app/views/parts/apiref.js"),
     ("GET", "/app/views/parts/scopeexamples.js"),
+    # The NOC plane (ADRs #454-#458): the plane switch, the Secrets screen and its parts.
+    ("GET", "/app/plane.js"),
+    ("GET", "/app/views/secrets.js"),
+    ("GET", "/app/views/parts/secretform.js"),
+    ("GET", "/app/views/parts/stepup.js"),
+    ("GET", "/app/views/parts/secretdetail.js"),
+    ("GET", "/app/views/parts/nocgrants.js"),
     ("GET", "/vendor/preact-10.29.8.module.js"),
     ("GET", "/vendor/htm-3.1.1.module.js"),
     ("GET", "/style.css"),
@@ -635,6 +642,21 @@ ROUTE_ORDER_BASELINE: list[tuple[str, str]] = [
     ("POST", "/api/password-reset"),
     ("POST", "/api/password-reset/confirm"),
     ("GET", "/api/reference"),
+    # The NOC plane (ADRs #454-#458), appended: the vault, then who may hold it and the leases.
+    ("GET", "/api/noc/secrets"),
+    ("POST", "/api/noc/secrets"),
+    ("GET", "/api/noc/secrets/{secret_id}"),
+    ("POST", "/api/noc/secrets/{secret_id}"),
+    ("POST", "/api/noc/secrets/{secret_id}/delete"),
+    ("POST", "/api/noc/secrets/{secret_id}/reveal"),
+    ("POST", "/api/noc/secrets/{secret_id}/agents"),
+    ("POST", "/api/noc/secrets/{secret_id}/check"),
+    ("GET", "/api/noc/grants"),
+    ("POST", "/api/noc/grants"),
+    ("GET", "/api/noc/agent"),
+    ("POST", "/api/noc/secrets/{secret_id}/lease"),
+    ("POST", "/api/noc/leases/introspect"),
+    ("POST", "/api/noc/leases/{lease_id}/revoke"),
 ]
 
 
@@ -737,7 +759,11 @@ async def test_the_api_route_order_is_unchanged_by_the_ui_rewrite(store: Store) 
     # (ADRs #444-#446).
     # **v0.31.0: 117 -> 118.** `POST /api/users/{uid}/password-reset`, a concrete segment below
     # `{uid}` beside `…/role` and `…/profile`, which it cannot shadow (ADR #453).
-    assert len(live) == 118, (
+    # **Unreleased: 118 -> 132.** The NOC plane's fourteen, none able to shadow another: every one
+    # is under the new `/api/noc/` prefix, and below `/api/noc/secrets/{secret_id}` each sub-path is
+    # a concrete segment (`…/delete`, `…/reveal`, `…/agents`, `…/check`, `…/lease`); the two lease
+    # paths differ in length (`/introspect` against `/{lease_id}/revoke`) (ADRs #454-#458).
+    assert len(live) == 132, (
         f"the /api surface is {len(live)} pairs; v0.16.0 adds exactly five, v0.16.2 exactly one, "
         f"v0.16.3 exactly one, v0.16.5 exactly one — `POST /api/alarms/clear` — v0.18.0 exactly "
         f"one, `GET /api/correlation`, and v0.21.0 exactly thirteen for maintenance windows, "
@@ -1367,8 +1393,15 @@ def test_the_queue_put_on_the_hot_path_is_non_blocking() -> None:
 #: key: sealing, blind indexes, the password pepper), `store/sealing.py` (what is sealed, where),
 #: `store/privileges.py` (the runtime role's grants), `api/routes/users.py` (the account routes,
 #: split from `admin.py` with the ceiling check) and migration `0032_hardening.sql`.
-SRC_TREE_DIGEST = "01f0af16d2efe7e91f8817e0add40d6bc168c3f46b4e9033f42b35e483c9dc48"
-SRC_FILE_COUNT = 380
+#: **Then 380 -> 401.** Twenty-one added, none removed — the NOC plane (ADRs #454-#458):
+#: `crosscutting/secretbox.py` (the vault's second key and seal), `crosscutting/stepup.py`,
+#: `crosscutting/rbac/noc_map.py`, the `engine/noc/` domain (`__init__`, `kinds`, `health`,
+#: `probe`, `lease`), `store/noc_vault.py` and `store/noc_access.py`, migration
+#: `0033_noc_vault.sql`, `api/models_noc.py`, `api/noc_gate.py`, the `secrets` and `noc_access`
+#: routes, and six console modules (`plane`, `views/secrets`, `parts/secretform`, `stepup`,
+#: `secretdetail`, `nocgrants`).
+SRC_TREE_DIGEST = "c54a426395b589392e9370014c94fc97920c8b1db7248c8dffa89b6f59c0637b"
+SRC_FILE_COUNT = 401
 SRC_VERSION_FILE = "src/netcorenoc/__init__.py"
 
 

@@ -4,7 +4,18 @@ One static web UI, loaded directly by the browser: **no build step, no npm, no l
 bundle.** The files a browser fetches are the files on disk. That is a test
 (`tests/ui/test_build_step.py`), not an intention.
 
-The views come in three groups, plus the Overview and your account. **A view you
+The console has two **planes**, switched from the middle of the top bar (ADR #454):
+
+* **Broker** (phase 1) — receiving traps, correlating them into situations, training the models
+  that do it, and the inventory. Every screen below except Secrets.
+* **NOC** (phase 2) — working the situations that reach the operations centre, with people and AI
+  agents. Today one screen: **Secrets**, the credentials used to reach equipment.
+
+The sidebar shows the plane you are in; a link into a screen opens its plane, and the switch
+returns to the last screen you had open there. A principal who can reach no NOC screen (every
+viewer, today) sees no switch. The plane changes what is offered, never what is allowed.
+
+The Broker's views come in three groups, plus the Overview and your account. **A view you
 cannot use is not rendered** — a viewer sees no `Administer` group at all, rather than a group of
 disabled controls.
 
@@ -35,6 +46,29 @@ disabled controls.
 | **Settings** | Six tabs: **Models** (what decides links — the league's champion, chosen by the judge or pinned), **Autonomy** (four grades, the self-suspension trigger, every act and its verdict), **Site training** (the budget, start and stop), **SNMP** (which versions and communities the receiver accepts, and the SNMPv3 users), **Email** (the SMTP server recovery links go through) and **System** (every parameter, in three classes, with its precedence and its impact) |
 | **Quarantine** | Datagrams the parser refused. **Reading this list is audited** |
 | **Audit log** | The hash-chained record of every change, and its verification state |
+
+## NOC — Equipment access
+
+| View | The question it answers |
+|---|---|
+| **Secrets** | Which credentials reach which equipment, whether each endpoint answers, and who did what with them. A list a custodian scans in seconds — a status light (green answers, yellow intermittent or slow, red does not answer, grey not checked), the name, where it works, what it grants, whether agents may use it — and one credential opened below it: its facts, **Check now**, **Reveal…**, **Change…**, agent access, its leases and its own audit history. A second tab, **Custodians & agents**, is for admins |
+
+* **Only custodians see the vault**: every admin, and each editor an admin names under
+  *Custodians & agents*. Anyone else who opens Secrets is told why and shown nothing.
+* **A new credential** is a type (SSH with a password or a key, SFTP, SNMP v1/v2c or v3, API token,
+  SMTP, other), the access it grants on the device (view only, diagnostic, operator, root), where it
+  works (host, port, protocol version), and its fields. The fields are drawn from the server's own
+  catalogue, secret ones are password inputs, and none is ever pre-filled again.
+* **Revealing, changing, deleting, and letting agents use a credential** each open a step-up card:
+  your username and password again, and an authenticator code — the code field is shown disabled,
+  with the reason, until two-factor sign-in exists. A revealed credential is shown once, secret
+  fields masked until you press *Show*, and hidden again after thirty seconds. Switching agents
+  **off** never asks for a password: the off switch must always be reachable.
+* **The light is about the endpoint**: green means the host answered (an SSH greeting, an SMTP
+  banner, an open port), not that the password works — the panel says so beside it.
+* **Agents** are service tokens an admin named under *Custodians & agents*. They never see a secret:
+  they lease a credential a custodian switched agents on for, and each lease, use and end is in the
+  credential's history.
 
 **Your account** opens from your photo and name in the top bar: your photo, display name and
 recovery email, your password (and where two-factor sign-in stands), and what you can do, by

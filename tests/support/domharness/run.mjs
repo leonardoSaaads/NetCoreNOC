@@ -1365,6 +1365,47 @@ const scenarios = {
   async environment() {
     return { node: process.version, platform: process.platform, tz: process.env.TZ ?? null };
   },
+
+  /**
+   * **NOC → Secrets: a reveal is a step-up, and the step-up is the request** (ADR #456).
+   *
+   * Opens `params.sid`, presses Reveal…, types the username and password, submits, and reports
+   * what was sent — the step-up must ride in the reveal's own body and nowhere else — whether the
+   * authenticator field was offered, and what the screen shows afterwards (secret fields masked).
+   */
+  async reveal(params) {
+    const env = await boot(params);
+    env.navigate(`#/secrets/${params.sid}`);
+    await settle(env);
+    const detail = env.document.querySelector(".secret-detail");
+    if (!detail) throw new Error("no credential was opened");
+    const before = env.network.requests.length;
+    buttonIn(detail, "Reveal").dispatchEvent(new env.DomEvent("click"));
+    await settle(env);
+    const form = env.document.querySelector(".stepup");
+    if (!form) throw new Error("the step-up did not open");
+    const requestsBeforeSubmit = env.network.requests.length - before;
+    const inputs = form.querySelectorAll("input");
+    for (const [index, value] of [[0, params.username], [1, params.password]]) {
+      inputs[index].value = value;
+      inputs[index].dispatchEvent(new env.DomEvent("input"));
+      await settle(env);
+    }
+    // Preact sets `disabled` as an attribute here (the harness element has no such property).
+    const otpOffered = !(inputs[2].disabled === true || inputs[2].getAttribute("disabled") != null);
+    form.dispatchEvent(new env.DomEvent("submit"));
+    await settle(env);
+    const revealed = env.document.querySelector(".revealed");
+    return {
+      requestsBeforeSubmit,
+      otpOffered,
+      posts: env.network.requests.filter((r) => r.method === "POST")
+        .map((r) => ({ path: r.path, body: r.body })),
+      revealedText: revealed ? revealed.textContent : null,
+      dump: dumpTree(env.document.getElementById("root")).join("\n"),
+      proof: proofOf(env),
+    };
+  },
 };
 
 /**

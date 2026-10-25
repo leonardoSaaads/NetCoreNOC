@@ -248,6 +248,10 @@ class Settings:
     # (ADR #453), which the database server never sees.
     data_dir: str = "."
     secret_key_file: str = ""
+    # ADR #455: the second key a device credential is sealed under, kept apart from the first; and
+    # how often the vault checks that each credential's endpoint answers (0: never; ADR #457).
+    secrets_key_file: str = ""
+    noc_check_s: float = 300.0
     # `NETCORENOC_DB`, the SQLite file of v0.30.0 and earlier: set, it stops the start (ADR #452).
     legacy_db: str = ""
     trap_host: str = "0.0.0.0"  # nosec B104 - a trap destination must listen externally
@@ -317,6 +321,8 @@ class Settings:
             db_statement_cache=_count("DB_STATEMENT_CACHE", cls.db_statement_cache, 0, 100_000),
             data_dir=s("DATA_DIR", cls.data_dir),
             secret_key_file=s("SECRET_KEY_FILE", cls.secret_key_file),
+            secrets_key_file=s("SECRETS_KEY_FILE", cls.secrets_key_file),
+            noc_check_s=_non_negative("NOC_CHECK_S", cls.noc_check_s),
             legacy_db=s("DB", cls.legacy_db),
             trap_host=s("TRAP_HOST", cls.trap_host),
             trap_port=_port("TRAP_PORT", cls.trap_port, "UDP"),
@@ -353,6 +359,11 @@ class Settings:
     def secret_key_path(self) -> Path:
         """`NETCORENOC_SECRET_KEY_FILE`, or ``secret.key`` in `NETCORENOC_DATA_DIR` (ADR #453)."""
         return Path(self.secret_key_file or Path(self.data_dir) / "secret.key").resolve()
+
+    @property
+    def secrets_key_path(self) -> Path:
+        """`NETCORENOC_SECRETS_KEY_FILE`, or ``secrets.key`` in `NETCORENOC_DATA_DIR` (ADR #455)."""
+        return Path(self.secrets_key_file or Path(self.data_dir) / "secrets.key").resolve()
 
     @property
     def tls_enabled(self) -> bool:

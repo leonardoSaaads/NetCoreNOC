@@ -27,7 +27,7 @@ from typing import Any
 import uvicorn
 
 from netcorenoc.api import QuietServer, create_app
-from netcorenoc.crosscutting import administration, posture, shaping, vault
+from netcorenoc.crosscutting import administration, posture, secretbox, shaping, vault
 from netcorenoc.crosscutting.runtime import RuntimeConfig
 from netcorenoc.crosscutting.settings import (
     ENV_PREFIX,
@@ -38,6 +38,7 @@ from netcorenoc.crosscutting.settings import (
     redact_url,
 )
 from netcorenoc.crosscutting.supervisor import Supervisor as Supervisor
+from netcorenoc.engine.noc import probe
 from netcorenoc.engine.operate import intake, pipeline
 from netcorenoc.engine.operate.deadline import KPI_KEY, Kpi
 from netcorenoc.engine.operate.engine import Engine
@@ -186,6 +187,7 @@ async def run(settings: Settings) -> None:
             f"{ENV_PREFIX}DB and set {ENV_PREFIX}DATABASE_URL. See MIGRATION.md."
         )
     vault.install(settings.secret_key_path)
+    secretbox.install(settings.secrets_key_path, secret_key=settings.secret_key_path)  # ADR #455
     store = Store(
         settings.database_url,
         schema=settings.db_schema,
@@ -287,21 +289,18 @@ async def _serve(settings: Settings, store: Store) -> None:
     if minted is not None:
         administration.print_banner(minted, recovery=existing_users > 0)
 
-    # The host readings the health control draws (v0.16.5). Sampled by a supervised loop rather
-    # than on demand: CPU is a delta between two readings, and a series sampled only while somebody
-    # has the panel open would be a graph of when people looked at it. The spool's filesystem is
-    # the local storage that matters — the one that fills up during a storm — and the database's
-    # size is asked of the server (ADR #452).
+    # The host readings the health control draws (v0.16.5), sampled by a supervised loop: CPU is a
+    # delta between two readings, and a series sampled only while somebody has the panel open would
+    # be a graph of when people looked at it. The spool's filesystem is the storage that fills up
+    # during a storm; the database's size is asked of the server (ADR #452).
     resources = ResourceSampler(path=str(settings.spool_path.parent), store=store)
     await resources.measure_database()
     resources.sample()  # one reading now, so CPU has a baseline to difference the next one against
 
-    # **D2's startup self-check** (v0.21.0). Computed once, here, in the *running* appliance —
-    # against the `tzdata` this image actually has rather than the one the build machine had.
-    # `tests/api/test_timezones.py` asserts the curated list resolves on the build machine, and that
-    # is exactly the trap F131 records one layer up: a list validated where it was written and not
-    # where it runs. Silent on a healthy install; on an image with no time-zone database it is the
-    # one sentence that explains why every window is being refused.
+    # **D2's startup self-check** (v0.21.0), against the `tzdata` this image actually has rather
+    # than the build machine's (F131: a list validated where it was written, not where it runs).
+    # Silent on a healthy install; on an image with no time-zone database it is the one sentence
+    # that explains why every window is being refused.
     timezone_warnings = shaping.timezone_selfcheck()
     for warning in timezone_warnings:
         log.warning("%s", warning)
@@ -327,10 +326,8 @@ async def _serve(settings: Settings, store: Store) -> None:
             + (feed.warnings() if feed is not None else [])
             + engine.db_error_warnings()
             + engine.scorer_warning_list()
-            # v0.16.2 (DECISIONS #275). A situation nobody has touched for an hour while one of
-            # its alarms is still on. The sweep no longer resolves those — it used to, which was
-            # the defect this release is named for — so the operator is told instead, through the
-            # channel that already carries seven other degradations.
+            # v0.16.2 (DECISIONS #275): a situation nobody has touched for an hour while one of its
+            # alarms is still on. The sweep no longer resolves those, so the operator is told.
             + engine.stale_situation_warnings()
             # v0.9.0: shadow mode degrades loudly. A training failure, an unreadable floor policy
             # or a truncated sample all reach the operator through the channel that already exists.
@@ -412,6 +409,10 @@ async def _serve(settings: Settings, store: Store) -> None:
                 ),
             )
         ),
+        # ADR #457: the vault's reachability checks, off the ingest path and outside the lock.
+        asyncio.create_task(
+            supervisor.run("noc-checks", lambda: probe.check_loop(store, settings.noc_check_s))
+        ),
         asyncio.create_task(_serve_http(server, url)),
     ]
     try:
@@ -426,11 +427,9 @@ async def _serve(settings: Settings, store: Store) -> None:
         if feed is not None:
             await feed.stop()  # what is still on disk is classified at the next start
         # `return_exceptions=True` rather than suppressing `CancelledError` (F66). A task that ended
-        # in an **exception** rather than a cancellation — uvicorn failing to bind, for instance —
-        # has that exception stored, and `gather` re-raises it here. Suppressing only
-        # `CancelledError` therefore let it escape the cleanup and skip everything below: the
-        # bounded drain, the final maintenance pass, and the store close in `run()`. The exception
-        # still reaches the caller, from the `try` above, which is where it belongs.
+        # in an **exception** — uvicorn failing to bind — has it stored, and `gather` re-raises it
+        # here: suppressing only `CancelledError` let it skip the bounded drain, the final
+        # maintenance pass and the store close below. It still reaches the caller, from the `try`.
         await asyncio.gather(*tasks, return_exceptions=True)
         # Graceful shutdown (§A.5): drain the traps still queued, then a final maintenance pass
         # (flushes the profiler and learned state). The audit chain only advances on commit, so

@@ -227,6 +227,22 @@ run `db migrate` with the owner's URL and `NETCORENOC_DB_RUNTIME_ROLE` set to th
 or give the appliance `NETCORENOC_DATABASE_OWNER_URL`
 ([`configure.md`](configure.md#two-roles-one-owns-the-schema-the-appliances-owns-nothing)).
 
+### The secrets key (NOC → Secrets)
+
+**"a credential sealed with another secrets key"** on a reveal or a change — the appliance was given
+another `secrets.key` than the one the vault was written with (a new `netcorenoc-vault` volume, a
+restore onto a new host, a changed `NETCORENOC_SECRETS_KEY_FILE`). Restore the original file (your
+backup, `operate.md` §8) and restart. Nothing else is affected: the broker never reads the vault.
+
+**"a sealed credential failed authentication"** — the row no longer matches what it was sealed for:
+its host, port, kind, protocol version or access level was changed in the database rather than
+through the console. That is the seal doing its job; restore the row from a backup, or store the
+credential again.
+
+**The secrets key is lost for good.** The stored credentials cannot be recovered. As the schema owner,
+`DELETE FROM netcorenoc.noc_secret` (their checks and leases go with them), start with a new key, and
+store the credentials again; the audit history of the old ones stays.
+
 ### The secret key
 
 **"this database was sealed with secret key … and the key file holds key …"** — the appliance was

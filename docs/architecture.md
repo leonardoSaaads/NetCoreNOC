@@ -1,7 +1,8 @@
 # Architecture
 
-How the appliance is built, where code goes, and what the current code is the first third of. For
-specifications of things that do **not** exist yet, see [`plans/`](plans/).
+How the appliance is built, where code goes, and what the current code is the first third of — and,
+since ADR #454, the beginning of the second. For specifications of things that do **not** exist yet,
+see [`plans/`](plans/).
 
 ## One runtime identity
 
@@ -40,10 +41,10 @@ remember (decision #207).
 | Layer | Directory | Owns |
 |---|---|---|
 | **http** | `api/` — app, perimeter, context, models, and `api/routes/` | HTTP semantics, the security boundary, request and response shape. **No domain rule** |
-| **engine** | `engine/` — six subpackages, below | The domain: what a situation is, what links two alarms, what an entity is, what the root cause is |
+| **engine** | `engine/` — seven subpackages, below | The domain: what a situation is, what links two alarms, what an entity is, what the root cause is — and, since #454, what a device credential is and what an agent may hold |
 | **data** | `store/`, with `migrations/` beside it | One PostgreSQL writer connection under one asyncio lock, and a pool of readers. **SQL lives here and nowhere else** |
 | **ingest** | `ingest/` — `receiver`, `worker`, `process`, `spool`, `records`, `decoder`, `snmpconf`, `usm`, `ber`, `events`, `known_oids` | The wire: parse, allowlist, the SNMP policy and SNMPv3 security, quarantine, the trap vocabulary, the spool, and the processes they run in (#449, #450) |
-| **cross-cutting** | `crosscutting/` — `rbac/`, `shaping/`, `auth`, `audit`, `mail`, `runtime`, `logsetup`, `settings` | Identity, authorization, visibility, attribution, outgoing email, config, logging |
+| **cross-cutting** | `crosscutting/` — `rbac/`, `shaping/`, `auth`, `audit`, `mail`, `runtime`, `logsetup`, `settings`, `vault`, `secretbox`, `stepup` | Identity, authorization, visibility, attribution, outgoing email, config, logging, sealing at rest (#453, #455), step-up re-authentication (#456) |
 
 The package **root** holds four modules and no others: `__init__.py`, and the process entry surface
 `__main__.py`, `main.py` and `runner.py`. `python -m netcorenoc.main` is a public interface — the
@@ -68,11 +69,12 @@ violation it had sat recorded and unfixed for a release. Between v0.7.3 and v0.1
 and a filesystem that ignored it, so a new module landed in the right layer only if its author
 remembered to edit a dictionary in `tests/`.
 
-### The six domains inside `engine/`
+### The seven domains inside `engine/`
 
 46 modules were one layer called `engine`, which is a true description of all of them and a useful
 description of none. The split is by what the imports actually do, and the six form a **strict
-order with no cycles between them** (decision #208):
+order with no cycles between them** (decision #208); the seventh, `noc/`, stands beside them and
+imports none of them (#454):
 
 | Domain | Holds | Imports |
 |---|---|---|
@@ -82,6 +84,7 @@ order with no cycles between them** (decision #208):
 | `evaluation/` | shadow mode, the league's live shadow, the estimator, the judge, the folds, the promotion gate | `correlate`, `dataset`, `model` |
 | `report/` | the three deterministic CLI reports, compute and render | the four above; **nothing imports it but the CLI** |
 | `operate/` | the running appliance — `engine`, `engine_base`, `maintenance`, `gaps`, `scorer_lifecycle`, `league_loop`, `proposals`, `intake` (the spool's reader, #450), `deadline` and `pipeline` (the KPI and its record, #451) | the four above; nothing imports it but the entry points |
+| `noc/` | **phase 2, the NOC plane** (#454) — `kinds` (what a device credential is), `health` (its status light), `probe` (reachability checks), `lease` (what an agent holds instead of a secret) | **no other domain**: the broker does not know it exists, and it cannot reach the trap path |
 
 ## Where code goes
 
@@ -228,7 +231,7 @@ in a complex, dynamic ISP network — from the trap stream alone.
 
 Everything in this document, and everything you can run today, is phase 1.
 
-### Phase 2 — automated first response *(not built, not designed)*
+### Phase 2 — automated first response *(begun: the NOC plane and its credential vault)*
 
 Takes phase 1's output and acts as a **NOC level 1**: an AI plus a library of diagnostic and
 remediation scripts that **evolve and are scored over time**, trying the steps a human would try. If
@@ -239,9 +242,20 @@ situation already carries its own evidence and the configuration that formed it,
 attributed to a decision; and the promotion machinery already knows how to score a candidate against
 a pre-registered standard and refuse it — which is the same shape a script library needs.
 
-Two things would have to be decided first, and neither has been: where an action executes relative
-to the store lock (nothing on the ingest path, by the invariant above), and what a script's evidence
-of having worked actually is.
+Two things would have to be decided first. **The first has its answer** (ADR #454): an action
+never runs on the ingest path and never holds `store.lock` across network I/O — the vault's
+reachability checks are the first code to do network I/O to equipment, and they read on a reader,
+connect with nothing held, and take the lock only to record. **The second is still open**: what a
+script's evidence of having worked actually is.
+
+**What exists** (ADRs #454-#458): the console's **Broker | NOC** switch; the NOC's **Secrets**
+screen; a vault that seals each device credential twice, under two keys and two ciphers, bound to
+the host it works for; custodians, a step-up for every act on a secret, and a stated placeholder for
+the second factor; status lights from checks that never open the seal; and **leases** — what an AI
+agent holds instead of a credential. **What does not, yet**: anything that acts on a device with a
+lease (the executor), the MCP server agents will reach it through, and the script library. Their
+design and the review of the current API for agents are in
+[`plans/noc-phase2.md`](plans/noc-phase2.md).
 
 ### Phase 3 — case creation *(not built, not designed)*
 
@@ -253,8 +267,10 @@ commit `3ecf237` ([`record.md`](record.md) explains how to read it). It is not c
 live specification, because a contract written three phases ahead of its implementation is a guess,
 and the honest version of it is this paragraph.
 
-**Neither phase has a placeholder anywhere in the tree** — no empty modules, no stub routes, no
-disabled menu items. The shape absorbs them; it does not announce them.
+**No phase has a placeholder anywhere in the tree** — no empty modules, no stub routes, no disabled
+menu items. Phase 2 arrived the way this paragraph said it would: one group, one working screen,
+and nothing unbuilt announced. The one stated placeholder is a field, not a feature — the step-up's
+authenticator code, drawn disabled with its reason until two-factor sign-in exists (#456).
 
 ## The nine principles
 
@@ -264,7 +280,7 @@ disabled menu items. The shape absorbs them; it does not announce them.
 3. **Determinism and reproducibility.** The `eval/` gate is byte-identical.
 4. **Ingestion is sacred.** The trap path never gains a lock, an I/O, or per-packet latency.
 5. **Zero new runtime dependencies in the core.** Six since ADR #453 (`cryptography`, which seals
-   personal data and secrets at rest); five from v0.2.0.
+   personal data and secrets at rest); five from v0.2.0. The NOC's vault (#455) added none.
 6. **One runtime identity.** One appliance — the main process, its receiving process and its
    decoding process (#449, #450) — one PostgreSQL schema it holds an advisory lock on, with one
    writer (#452), a spool directory on its own disk, a static console with no build step and no

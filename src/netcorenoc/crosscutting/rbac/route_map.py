@@ -16,6 +16,7 @@ from __future__ import annotations
 
 from typing import Literal
 
+from netcorenoc.crosscutting.rbac.noc_map import NOC_ROUTE_PERMISSIONS, NOC_ROUTE_SCOPE
 from netcorenoc.crosscutting.rbac.tables import PERMISSIONS
 
 # Route (METHOD, templated path) -> required capability. THE authorization map.
@@ -63,9 +64,8 @@ ROUTE_PERMISSIONS: dict[tuple[str, str], str] = {
     # action — so it needs the single clear's capability; a clear is a fact about an alarm's
     # lifecycle, hence `/api/alarms` and not the correlation namespace.
     ("POST", "/api/alarms/clear"): "alarm.clear",
-    # v0.16.2: promotion WITHOUT judging. `PREREGISTRATION-0.16.2.md` §2.2 registers it as one of
-    # two distinct actions, and the other one is `POST …/feedback` with `verdict: confirm`, which
-    # already existed and already asserts.
+    # v0.16.2: promotion WITHOUT judging, one of two actions `PREREGISTRATION-0.16.2.md` §2.2
+    # registers; the other is `POST …/feedback` with `verdict: confirm`, which already asserts.
     ("POST", "/api/situations/{sid}/promote"): "situation.promote",
     ("GET", "/api/users"): "users.manage",
     ("POST", "/api/users"): "users.manage",
@@ -165,18 +165,18 @@ ROUTE_PERMISSIONS: dict[tuple[str, str], str] = {
     ("POST", "/api/search"): "search.write",
     ("POST", "/api/search/stop"): "search.write",
     ("GET", "/api/judge"): "model.read",
-    # v0.30.0: the receiver's SNMP policy (#444) and the SMTP server (#445), settings like the rest;
-    # the API reference beside the tokens it is for.
+    # v0.30.0: the SNMP policy (#444), the SMTP server (#445) and the API reference, settings.
     ("GET", "/api/reference"): "tokens.manage",
     ("GET", "/api/snmp"): "config.read",
     ("POST", "/api/snmp"): "config.write",
     ("GET", "/api/email"): "config.read",
     ("POST", "/api/email"): "config.write",
     ("POST", "/api/email/test"): "config.write",
+    **NOC_ROUTE_PERMISSIONS,  # the NOC plane's, with their own prose (`noc_map.py`, ADR #454)
 }
 
-# The only /api routes reachable without a resolved identity: signing in, and — v0.30.0, ADR #445 —
-# what the sign-in screen may offer and recovery by email, for a person who cannot sign in.
+# The only /api routes reachable without a resolved identity: signing in, what the sign-in screen
+# may offer, and recovery by email for a person who cannot sign in (v0.30.0, ADR #445).
 PUBLIC_ROUTES: frozenset[tuple[str, str]] = frozenset(
     {
         ("POST", "/api/login"),
@@ -390,6 +390,7 @@ ROUTE_SCOPE: dict[tuple[str, str], Literal["scoped", "unscoped", "admin_only"]] 
     ("GET", "/api/email"): "admin_only",
     ("POST", "/api/email"): "admin_only",
     ("POST", "/api/email/test"): "admin_only",
+    **NOC_ROUTE_SCOPE,
 }
 
 assert set(ROUTE_SCOPE) == set(ROUTE_PERMISSIONS), (

@@ -25,6 +25,7 @@ ACCOUNT, SITUATIONS, ALARMS, MONITOR = "Account", "Situations", "Alarms", "Monit
 ELEMENTS, CATALOGUE, MAINT, MODELS = "Network elements", "Trap catalogue", "Maintenance", "Models"
 ADMIN, ACCESS, AUDIT, SETTINGS = "People", "Access policy", "Audit", "Settings"
 PUBLIC = "Sign-in and recovery"
+VAULT, AGENTS = "NOC — Secrets", "NOC — Agents and leases"
 
 REFERENCE: dict[tuple[str, str], Entry] = {
     ("POST", "/api/login"): Entry(PUBLIC, "Sign in with a username and password (sets a cookie)"),
@@ -147,4 +148,18 @@ REFERENCE: dict[tuple[str, str], Entry] = {
     ("DELETE", "/api/catalogue/rules/{rule_id}"): Entry(CATALOGUE, "Withdraw a trap rule"),
     ("POST", "/api/catalogue/import"): Entry(CATALOGUE, "Import a trap list"),
     ("DELETE", "/api/catalogue/imported"): Entry(CATALOGUE, "Undo every imported rule"),
+    ("GET", "/api/noc/secrets"): Entry(VAULT, "The credential vault: metadata and status lights"),
+    ("POST", "/api/noc/secrets"): Entry(VAULT, "Store a device credential (custodians)"),
+    ("GET", "/api/noc/secrets/{secret_id}"): Entry(VAULT, "One credential, its checks and history"),
+    ("POST", "/api/noc/secrets/{secret_id}"): Entry(VAULT, "Change a credential (step-up)"),
+    ("POST", "/api/noc/secrets/{secret_id}/delete"): Entry(VAULT, "Delete a credential (step-up)"),
+    ("POST", "/api/noc/secrets/{secret_id}/reveal"): Entry(VAULT, "Show a credential (step-up)"),
+    ("POST", "/api/noc/secrets/{secret_id}/agents"): Entry(VAULT, "Switch agent access on or off"),
+    ("POST", "/api/noc/secrets/{secret_id}/check"): Entry(VAULT, "Check a credential's endpoint"),
+    ("GET", "/api/noc/grants"): Entry(VAULT, "Custodians and agents"),
+    ("POST", "/api/noc/grants"): Entry(VAULT, "Name or withdraw a custodian or an agent"),
+    ("GET", "/api/noc/agent"): Entry(AGENTS, "For an agent: credentials it may lease, its leases"),
+    ("POST", "/api/noc/secrets/{secret_id}/lease"): Entry(AGENTS, "Lease a credential (agents)"),
+    ("POST", "/api/noc/leases/introspect"): Entry(AGENTS, "Is a lease active, and for what"),
+    ("POST", "/api/noc/leases/{lease_id}/revoke"): Entry(AGENTS, "End a lease"),
 }
