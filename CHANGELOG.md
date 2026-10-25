@@ -18,15 +18,49 @@ sets — a target and a limit from its own arrival — through a storm. The stor
 **PostgreSQL** (#452), so the console's reads no longer queue behind the engine's batch, and a copy
 of that database gives away no secret, no password and no way to rewrite history (#453): personal
 data and secrets are sealed with a key the database never sees, the appliance's database role owns
-nothing, and administrators reset passwords without ever reading one. The schema is PostgreSQL's
-baseline, **migration 0031**, which includes SQLite's 0030, and **0032** (schema 32). See
+nothing, and administrators reset passwords without ever reading one. Phase 2 begins: the console
+gains a **NOC** plane beside the Broker, and the NOC a credential vault for people and AI agents
+(#454-#458). The schema is PostgreSQL's baseline, **migration 0031**, which includes SQLite's 0030,
+**0032** and **0033** (schema 33). See
 [`MIGRATION.md`](MIGRATION.md): the SQLite file is **imported once**, before the first start; the
 appliance is three processes and a spool on disk, and a container needs two CPUs. No grouping
 decision changes (`make eval` is byte-identical).
 
 ⚠ **Breaking:** `NETCORENOC_DB` is removed. Set, it stops the appliance and names the command that
 imports the file. Backups are `pg_dump` archives — and **the secret key file** (`secret.key` in the
-data directory), without which sealed values and every password are unreadable (#453).
+data directory), without which sealed values and every password are unreadable (#453) — and **the
+secrets key file** (`secrets.key`; the image keeps it on a volume of its own), without which every
+stored device credential is unreadable (#455).
+
+### Added — phase 2 begins: the NOC plane and its credential vault (#454-#458)
+
+- **Broker | NOC** in the top bar. The Broker is everything phase 1 does — traps, situations,
+  models, inventory; the NOC is phase 2, working the situations that reach the operations centre.
+  The sidebar shows one plane at a time; the plane follows the screen; nothing is allowed or refused
+  by it (#454).
+- **NOC → Secrets**, a vault for the credentials people and AI agents use to reach equipment: SSH
+  (password or key), SFTP, SNMP v1/v2c and v3, API tokens, SMTP, other; each with the access it
+  grants (view only, diagnostic, operator, root), its host, port and protocol version. Sealed twice
+  — ChaCha20-Poly1305 under a data key wrapped by a **second key file** (`NETCORENOC_SECRETS_KEY_FILE`),
+  then AES-256-GCM under the secret key — and bound to where it works, so a rewritten host does not
+  open (#455). Migration **0033** (schema 33).
+- **Custodians and step-up**: only admins and the editors an admin names may open the vault, as
+  people, never tokens; revealing, changing, deleting and letting agents use a credential each ask
+  for the username and password again. The authenticator-code field is a stated placeholder until
+  two-factor sign-in exists (#456). Ten audit actions (`noc.*`) record who stored, read, changed and
+  deleted a credential and which agent leased and used it.
+- **Status lights**: green, yellow (intermittent or slow), red, grey, from checks of each endpoint
+  every `NETCORENOC_NOC_CHECK_S` (300 s) that never open the seal — and say so (#457).
+- **Leases for agents**: agent access is off per credential until a custodian switches it on; a
+  service token an admin named an agent then gets a signed, 15-minute lease bound to itself and the
+  credential, carrying no secret, revocable, introspectable (#458).
+- `docs/plans/noc-phase2.md`: the API reviewed for AI agents (MCP), and the executor and MCP server
+  to come.
+
+### Fixed
+
+- A hovered primary button lost its fill and read as an empty box, in both themes
+  (`button:hover` outranked `button.primary`).
 
 ### Security (#453)
 

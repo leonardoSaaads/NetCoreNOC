@@ -36,6 +36,7 @@ development folder explains itself: [`tests/`](../tests/README.md), [`eval/`](..
 | [`ROADMAP.md`](ROADMAP.md) | Open items |
 | [`plans/releases.md`](plans/releases.md) | What each release is — the source of truth for release claims |
 | [`plans/correlation-kpi-audit.md`](plans/correlation-kpi-audit.md) | Audit of trap → situation classification against the 3 × 20 s KPIs, with a remediation plan |
+| [`plans/noc-phase2.md`](plans/noc-phase2.md) | Phase 2, the NOC plane: what is built, the API reviewed for AI agents (MCP), the executor and the MCP server to come, open questions |
 | [`analysis/`](analysis/) | Pre-registered analysis plans: written before the data, hash-guarded, never edited |
 | [`record.md`](record.md) | Where removed documents went, and how to read an old citation |
 

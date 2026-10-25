@@ -190,6 +190,18 @@ Elsewhere it is `secret.key` in `NETCORENOC_DATA_DIR`, or `NETCORENOC_SECRET_KEY
 onto a new host means restoring this file before the first start: the appliance refuses a key that
 is not the one that sealed its database.
 
+**And the secrets key, apart from both** (ADR #455). The NOC's device credentials are sealed under
+it as well as under `secret.key`; without it they cannot be read, and have to be stored again. Keep
+it somewhere neither the dumps nor the `secret.key` copy are:
+
+```sh
+docker compose cp netcorenoc:/var/lib/netcorenoc-vault/secrets.key ./netcorenoc-secrets.key
+chmod 600 ./netcorenoc-secrets.key    # a third place: not beside the dumps, not beside secret.key
+```
+
+Elsewhere it is `NETCORENOC_SECRETS_KEY_FILE` (default `secrets.key` in the data directory; the
+systemd unit's `/var/lib/netcorenoc-vault/`).
+
 **Restore** replaces the schema: stop the appliance, drop the schema, restore the dump, start.
 
 ```sh

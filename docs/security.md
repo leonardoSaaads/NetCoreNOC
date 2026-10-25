@@ -63,6 +63,10 @@ it, and nothing else.
 | **editor** | viewer + confirm/split feedback, rename devices and classes, close or acknowledge situations |
 | **admin** | editor + manage users and tokens, change runtime config, read quarantine, read/export/prune the audit log |
 
+The NOC's vault adds a narrower gate on top of the roles: **custodians** (every admin, and the
+editors an admin names) and **agents** (service tokens an admin names). See
+[the credential vault](#the-credential-vault-noc--secrets).
+
 Governance is **optional and off by default**. With no policy stored, the built-in permissions and
 full visibility are what you get.
 
@@ -177,6 +181,43 @@ that an editor can always stop it. Turning a grade on is admin-only (#412).
   absolute one. A stolen cookie expires on the absolute clock whatever the holder does.
 * Service tokens are per-identity and revocable. The value is shown once and stored hashed.
 
+## The credential vault (NOC → Secrets)
+
+Phase 2 keeps the credentials people and AI agents use to reach equipment — SSH passwords and keys,
+SFTP, SNMP communities and SNMPv3 users, API tokens, SMTP (ADRs #454-#458). The rules, each a test
+in `tests/api/test_noc_vault.py` or `tests/security/test_secretbox.py`:
+
+* **Sealed twice, under two keys.** A credential's fields are encrypted with a fresh data key
+  (ChaCha20-Poly1305), the data key is wrapped under the **secrets key** (AES-256-GCM,
+  `NETCORENOC_SECRETS_KEY_FILE`), and the whole is sealed again under the **secret key**
+  (AES-256-GCM). Both layers authenticate where the credential works — kind, host, port, protocol
+  version, access level — so a database writer who rewrites a host gets a credential that does not
+  open, not one that is sent to their machine. The database row, `secret.key` and `secrets.key`
+  are needed together; any two open nothing.
+* **Custodians only.** The vault opens to a person — never a service token, whatever its role —
+  who is an admin or an editor an admin named a custodian. Everyone else is told why and shown
+  nothing. No list or detail carries a secret; lists never read the sealed column.
+* **Step-up for everything that matters.** Reading a credential, changing or deleting one, letting
+  agents use one and naming a custodian or an agent each ask again for the person's username and
+  password, in the same request. A wrong answer is audited and counts against the sign-in throttle.
+  **Two-factor authentication is a placeholder**: the field is there, disabled, and every audit row
+  records `second_factor: not-enrolled` until TOTP enrolment ships — no code is "checked" today.
+* **Agents get leases, never secrets.** Agent access is off per credential until a custodian
+  switches it on. A service token an admin named an agent may then lease a credential: a signed
+  (HS256), short-lived (15 min, at most 1 h) token bound to that agent and that credential, holding
+  no secret. Changing the credential, switching agents off or withdrawing the agent ends its leases.
+  Nothing yet executes on a device with a lease; that is the next step, and the secret will stay on
+  the appliance's side when it does (`docs/plans/noc-phase2.md`).
+* **Everything is in the audit log**: who stored, changed, deleted or read a credential, who switched
+  agents on or off, who named whom, and which agent leased or used which credential — never a value.
+* **The status light describes the endpoint.** Green means the host answered the protocol (an SSH
+  greeting, an SMTP banner, an open port); it does not mean the password works, and the screen says
+  so. Checks send nothing and never open the seal.
+
+What it does **not** protect against, stated: a person with the appliance's host (its memory, both
+key files) can read every credential; a custodian is trusted with the whole vault (it is not scoped
+by visibility); and a revealed credential is on that person's screen and clipboard.
+
 ## The audit log
 
 Append-only and **hash-chained**: each row commits to its predecessor, so a deletion or an edit
@@ -242,6 +283,8 @@ snapshot, a read-only SQL injection:
 |---|---|---|
 | A person's recovery email, display name, photo | AES-256-GCM, sealed to its column | unreadable; the email's lookup is a keyed digest |
 | The SMTP password, SNMPv3 keys, the community HMAC key | AES-256-GCM | unreadable |
+| The NOC's device credentials (SSH, SNMP, API tokens…) | ChaCha20-Poly1305 under a data key wrapped by the **secrets key**, then AES-256-GCM, both bound to host and port | unreadable — and needs `secrets.key` as well |
+| Lease ids | SHA-256 | not reversible; a lease holds no secret anyway |
 | Passwords | scrypt over an HMAC with the key | not testable offline, guess by guess |
 | Session ids, reset links, token values | SHA-256 of 256 random bits | not reversible |
 | The audit log | hash chain + HMAC seal | readable; not rewritable without detection |

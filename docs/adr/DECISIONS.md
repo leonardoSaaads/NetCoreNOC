@@ -6307,3 +6307,95 @@ From this release an entry is about six lines: decision, reason, release.*
 - **Reason**: the audit the owner asked for after #452 — privilege escalation, database errors, and
   what a stolen database would give away — found the runtime role owning its schema, secrets in
   `meta` readable as text, an unkeyed audit chain and the escalations above.
+
+## 454. Phase 2 begins: the console has two planes, the Broker and the NOC (unreleased)
+
+- **Decision**: the product is split, in the console and in the tree, into the **Broker** (phase 1 —
+  traps in, situations out, the models that decide, the inventory) and the **NOC** (phase 2 —
+  working the situations that reach the operations centre, with people and AI agents). A segmented
+  `Broker | NOC` switch sits in the top bar (`ui/app/plane.js`); a registry entry carries
+  `plane: "noc"`, and the sidebar shows one plane's groups at a time. The plane is the route's, so a
+  link lands in its plane and back crosses planes; the switch returns to the last screen seen in a
+  plane, held in memory (no browser storage, F2). It narrows what is **offered**, never what is
+  **authorised**: `router.resolve` reads no plane. A principal who can reach no NOC screen sees no
+  switch. Server side the NOC is a seventh engine domain, `engine/noc/`, importing `crosscutting`
+  and the store and nothing in the other six — the broker does not know it exists — with its routes
+  in `api/routes/secrets.py` and `api/routes/noc_access.py` and its route map in
+  `crosscutting/rbac/noc_map.py`, folded into `ROUTE_PERMISSIONS`/`ROUTE_SCOPE` by `route_map.py`.
+- **Reason**: the owner opened phase 2 and asked for the distinction in the header first. The rule
+  that kept phase 2 out of the tree (`architecture.md`, "no placeholder anywhere") is kept as it
+  was meant: the NOC arrives as one group with one working screen, and nothing unbuilt is
+  announced. Phase 2's first open question — where an action executes relative to the store lock —
+  gets its first answer here: never on the ingest path, never holding `store.lock` across network
+  I/O (`engine/noc/probe.py`).
+
+## 455. Device credentials are sealed twice, under two keys and two ciphers, and bound to where they work (unreleased)
+
+- **Decision** (`crosscutting/secretbox.py`): a credential's fields are JSON, encrypted with a fresh
+  256-bit data key under **ChaCha20-Poly1305**; the data key is wrapped with **AES-256-GCM** under a
+  subkey of a second key file, the **secrets key** (`NETCORENOC_SECRETS_KEY_FILE`, default
+  `<data dir>/secrets.key`, created `0600`, a world-readable file refused); the whole envelope is
+  sealed again with **AES-256-GCM** under a subkey of `secret.key` (`vault.Vault.wrap`). Both
+  layers authenticate the credential's **binding** — reference, kind, host, port, protocol version,
+  access level (`engine/noc/kinds.py::binding`) — so a row whose host is rewritten does not open,
+  and changing any of them is a re-seal under step-up. Each key's identifier is in the token
+  (`ncs1:…`), so the wrong key says so. Lists never select the sealed column. Keys in one directory
+  are allowed and said (principle 1): the Secrets screen tells custodians to mount the secrets key
+  elsewhere. The kinds (SSH password or key, SFTP, SNMP v1/v2c and v3, API token, SMTP, other)
+  and four access levels (view only, diagnostic, operator, root) are one catalogue the form and the
+  validation both read.
+- **Reason**: the owner asked for "a sealed box, at least two layers, very strong" for root
+  credentials of backbone equipment. Two independent keys mean a stolen database plus one key file
+  opens nothing; two cipher families mean one primitive's failure is not enough; the binding closes
+  the attack a database writer actually has — redirecting a password to their own host. No new
+  dependency: `cryptography` is already core (#453).
+
+## 456. Only custodians hold the vault, only people step up, and the second factor is a stated placeholder (unreleased)
+
+- **Decision**: capabilities `secrets.read`, `secrets.write`, `secrets.reveal` (editor ceiling),
+  `secrets.lease` (viewer ceiling) and `secrets.grants` (admin). **A capability is necessary and
+  never sufficient**: every vault route also requires a *custodian* — a person signed in (never a
+  token, whatever its role) who is an admin or an editor an admin named (`noc_grant`,
+  `api/noc_gate.py`). Reading a secret, changing or deleting one, switching agents on, and naming a
+  custodian or an agent take a **step-up** in the same request: username (must be the session's
+  own), password, and an authenticator code (`crosscutting/stepup.py`). Switching agents off and
+  withdrawing a grant never do — the off switch must always be reachable. A failed step-up is
+  audited under the attempted act with `denied` and counts against the sign-in throttle. Creating
+  a credential needs custody but no step-up, as the owner specified. The second factor answers
+  `not-enrolled` until TOTP enrolment exists; the field is drawn disabled with the sentence why,
+  and every audit row records the answer. Vault routes are `unscoped`: the custodian list is their
+  boundary, not visibility scoping (`noc_map.py`). Ten audit actions, `noc.*`.
+- **Reason**: "only admins and well-selected editors", "password and 2FA to view or modify", "the
+  user who created, consulted, and the bot that used the token" in the log. Accepting any six digits
+  would be a control that controls nothing, so the placeholder says what it is.
+
+## 457. A credential's status light is its endpoint's, checked without opening the seal (unreleased)
+
+- **Decision** (`engine/noc/health.py`, `engine/noc/probe.py`): green — the last check answered
+  the protocol and so did every one of the last five; yellow — one of them did not (intermittent)
+  or the answer took 2 s or more; red — the last check did not answer; grey — never checked, checks
+  off, or a UDP kind (SNMP) that cannot be checked without the credential. A check connects and,
+  for SSH/SFTP and SMTP, reads the greeting (`SSH-`, `220`); it sends nothing and never decrypts.
+  A supervised loop checks monitored credentials every `NETCORENOC_NOC_CHECK_S` (300 s; 0 off),
+  sixteen at once, 5 s each, reading on a reader and taking the lock only to record; a custodian
+  can "Check now". Fifty checks are kept per credential.
+- **Reason**: the owner's example — a host that lost its connection shows red; intermittence
+  yellow. Proving the password itself means logging in with it, which is the executor's job and
+  does not exist yet, so green is stated as "the endpoint answers", beside the light, not implied.
+
+## 458. Agents get a signed, short, bound lease — never a secret (unreleased)
+
+- **Decision** (`engine/noc/lease.py`, `api/routes/noc_access.py`): agent access is off per
+  credential until a custodian switches it on (stepped up). A service token an admin named an
+  *agent* may then ask for a lease: a JWT signed HS256 under a subkey of the secrets key, carrying
+  the credential's id, reference and version, host, port, kind, access level, the agent's row
+  identity, a random id, and 15 minutes of life (60 s–1 h). It carries no secret. The header is
+  compared whole (no `none`, no algorithm confusion). The store keeps only a SHA-256 of the lease
+  id; changing the credential, switching agents off or withdrawing the agent ends its leases.
+  `POST /api/noc/leases/introspect` answers RFC 7662's question to the lease's own agent or a
+  custodian (inactive is `200 {"active": false}` with a reason), and every active answer is audited
+  as a **use**; at most twenty live leases per agent.
+- **Reason**: "agents must never have the passwords, only tokens, like JWT". A lease bound to the
+  agent's own bearer token is useless if copied out of a model's context; the secret stays on the
+  appliance's side for the executor — the next step, `docs/plans/noc-phase2.md` — to use on the
+  agent's behalf.

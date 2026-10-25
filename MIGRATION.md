@@ -80,6 +80,22 @@ Two rules that have held since v0.1.0 and are not going to change:
 
 *(This table has no rows for v0.17.0 or v0.18.0: neither release wrote one, and inventing upgrade notes for a release somebody else built would be describing an upgrade nobody tested.)*
 
+## Unreleased — the NOC plane and its credential vault (#454-#458)
+
+Nothing to do to upgrade: migration **0033** adds the vault's four tables and runs by itself. Then:
+
+* **A second key file** is created on the first start: `secrets.key`
+  (`NETCORENOC_SECRETS_KEY_FILE`). The Docker image keeps it at
+  `/var/lib/netcorenoc-vault/secrets.key` on a **new volume, `netcorenoc-vault`**, and the
+  systemd unit in `/var/lib/netcorenoc-vault/` — a directory of its own, so a copy of the data
+  directory does not carry both keys. **Back it up apart** from `secret.key` and from the database:
+  without it every stored device credential is unreadable, and has to be stored again.
+* **The NOC is empty until you use it**: no credential is stored, no editor is a custodian, no
+  token is an agent, and agent access is off on every credential you store.
+* **Checks reach out**: every five minutes the appliance connects to each stored credential's host
+  and port to read its greeting (SSH, SMTP) or see it open. `NETCORENOC_NOC_CHECK_S=0` stops that;
+  a device that logs every connection will log these.
+
 ## Unreleased — PostgreSQL replaces SQLite: import once
 
 **The one upgrade that is not "install and start".** The appliance keeps its data in **PostgreSQL
