@@ -34,11 +34,16 @@ FROM python:3.12.8-slim
 RUN apt-get update \
     && apt-get install --no-install-recommends --yes tzdata \
     && rm -rf /var/lib/apt/lists/*
-RUN useradd --uid 10001 --create-home --shell /usr/sbin/nologin netcorenoc
+# ADR #455: the secrets key, the second key a device credential is sealed under, lives in a
+# directory of its own — mounted from a volume of its own by docker-compose.yml — so a copy of the
+# data volume (the spool and `secret.key`) does not carry it too.
+RUN useradd --uid 10001 --create-home --shell /usr/sbin/nologin netcorenoc \
+    && install -d -o netcorenoc -g netcorenoc -m 0700 /var/lib/netcorenoc-vault
 COPY --from=build /install /usr/local
 USER netcorenoc
 WORKDIR /home/netcorenoc
 ENV NETCORENOC_DATA_DIR=/home/netcorenoc \
+    NETCORENOC_SECRETS_KEY_FILE=/var/lib/netcorenoc-vault/secrets.key \
     PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1
 # SNMP trap listener (UDP) and web UI/API.

@@ -7,9 +7,10 @@
 #   * `netcorenoc` — the appliance the Dockerfile builds: the trap receiver, the correlator and
 #     the console, hardened (read-only rootfs, every capability dropped but one, no privilege
 #     escalation, tmpfs /tmp). Its own volume holds the trap spool and the secret key that seals
-#     personal data and secrets in the database. It connects as `netcorenoc_app`, a role that owns
-#     nothing: it may read and write rows, and may not alter, drop or truncate a table, disable a
-#     trigger, or delete an audit row;
+#     personal data and secrets in the database; a second volume holds the secrets key the NOC's
+#     device credentials are also sealed under (ADR #455). It connects as `netcorenoc_app`, a role
+#     that owns nothing: it may read and write rows, and may not alter, drop or truncate a table,
+#     disable a trigger, or delete an audit row;
 #   * `db-migrate` — runs once before it, as the schema's owner `netcorenoc`: creates and migrates
 #     the schema and grants `netcorenoc_app` its privileges. Only it holds the owner's password;
 #   * `postgres` — the database, on an internal network with no published port, its data on a
@@ -267,6 +268,7 @@ services:
       - /tmp                              # ...with a writable tmpfs for scratch...
     volumes:
       - netcorenoc-data:/home/netcorenoc  # ...the trap spool and the secret key on a volume...
+      - netcorenoc-vault:/var/lib/netcorenoc-vault  # ...the secrets key on another (ADR #455)...
       - netcorenoc-secrets:/run/netcorenoc-secrets:ro  # ...and the database password, read-only.
     cap_drop:
       - ALL
@@ -364,6 +366,7 @@ networks:
     internal: true
 
 volumes:
-  netcorenoc-data:      # the trap spool
+  netcorenoc-data:      # the trap spool and secret.key
+  netcorenoc-vault:     # secrets.key, the device credentials' second key: back it up apart
   netcorenoc-pgdata:    # the database
   netcorenoc-secrets:   # the generated database passwords

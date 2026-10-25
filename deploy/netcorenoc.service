@@ -28,8 +28,11 @@ Type=exec
 # Run as an unprivileged, system-allocated user with no home and no shell. DynamicUser gives a
 # fresh uid/gid per start and, with StateDirectory, an owned /var/lib/netcorenoc (the trap spool).
 DynamicUser=true
-StateDirectory=netcorenoc
+StateDirectory=netcorenoc netcorenoc-vault
 Environment=NETCORENOC_DATA_DIR=/var/lib/netcorenoc
+# ADR #455: the secrets key the NOC's device credentials are also sealed under, in a directory of
+# its own so a copy of /var/lib/netcorenoc does not carry it. Back each up apart from the other.
+Environment=NETCORENOC_SECRETS_KEY_FILE=/var/lib/netcorenoc-vault/secrets.key
 Environment=NETCORENOC_DATABASE_URL=postgresql://netcorenoc@localhost:5432/netcorenoc?sslmode=prefer
 LoadCredential=db_password:/etc/netcorenoc/db_password
 Environment=NETCORENOC_DATABASE_PASSWORD_FILE=%d/db_password
