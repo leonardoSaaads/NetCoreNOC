@@ -53,10 +53,9 @@ BOOTSTRAP_ALLOWED = frozenset(
     {("POST", "/api/logout"), ("GET", "/api/me"), ("POST", "/api/password")}
 )
 # Presentation layer for the audited-denied set: each capability in
-# ``rbac.AUDITED_DENIED_PERMISSIONS`` (the single source) maps to the representative catalog
-# action logged on a denied (403) attempt. The keys must exactly equal that set — asserted at
-# import (below) and by ``tests/security/test_rbac.py::test_f8_audited_denied_single_source`` so the
-# two tables can never drift (F8).
+# ``rbac.AUDITED_DENIED_PERMISSIONS`` (the single source) maps to the catalog action logged on a
+# denied (403) attempt. The keys equal that set — asserted below and by
+# ``tests/security/test_rbac.py::test_f8_audited_denied_single_source`` (F8).
 DENIED_ACTION = {
     "quarantine.read": "quarantine.read",
     "audit.read": "audit.read",
@@ -66,16 +65,18 @@ DENIED_ACTION = {
     "tokens.manage": "token.create",
     "config.read": "config.change",  # a denied config *access* is logged under the config action
     "config.write": "config.change",
-    # v0.6.0 (F21): a denied attempt to retune or preview the correlation formula is an attempted
-    # system-wide logic change and is recorded under the action it tried to perform.
+    # v0.6.0 (F21): an attempted system-wide logic change, under the action it tried to perform.
     "scorer.preview": "scorer.preview",
     "scorer.write": "scorer.config.update",
-    # v0.7.0 (F27): a denied attempt to read or rewrite the perimeter is an attempted privilege
-    # change, recorded under the policy action it tried to perform.
+    # v0.7.0 (F27): an attempted privilege change, under the policy action it tried to perform.
     "rbac.read": "rbac.policy.update",
     "rbac.write": "rbac.policy.update",
     "scope.read": "scope.policy.update",
     "scope.write": "scope.policy.update",
+    "secrets.read": "noc.secret.read",
+    "secrets.write": "noc.secret.update",
+    "secrets.reveal": "noc.secret.reveal",
+    "secrets.grants": "noc.grant.change",
 }
 # Fail fast at import if the presentation mapping drifts from the authorization source of truth.
 assert set(DENIED_ACTION) == set(rbac.AUDITED_DENIED_PERMISSIONS), (

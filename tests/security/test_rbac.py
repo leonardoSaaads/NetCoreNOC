@@ -442,6 +442,15 @@ def test_every_capability_names_the_role_it_was_designed_for() -> None:
         # its own capability so a deployment can grant the form without the bulk path (ADR #385).
         "catalogue.write": "editor",
         "catalogue.import": "editor",
+        # The NOC's credential vault (ADRs #454-#458). The editor ceiling makes a custodian editor
+        # POSSIBLE; every vault route also requires an admin to have named that editor, and a
+        # step-up for anything touching a secret — so none of these grants every editor anything.
+        # Leasing is viewer because an agent token may be read-only; the agent grant is the gate.
+        "secrets.read": "editor",
+        "secrets.write": "editor",
+        "secrets.reveal": "editor",
+        "secrets.lease": "viewer",
+        "secrets.grants": "admin",
     }, (
         "the capability table changed. Every derived check — role_allows, the resolver, the "
         "route table, the authorization matrix — reads this dict and will agree with whatever it "

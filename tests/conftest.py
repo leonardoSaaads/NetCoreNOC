@@ -6,7 +6,7 @@ from pathlib import Path
 import pytest
 from hypothesis import settings
 
-from netcorenoc.crosscutting import auth, vault
+from netcorenoc.crosscutting import auth, secretbox, vault
 from netcorenoc.store import Store
 
 import paths
@@ -19,6 +19,10 @@ FIXTURES = paths.FIXTURES
 TEST_KEY = b"netcorenoc test secret key 32 b!"
 TEST_VAULT = vault.Vault.from_key(TEST_KEY)
 vault.configure(TEST_VAULT)
+# ADR #455: and one fixed secrets key, the second key a device credential is sealed under.
+TEST_SECRETS_KEY = b"netcorenoc test secrets key 32b!"
+TEST_BOX = secretbox.SecretBox.from_key(TEST_SECRETS_KEY)
+secretbox.configure(TEST_BOX)
 
 # --- the Hypothesis profile (v0.16.2, DECISIONS #279) --------------------------------------
 #
@@ -57,12 +61,23 @@ def _secret_key_file(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         vault.configure(TEST_VAULT)
         return TEST_VAULT
 
+    def install_box(_path: Path, *, secret_key: Path) -> secretbox.SecretBox:
+        secretbox.configure(TEST_BOX)
+        return TEST_BOX
+
     path = tmp_path / "secret.key"
     path.write_text(base64.b64encode(TEST_KEY).decode("ascii") + "\n")
     path.chmod(0o600)
     monkeypatch.setenv("NETCORENOC_SECRET_KEY_FILE", str(path))
     monkeypatch.setattr(vault, "install", install)
     vault.configure(TEST_VAULT)
+    box_path = tmp_path / "keys" / "secrets.key"
+    box_path.parent.mkdir()
+    box_path.write_text(base64.b64encode(TEST_SECRETS_KEY).decode("ascii") + "\n")
+    box_path.chmod(0o600)
+    monkeypatch.setenv("NETCORENOC_SECRETS_KEY_FILE", str(box_path))
+    monkeypatch.setattr(secretbox, "install", install_box)
+    secretbox.configure(TEST_BOX)
 
 
 @pytest.fixture(autouse=True)

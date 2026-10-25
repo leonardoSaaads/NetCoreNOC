@@ -211,6 +211,14 @@ _UI_MODULES = (
     "app/views/parts/email.js",
     "app/views/parts/apiref.js",
     "app/views/parts/scopeexamples.js",
+    # The NOC plane (ADRs #454-#458): the top bar's Broker | NOC switch, the Secrets screen, and
+    # the parts it composes — the credential form, the step-up, one credential, the custodians.
+    "app/plane.js",
+    "app/views/secrets.js",
+    "app/views/parts/secretform.js",
+    "app/views/parts/stepup.js",
+    "app/views/parts/secretdetail.js",
+    "app/views/parts/nocgrants.js",
 )
 
 _VENDOR_ASSETS = (

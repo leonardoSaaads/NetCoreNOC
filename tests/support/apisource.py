@@ -39,6 +39,7 @@ MODULE_ORDER: tuple[str, ...] = (
     "models_decider.py",  # v0.26.0: the decider, autonomy and search request models
     "models_restructure.py",  # v0.29.0: move, merge, split and the answer to a proposal
     "models_settings.py",  # v0.30.0: the SNMP receiver, outgoing email, recovery by email
+    "models_noc.py",  # the NOC plane: the vault, custodians and agents, leases (ADR #454)
     "public_paths.py",  # v0.26.0: the unauthenticated-path allowlist, off `declare.py`
     "reference.py",  # v0.30.0: one sentence per route, for the API reference
     "shipped_view.py",  # v0.26.0: the shipped model as the console sees it, off `routes/decider.py`
@@ -54,6 +55,7 @@ MODULE_ORDER: tuple[str, ...] = (
     # `routes/events.py` both publish and both used to assemble for themselves. It sits
     # before `app.py` because it is a helper the route modules import, not a registration.
     "livestats.py",
+    "noc_gate.py",  # the vault's custody and step-up gates, which both NOC route modules import
     "app.py",
     "routes/__init__.py",
     "routes/static.py",
@@ -93,6 +95,9 @@ MODULE_ORDER: tuple[str, ...] = (
     "routes/email.py",
     "routes/recovery.py",
     "routes/apidoc.py",
+    # The NOC plane (ADRs #454-#458), in the order `create_app` registers them.
+    "routes/secrets.py",
+    "routes/noc_access.py",
 )
 
 #: **The floor a subset must not be able to clear** (F98).

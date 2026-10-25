@@ -1397,6 +1397,12 @@ def test_f34_every_mutating_route_below_admin_resolves_scope() -> None:
     # element and reveals nothing; withholding it from a scoped editor would leave autonomy running
     # on elements that editor is watching (ADR #412).
     session_only |= {("POST", "/api/autonomy/stop")}
+    # The NOC plane's vault (ADRs #454-#458) is custodian-gated, not scope-gated: a credential
+    # names a management address rather than an inventoried element, and its gate is the custodian
+    # list (people an admin named), a step-up for every read or change of a secret, and — for a
+    # lease — the agent grant and the credential's own switch. `tests/api/test_noc_vault.py`
+    # drives each of those refusals; `noc_map.py` states the posture beside every route.
+    session_only |= {route for route in rbac.ROUTE_PERMISSIONS if route[1].startswith("/api/noc/")}
     # The four spellings of *"this handler resolved the caller's visibility"*. The first is the
     # literal every route wrote until v0.21.0; the other three are `WindowAccess`'s, and
     # `test_every_indirect_scope_call_really_resolves_the_scope` reads their source so that

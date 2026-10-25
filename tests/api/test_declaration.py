@@ -33,6 +33,7 @@ from netcorenoc.api.app import create_app
 from netcorenoc.api.declare import DeclaredRoutes, UndeclaredRouteError, require_declaration
 from netcorenoc.api.routes import static as routes_static
 from netcorenoc.crosscutting import auth, rbac
+from netcorenoc.crosscutting.rbac import noc_map as _noc_map
 from netcorenoc.crosscutting.rbac import route_map as _route_map  # noqa: F401  (rbac.route_map)
 from netcorenoc.store import Store
 
@@ -689,11 +690,14 @@ async def test_f43_every_path_served_today_still_registers(store: Store) -> None
     # `/api/stats` and `/api/resources`).
     # Unreleased: 228 -> 229 and 117 -> 118 — `POST /api/users/{uid}/password-reset` (ADR #453): an
     # admin replaces a password with a one-time one, and never reads one.
-    assert len(served) == 229, f"the served surface moved: {len(served)} method/path pairs"
+    # Unreleased: 229 -> 249 and 118 -> 132 — the NOC plane (ADRs #454-#458): fourteen /api pairs
+    # (the vault, its custodians and agents, leases) and six UI modules (the Broker | NOC switch,
+    # the Secrets screen and the four parts it composes).
+    assert len(served) == 249, f"the served surface moved: {len(served)} method/path pairs"
     api_pairs = {(method, path) for method, path in served if path.startswith("/api")}
     # **v0.19.0: 53 -> 55.** `GET /api/models` and `POST /api/models/register`: what the
     # models are doing, and turning one of this appliance's own fits into an artefact.
-    assert len(api_pairs) == 118, (
+    assert len(api_pairs) == 132, (
         f"the /api surface moved: {len(api_pairs)} pairs. v0.16.0 adds exactly five — the "
         f"operator's five gestures — v0.16.2 adds exactly one, `POST …/promote` (DECISIONS #273), "
         f"v0.16.5 adds exactly one, `POST /api/alarms/clear` (DECISIONS #301), "
@@ -858,11 +862,14 @@ async def test_f42_every_path_served_today_still_registers(store: Store) -> None
     # `/api/stats` and `/api/resources`).
     # Unreleased: 228 -> 229 and 117 -> 118 — `POST /api/users/{uid}/password-reset` (ADR #453): an
     # admin replaces a password with a one-time one, and never reads one.
-    assert len(served) == 229, f"the served surface moved: {len(served)} method/path pairs"
+    # Unreleased: 229 -> 249 and 118 -> 132 — the NOC plane (ADRs #454-#458): fourteen /api pairs
+    # (the vault, its custodians and agents, leases) and six UI modules (the Broker | NOC switch,
+    # the Secrets screen and the four parts it composes).
+    assert len(served) == 249, f"the served surface moved: {len(served)} method/path pairs"
     api_pairs = {(method, path) for method, path in served if path.startswith("/api")}
     # **v0.19.0: 53 -> 55.** `GET /api/models` and `POST /api/models/register`: what the
     # models are doing, and turning one of this appliance's own fits into an artefact.
-    assert len(api_pairs) == 118, (
+    assert len(api_pairs) == 132, (
         f"the /api surface moved: {len(api_pairs)} pairs. v0.16.0 adds exactly five — the "
         f"operator's five gestures — v0.16.2 adds exactly one, `POST …/promote` (DECISIONS #273), "
         f"v0.16.5 adds exactly one, `POST /api/alarms/clear` (DECISIONS #301), "
@@ -932,9 +939,12 @@ def test_every_unscoped_declaration_carries_a_written_justification() -> None:
     """
     # v0.21.0: `ROUTE_SCOPE` moved to `route_map.py` when `tables.py` was split at the
     # 400-line guard. The guard follows the table rather than the filename.
-    source = (Path(rbac.route_map.__file__)).read_text(encoding="utf-8")
-    table = source.split("ROUTE_SCOPE: dict[", 1)[1].split("\n}\n", 1)[0]
-    lines = table.splitlines()
+    # ADR #454: and the NOC plane's table, in `noc_map.py`, which `route_map.py` folds in — the
+    # guard follows the table into the file that holds it.
+    lines: list[str] = []
+    for module in (rbac.route_map, _noc_map):
+        source = Path(str(module.__file__)).read_text(encoding="utf-8")
+        lines += source.split("ROUTE_SCOPE: dict[", 1)[1].split("\n}\n", 1)[0].splitlines()
     entries = [i for i, line in enumerate(lines) if line.strip().endswith(': "unscoped",')]
     # v0.11.0 adds `GET /api/promotion`: a refusal EXPLAINS why the correlator is still what
     # it is, and names no network element. Six now, and the count is asserted exactly so a
@@ -951,7 +961,9 @@ def test_every_unscoped_declaration_carries_a_written_justification() -> None:
     # person's own photo and name name no network element; the photo read is gated by role instead.
     # v0.26.0: 25 -> 30 — the decider, autonomy's status and kill switch, the search and the judge:
     # statements about models and switches, naming no network element (ADRs #405, #412, #413).
-    assert len(entries) == 30, entries
+    # ADR #454: 30 -> 42 — twelve NOC routes, custodian-gated rather than scope-gated, each with
+    # its reason written beside it in `noc_map.py`.
+    assert len(entries) == 42, entries
     unjustified = [lines[i].strip() for i in entries if not lines[i - 1].strip().startswith("#")]
     assert not unjustified, (
         "every `unscoped` route must be preceded by a comment saying why it is not scoped:\n  "
@@ -1071,7 +1083,8 @@ def test_the_three_postures_are_all_populated() -> None:
     # v0.30.0: 37 -> 43. The SNMP policy (read, write), the SMTP server (read, write, test) and the
     # API reference — `config.*` and `tokens.manage`, whose minimum role is `admin`.
     # Unreleased: 43 -> 44. Resetting a person's password, by `users.manage` (ADR #453).
-    assert len(ADMIN_ONLY) == 44, len(ADMIN_ONLY)
+    # Unreleased: 44 -> 46. The NOC's custodians and agents, read and named by `secrets.grants`.
+    assert len(ADMIN_ONLY) == 46, len(ADMIN_ONLY)
     # v0.18.0: 6 -> 7. `GET /api/correlation` is `unscoped` for `GET /api/scorer`'s reason
     # — counters over the scorer's own decisions are a statement about arithmetic and
     # name no network element (Part II).
@@ -1085,7 +1098,8 @@ def test_the_three_postures_are_all_populated() -> None:
     # never an element (ADR #385).
     # v0.25.0: 21 -> 25, the four routes named at the justification test above.
     # v0.26.0: 25 -> 30, the five routes named there too.
-    assert len(UNSCOPED) == 30, UNSCOPED
+    # Unreleased: 30 -> 42, the twelve NOC routes below admin (ADRs #454-#458).
+    assert len(UNSCOPED) == 42, UNSCOPED
     # v0.16.0: 12 -> 17. Every one of the five gestures names a network element and every one
     # is below `admin`, so every one is `scoped` — the write perimeter F34 established,
     # widened by exactly the routes this release adds.

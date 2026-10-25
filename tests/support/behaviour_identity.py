@@ -579,12 +579,16 @@ def _frozen_clock() -> Iterator[None]:
 
 def build(tmp: Path, dump: tuple[str, str] | None = None) -> tuple[str, str | None]:
     """The whole record, as text. Returns (record, dumped body if one was asked for)."""
-    from netcorenoc.crosscutting import vault
+    from netcorenoc.crosscutting import secretbox, vault
 
     try:
         vault.current()
     except vault.VaultError:  # run as a script: the suite's fixed key, so the record is the same
         vault.configure(vault.Vault.from_key(b"netcorenoc test secret key 32 b!"))
+    try:
+        secretbox.current()
+    except vault.VaultError:  # and the suite's fixed secrets key (ADR #455)
+        secretbox.configure(secretbox.SecretBox.from_key(b"netcorenoc test secrets key 32b!"))
 
     async def go() -> tuple[list[str], list[Substitution], str | None]:
         lines: list[str] = []

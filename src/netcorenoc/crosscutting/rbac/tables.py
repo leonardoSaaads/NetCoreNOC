@@ -182,6 +182,18 @@ PERMISSIONS: dict[str, str] = {
     # import is many of them at once, so it is a capability of its own a deployment can withhold.
     "catalogue.write": "editor",
     "catalogue.import": "editor",
+    # The NOC plane's credential vault (ADRs #454-#458). **A capability is necessary and never
+    # sufficient here**: every vault route also requires the caller to be a *custodian* — an admin,
+    # or an editor an admin named — signed in as a person; reading, changing or deleting a
+    # credential, or letting agents use one, requires a step-up on top. So `editor` is the ceiling
+    # that makes a custodian editor possible, not a grant to every editor. Leasing is `viewer`
+    # because the agent token that leases may be a read-only one: the gate is that an admin named
+    # the token an agent, and that a custodian switched agents on for that one credential.
+    "secrets.read": "editor",
+    "secrets.write": "editor",
+    "secrets.reveal": "editor",
+    "secrets.lease": "viewer",
+    "secrets.grants": "admin",
     # **The poller's two capabilities are NOT here**, and their absence is the decision rather
     # than an oversight. D3 slips to v0.21.1 (ADR #373, HANDOFF §1), and a capability with no
     # route behind it is a placeholder — which `ui/app/registry.js` already refuses, on the ground
@@ -217,6 +229,12 @@ AUDITED_DENIED_PERMISSIONS: frozenset[str] = frozenset(
         "rbac.write",
         "scope.read",
         "scope.write",
+        # ADR #456: a viewer reaching for the vault, or an editor for its custodians, is probing
+        # the one store of credentials that open equipment — worth a row even though it failed.
+        "secrets.read",
+        "secrets.write",
+        "secrets.reveal",
+        "secrets.grants",
     }
 )
 

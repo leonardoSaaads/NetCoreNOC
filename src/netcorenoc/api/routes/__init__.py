@@ -1,4 +1,4 @@
-"""The fifteen route modules. The package above is the machinery they all consume.
+"""The route modules. The package above is the machinery they all consume.
 
 **Split out in v0.16.2 (DECISIONS #278), and the boundary is derived rather than chosen.**
 v0.15.1's method is to read the import graph, and here it gives exactly one edge: every module in
@@ -43,6 +43,7 @@ from netcorenoc.api.routes import (
     maintenance,
     maintenance_ops,
     models,
+    noc_access,
     operate,
     people,
     promotion,
@@ -50,6 +51,7 @@ from netcorenoc.api.routes import (
     read,
     recovery,
     scorer,
+    secrets,
     snmp,
     static,
     users,
@@ -75,6 +77,7 @@ __all__ = [
     "maintenance",
     "maintenance_ops",
     "models",
+    "noc_access",
     "operate",
     "people",
     "promotion",
@@ -82,6 +85,7 @@ __all__ = [
     "read",
     "recovery",
     "scorer",
+    "secrets",
     "snmp",
     "static",
     "users",

@@ -104,12 +104,9 @@ ACTIONS: frozenset[str] = frozenset(
         # no per-alarm row can answer, because none of them knows it was one of twelve.
         "alarm.clear_all",
         # v0.16.2 — promotion WITHOUT judging (`PREREGISTRATION-0.16.2.md` §2.2, DECISIONS #273).
-        # **This row is the whole durable record of a bare promotion**, and that is deliberate:
-        # the event kinds are a `CHECK` on `situation_event.kind`, and widening one in SQLite is a
-        # rebuild of a table `situation_event_member` references `ON DELETE CASCADE`. The plan
-        # requires a reader two months later to tell an affirmation from a bare promotion — one
-        # has a `feedback` row and a `verdict` event, the other has this and neither — and the
-        # hash chain makes this the stronger of the two records, not the weaker.
+        # **This row is the whole durable record of a bare promotion**, deliberately: a reader
+        # two months later tells an affirmation (a `feedback` row and a `verdict` event) from a bare
+        # promotion (this, and neither), and the hash chain makes this the stronger record.
         "situation.promote",
         "prune.manual",
         # sensitive reads
@@ -144,34 +141,19 @@ ACTIONS: frozenset[str] = frozenset(
         # for capabilities, deny-for-viewer/editor for scope). Recorded once per policy version, so
         # a silent degradation is impossible (DECISIONS #55).
         "governance.fallback",
-        # v0.11.0 — champion/challenger. EXACTLY the actions this release makes possible and no
-        # others (DECISIONS #162): promotion applied, promotion refused, and — because this release
-        # makes the seal SPENDABLE for the first time — seal construction and seal spend.
-        #
-        # `0012` declined to put seal access in this chain, on the grounds that "nothing here is
-        # reachable from a route, no principal performs it". **v0.11.0 removes that premise**: an
-        # admin approving a promotion is a principal, on a route, whose approval may cause the seal
-        # to be spent. The decision is revisited because its precondition changed, not overridden.
-        # `holdout_access` remains the primary record and stays append-only; this is the
-        # operator-facing half.
-        #
-        # The v0.9.2 reconciliation-drift gap (`SECURITY-REVIEW-0.10.0.md` §3.4) is NOT closed here.
-        # Nothing in this release makes it newly reachable, and a release that closed unrelated gaps
-        # because it happened to have the file open would be sizing its work by convenience.
+        # v0.11.0 — champion/challenger. EXACTLY the actions that release made possible (DECISIONS
+        # #162): promotion applied or refused, and — the seal becoming SPENDABLE — seal
+        # construction and spend. `0012` kept seal access out of this chain because no principal
+        # performed it; an admin approving a promotion is one, on a route, so the premise changed.
+        # `holdout_access` stays the primary, append-only record; this is the operator-facing half.
         "promotion.applied",  # admin: a model version became the active scorer
         "promotion.refused",  # admin: a promotion was proposed and the evidence did not support it
         "seal.construct",  # system actor: the sealed holdout was cut, once, ever
         "seal.spend",  # the sealed membership was read; the query count moved
-        # v0.21.0 — maintenance windows. **Six actions rather than one `maintenance.window`
-        # carrying a verb**, for the reason the five operator gestures are five actions
-        # (DECISIONS #255): an auditor asking *"who declared that this estate would go quiet, and
-        # who agreed to it"* must not have to read a details blob to find out which kind of change
-        # a row records. They differ in who may do them, in what they assert, and in what an
-        # operator does about them.
-        #
-        # `.create` and `.update` carry `agent: true` when the actor authenticated with a service
-        # token, because **an agent-created window is marked** (Part III) and the audit log is the
-        # record that cannot be edited afterwards.
+        # v0.21.0 — maintenance windows. **Six actions, not one carrying a verb** (DECISIONS #255):
+        # an auditor asking *"who declared this estate would go quiet, and who agreed"* must not
+        # read a details blob to learn which change a row records. `.create` and `.update` carry
+        # `agent: true` for a service token: **an agent-created window is marked** (Part III).
         "maintenance.window.create",  # editor+ or an agent: planned work was declared
         "maintenance.window.update",  # editor+: its schedule, targets or rules changed
         "maintenance.window.confirm",  # D6: an editor or admin agreed to a window over six hours
@@ -227,6 +209,21 @@ ACTIONS: frozenset[str] = frozenset(
         "situation.proposal.accept",
         "situation.proposal.reject",
         "league.decide",
+        # The NOC plane's credential vault (ADRs #455-#458). One action per act an auditor asks
+        # about separately — who created, changed, deleted or READ a credential, who let agents
+        # use it, who named a custodian or an agent, and which agent leased, used or let go of
+        # one. A failed step-up is the attempted act with outcome `denied`; `noc.secret.read` is
+        # written only as a denial. No row ever holds a secret value or a lease.
+        "noc.secret.create",
+        "noc.secret.update",
+        "noc.secret.delete",
+        "noc.secret.reveal",
+        "noc.secret.read",
+        "noc.secret.agents",
+        "noc.grant.change",
+        "noc.lease.issue",
+        "noc.lease.use",
+        "noc.lease.revoke",
     }
 )
 
@@ -247,6 +244,9 @@ _FORBIDDEN_DETAIL_KEYS = frozenset(
         "community",
         "authorization",
         "cookie",
+        "lease",  # ADR #455: a lease or a credential's fields, should a call site pass one
+        "private_key",
+        "passphrase",
     }
 )
 

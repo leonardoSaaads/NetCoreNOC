@@ -13,6 +13,8 @@ Three uses of one key:
   sealed value still needs — a recovery address, matched case-insensitively and kept unique.
 * **The password pepper** (:meth:`Vault.pepper`): HMAC-SHA256 of a password before scrypt, so the
   hashes in a dump cannot be attacked offline without the key.
+* **The outer layer of a device credential** (:meth:`Vault.wrap`, ADR #455): AES-256-GCM under a
+  subkey of its own, around an envelope `secretbox.py` has already sealed under a second key file.
 
 **The key** is 32 random bytes, base64, in a file: ``NETCORENOC_SECRET_KEY_FILE``, else
 ``secret.key`` in the data directory, created owner-only on the first start. It lives beside the
@@ -53,6 +55,7 @@ __all__ = [
     "install",
     "is_sealed",
     "load_or_create",
+    "read_key",
 ]
 
 log = logging.getLogger("netcorenoc")
@@ -80,6 +83,7 @@ class Vault:
     _seal_key: bytes
     _index_key: bytes
     _pepper_key: bytes
+    _wrap_key: bytes
     kid: bytes
 
     @classmethod
@@ -90,8 +94,28 @@ class Vault:
             _seal_key=_subkey(key, b"netcorenoc seal v1"),
             _index_key=_subkey(key, b"netcorenoc index v1"),
             _pepper_key=_subkey(key, b"netcorenoc pepper v1"),
+            _wrap_key=_subkey(key, b"netcorenoc credential outer v1"),
             kid=_subkey(key, b"netcorenoc key id v1")[:_KID],
         )
+
+    def wrap(self, place: str, data: bytes) -> bytes:
+        """``data`` encrypted and authenticated for ``place``: ``kid ‖ nonce ‖ ciphertext‖tag``."""
+        nonce = secrets.token_bytes(_NONCE)
+        sealed = AESGCM(self._wrap_key).encrypt(nonce, data, place.encode("utf-8"))
+        return self.kid + nonce + sealed
+
+    def unwrap(self, place: str, blob: bytes) -> bytes:
+        """The bytes :meth:`wrap` sealed for ``place``. Raises :class:`VaultError` otherwise."""
+        if len(blob) < _KID + _NONCE + 16:
+            raise VaultError(f"{place}: a wrapped value is truncated")
+        if not hmac.compare_digest(blob[:_KID], self.kid):
+            raise VaultError(f"{place}: wrapped with another secret key")
+        try:
+            return AESGCM(self._wrap_key).decrypt(
+                blob[_KID : _KID + _NONCE], blob[_KID + _NONCE :], place.encode("utf-8")
+            )
+        except InvalidTag as exc:
+            raise VaultError(f"{place}: a wrapped value failed authentication") from exc
 
     def seal(self, place: str, value: str | bytes) -> str:
         """``value`` encrypted and authenticated for ``place``, as ``nc1:…`` text."""
@@ -162,6 +186,13 @@ def load_or_create(path: Path) -> tuple[Vault, bool]:
     Returns ``(vault, created)``. A key file any user may read is refused: whoever reads it reads
     every sealed value. A group bit is allowed, for a secret mounted with a group (``0440``).
     """
+    key, created = read_key(path)
+    return Vault.from_key(key), created
+
+
+def read_key(path: Path) -> tuple[bytes, bool]:
+    """The 32 bytes in the key file at ``path``, created (owner-only) when there is none; and
+    whether it was. The rules of :func:`load_or_create`, for any key file (ADR #455)."""
     created = False
     try:
         descriptor = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
@@ -182,7 +213,9 @@ def load_or_create(path: Path) -> tuple[Vault, bool]:
         key = base64.b64decode(text, validate=True)
     except ValueError as exc:
         raise VaultError(f"{path} does not hold a base64 secret key") from exc
-    return Vault.from_key(key), created
+    if len(key) != KEY_BYTES:
+        raise VaultError(f"{path}: a key is {KEY_BYTES} bytes; this one is {len(key)}")
+    return key, created
 
 
 def install(path: Path) -> Vault:

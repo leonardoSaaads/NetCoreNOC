@@ -49,7 +49,7 @@ CROSS_CUTTING = "cross-cutting"
 #: assuming it.
 DIRECTORY_LAYER: dict[str, str] = {
     "api": "http",  # the delivery layer; it kept its name (#209)
-    "engine": "engine",  # the domain, in six subpackages (#208)
+    "engine": "engine",  # the domain, in seven subpackages (#208, #454)
     "store": "data",  # one PostgreSQL writer under one asyncio lock, and readers (#209, #452)
     "ingest": "ingest",  # the wire
     "crosscutting": "cross-cutting",  # every layer's concern, no layer's private concern
@@ -317,3 +317,24 @@ def test_every_layer_has_at_least_one_module(layer: str) -> None:
     """A layer with no modules would make its share of the rule vacuous."""
     live = {key for key, _ in _module_files()}
     assert any(_layer(k) == layer for k in live), f"no module is classified {layer!r}"
+
+
+def test_the_noc_domain_imports_no_other_engine_domain() -> None:
+    """**The broker does not know the NOC exists** (ADR #454).
+
+    `engine/noc/` is phase 2's domain. It may use the store and cross-cutting, and nothing in the
+    six phase 1 domains: a credential check, a lease or a status light that reached into correlation
+    would put phase 2 one import away from the trap path, which is the invariant that outranks
+    everything else here. Read from the AST, every module of the domain.
+    """
+    noc = sorted((PKG / "engine" / "noc").glob("*.py"))
+    assert len(noc) >= 4, f"only {len(noc)} module(s) in engine/noc/; the walk broke"
+    offenders = []
+    for path in noc:
+        tree = ast.parse(path.read_text(encoding="utf-8"))
+        for node in ast.walk(tree):
+            if isinstance(node, ast.ImportFrom) and node.module:
+                parts = node.module.split(".")
+                if parts[:2] == ["netcorenoc", "engine"] and parts[2:3] != ["noc"]:
+                    offenders.append(f"{path.name} imports {node.module}")
+    assert not offenders, "engine/noc/ reaches into a phase 1 domain:\n  " + "\n  ".join(offenders)
