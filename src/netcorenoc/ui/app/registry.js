@@ -18,9 +18,19 @@
  * ## Nothing here is a placeholder
  *
  * Every entry renders a screen backed by a route that exists today. There is no *Diagnose*, no
- * *Escalate*, no greyed-out *Troubleshooting* (draft §2, §11.7). Adding Phase 2's group later is
+ * *Escalate*, no greyed-out *Troubleshooting* (draft §2, §11.7). Adding Phase 2's group was
  * adding entries to this list and a heading to `sidebar.GROUPS` — which is precisely the
- * obligation §2 says v0.13.0 owes the future, and precisely the whole of it.
+ * obligation §2 said v0.13.0 owed the future, and precisely the whole of it.
+ *
+ * ## Two planes: the Broker and the NOC (ADR #454)
+ *
+ * `plane` says which half of the product a screen belongs to. The **Broker** (phase 1, every
+ * screen without a `plane`) receives traps, correlates them into situations, trains the models
+ * that do it and keeps the inventory. The **NOC** (phase 2) works the situations that reach the
+ * operations centre — beginning with the credentials people and agents use to reach equipment.
+ * The top bar switches between them (`plane.js`) and the sidebar shows one plane at a time; the
+ * router and the sidebar still read this one table, so a plane cannot offer what the router would
+ * refuse.
  */
 
 import { Overview } from "./views/overview.js";
@@ -39,12 +49,14 @@ import { Settings } from "./views/settings.js";
 import { Quarantine } from "./views/quarantine.js";
 import { Audit } from "./views/audit.js";
 import { Account } from "./views/account.js";
+import { Secrets } from "./views/secrets.js";
 
 /**
  * `id`         the URL fragment and the DOM's `data-view`
  * `capability` what the server requires for the route this view reads; a list when several
  * `group`      which sidebar group, or null for the item above the first heading
  * `hidden`     reachable by address but not offered in navigation (the account screen)
+ * `plane`      "noc" for a phase 2 screen; absent is the Broker (see `PLANES`)
  * `icon`       the name of a mark in `icons.js`, drawn beside the label. Never the only signal:
  *              every call site renders it `aria-hidden` next to the text label
  */
@@ -137,6 +149,16 @@ export const VIEWS = [
     summary: "The hash-chained record of every change, and its verification state.",
   },
 
+  /* ---------- NOC (phase 2): reaching equipment, for people and for agents ---------- */
+  {
+    // ADRs #454-#458. `secrets.read` is editor, and the screen still opens the vault only for a
+    // custodian — an admin, or an editor an admin named; anyone else is told why, and offered
+    // nothing. Every write below it is gated in the screen on its own capability.
+    id: "secrets", label: "Secrets", icon: "vault", group: "access", plane: "noc",
+    capability: "secrets.read", component: Secrets,
+    summary: "Credentials for equipment, sealed twice. Agents get a lease, never the secret.",
+  },
+
   /* ---------- reachable by address, not offered in navigation ---------- */
   {
     id: "account", label: "Your account", icon: "account", group: null, hidden: true,
@@ -169,3 +191,6 @@ export const VIEWS = [
 ];
 
 export const DEFAULT_VIEW = "overview";
+
+/** Which plane a view belongs to. */
+export function planeOf(view) { return view.plane || "broker"; }

@@ -31,7 +31,7 @@
  */
 
 import { canAll } from "./session.js";
-import { VIEWS, DEFAULT_VIEW } from "./registry.js";
+import { VIEWS, DEFAULT_VIEW, planeOf } from "./registry.js";
 
 /** `#/situations/12?flt=open` -> `{ viewId: "situations", params: ["12"], query: URLSearchParams }` */
 export function parseFragment(fragment) {
@@ -75,16 +75,18 @@ export function requirementsOf(view) {
 }
 
 /**
- * The views this principal may reach, in registry order.
+ * The views this principal may reach, in registry order — of one plane, when `plane` is given.
  *
  * The sidebar renders from this, so navigation and authorisation read the SAME table. v0.12.0
  * kept a `TABS` array for navigation and a `prunePanels` loop for the DOM, and the two agreeing
  * was a convention. Here there is one list and the sidebar cannot offer what `resolve()` would
- * refuse, because both call `canAll` on the same declaration.
+ * refuse, because both call `canAll` on the same declaration. A plane narrows what is offered and
+ * never what is authorised: `resolve()` reads no plane (ADR #454).
  */
-export function reachableViews(capabilitySet) {
+export function reachableViews(capabilitySet, plane = null) {
   return VIEWS.filter((view) => {
     if (view.hidden) return false;
+    if (plane && planeOf(view) !== plane) return false;
     return requirementsOf(view).every((capability) => capabilitySet.has(capability));
   });
 }

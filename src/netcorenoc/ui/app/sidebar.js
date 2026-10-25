@@ -7,10 +7,16 @@
  * tagging the views that belong; it is not editing a layout. That is the whole of what §2 asks
  * v0.13.0 to owe the future, and it costs one array.
  *
- * **No Phase 2 or Phase 3 item appears here.** Not disabled, not greyed, not "coming soon".
+ * **No item for something unbuilt appears here.** Not disabled, not greyed, not "coming soon".
  * Absent. A greyed-out *Troubleshooting* promising a feature nobody has built teaches an operator
  * that parts of the product do not work, which is the same error as v0.9.1's unused `close`
- * channel with worse ergonomics (draft §2).
+ * channel with worse ergonomics (draft §2). Phase 2's NOC arrives the way that rule said it would:
+ * one group, one screen that works, and nothing announced beyond it (ADR #454).
+ *
+ * ## One plane at a time
+ *
+ * `plane` (from the top bar's switch, derived from the route) picks which half of the product the
+ * sidebar offers. Each group names its plane, and a plane with nothing reachable has no switch.
  *
  * ## The wordmark is a link (v0.15.3)
  *
@@ -40,9 +46,10 @@ import { DEFAULT_VIEW } from "./registry.js";
 
 /** Group id -> heading. Order here is order on screen. `null` group renders above the first. */
 export const GROUPS = [
-  { id: "operations", label: "Operations" },
-  { id: "evidence", label: "Evidence" },
-  { id: "administer", label: "Administer" },
+  { id: "operations", label: "Operations", plane: "broker" },
+  { id: "evidence", label: "Evidence", plane: "broker" },
+  { id: "administer", label: "Administer", plane: "broker" },
+  { id: "access", label: "Equipment access", plane: "noc" },
 ];
 
 export class Sidebar extends Component {
@@ -50,7 +57,8 @@ export class Sidebar extends Component {
     super(props);
     // Seeded from the route so a deep link puts the tab stop on the item the operator is looking
     // at, rather than at the top of a list they did not ask for.
-    const initial = reachableViews(props.capabilities).findIndex((v) => v.id === props.activeId);
+    const initial = reachableViews(props.capabilities, props.plane)
+      .findIndex((v) => v.id === props.activeId);
     this.state = { focusIndex: initial === -1 ? 0 : initial };
     this.items = [];
     this.nodes = [];
@@ -92,14 +100,14 @@ export class Sidebar extends Component {
    * assertion about rendered structure would have noticed.
    */
   componentDidUpdate(previous) {
-    if (previous.activeId === this.props.activeId) return;
-    const index = reachableViews(this.props.capabilities)
+    if (previous.activeId === this.props.activeId && previous.plane === this.props.plane) return;
+    const index = reachableViews(this.props.capabilities, this.props.plane)
       .findIndex((view) => view.id === this.props.activeId);
     if (index !== -1 && index !== this.state.focusIndex) this.setState({ focusIndex: index });
   }
 
-  render({ capabilities, activeId, counts = {}, collapsed = false }) {
-    const views = reachableViews(capabilities);
+  render({ capabilities, activeId, plane = "broker", counts = {}, collapsed = false }) {
+    const views = reachableViews(capabilities, plane);
     this.items = views;
     const focusIndex = Math.min(Math.max(0, this.state.focusIndex), Math.max(0, views.length - 1));
     this.nodes = [];
@@ -109,7 +117,7 @@ export class Sidebar extends Component {
     if (ungrouped.length) {
       rendered.push(this.renderGroup(null, ungrouped, activeId, focusIndex, counts, collapsed));
     }
-    for (const group of GROUPS) {
+    for (const group of GROUPS.filter((g) => g.plane === plane)) {
       const inGroup = views.filter((v) => v.group === group.id);
       // A group with nothing in it is not rendered at all. A viewer sees no `Administer`
       // heading standing over an empty space — absence is absence.
@@ -129,7 +137,8 @@ export class Sidebar extends Component {
         <span class="brand-mark" aria-hidden="true">◈</span>
         <span class="brand-name">Net<b>CoreNOC</b></span>
       </a>
-      <nav id="nav" class="nav" aria-label="Sections" onKeyDown=${this.onKeyDown}>
+      <nav id="nav" class=${cx("nav", `nav-plane-${plane}`)} aria-label="Sections"
+           onKeyDown=${this.onKeyDown}>
         ${rendered}
       </nav>
     </div>`;

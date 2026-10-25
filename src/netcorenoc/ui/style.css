@@ -377,7 +377,9 @@ button.primary {
   background: var(--accent); color: var(--accent-fg);
   border-color: var(--accent); font-weight: 600;
 }
-button.primary:hover:not(:disabled) { filter: brightness(1.08); }
+/* The fill is restated: `button:hover:not(:disabled)` outranks `button.primary` and painted the hover
+   background under the primary's own ink, so a hovered primary read as an empty box. */
+button.primary:hover:not(:disabled) { background: var(--accent); filter: brightness(1.08); }
 button.warn { border-color: var(--alarm); color: var(--alarm); }
 button.warn:hover:not(:disabled) { background: var(--alarm-bg); }
 button.icon {
@@ -3200,3 +3202,89 @@ table.data.league-table td, table.data.league-table th { white-space: nowrap; }
   border: 1px solid var(--line); border-radius: var(--radius-2);
 }
 .kpi-fields legend { padding: 0 var(--space-1); font-size: var(--fs-sm); color: var(--fg-muted); }
+
+/* ---------- the NOC plane (ADRs #454-#458) -------------------------------------------------
+ *
+ * **Broker | NOC** in the top bar: two halves of the product, one switch. A segmented control
+ * rather than two tabs, because it changes what the whole console offers rather than one panel;
+ * the plane that is on is filled, and `aria-current` says so to anyone not looking. */
+.plane-switch {
+  display: inline-flex; border: 1px solid var(--line-strong); border-radius: var(--radius-2);
+  overflow: hidden; margin: 0 auto;
+}
+.plane {
+  display: inline-flex; align-items: center; justify-content: center; min-height: var(--tap);
+  min-width: 6.5rem; padding: 0 var(--space-4); color: var(--fg-muted); font-weight: 600;
+  letter-spacing: 0.08em; text-transform: uppercase; font-size: var(--fs-sm); text-decoration: none;
+}
+.plane + .plane { border-left: 1px solid var(--line-strong); }
+.plane:hover { background: var(--bg-hover); color: var(--fg); }
+.plane-on, .plane-on:hover { background: var(--accent); color: var(--accent-fg); }
+.plane:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+@media (max-width: 760px) {
+  .plane-switch { order: 3; flex-basis: 100%; margin: 0; }
+  .plane { flex: 1 1 0; min-width: 0; }
+}
+
+/* The status light: a dot AND a word, never colour alone (the severity rule). Green answers,
+   yellow is intermittent or slow, red does not answer, grey was not or cannot be checked. */
+.light { display: inline-flex; align-items: center; gap: var(--space-1); font-size: var(--fs-xs); white-space: nowrap; cursor: help; }
+.light-dot { width: 10px; height: 10px; border-radius: 50%; background: var(--unknown); flex: none; }
+.light-green .light-dot { background: var(--quiet); box-shadow: 0 0 0 3px var(--quiet-bg); }
+.light-yellow .light-dot { background: var(--warn); box-shadow: 0 0 0 3px var(--warn-bg); }
+.light-red .light-dot { background: var(--alarm); box-shadow: 0 0 0 3px var(--alarm-bg); }
+.light-green .light-word { color: var(--quiet); }
+.light-yellow .light-word { color: var(--warn); }
+.light-red .light-word { color: var(--alarm); }
+.light-grey .light-word { color: var(--fg-muted); }
+.light-compact .light-word { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+
+.secrets-bar { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); flex-wrap: wrap; margin-bottom: var(--space-3); }
+.secrets-counts { display: inline-flex; align-items: center; gap: var(--space-2); }
+.secrets-count { font-family: var(--mono); margin-right: var(--space-2); }
+.secrets-table .row-selected { background: color-mix(in srgb, var(--accent) 10%, transparent); }
+.secret-open { padding: 0; text-align: left; }
+.access-pill {
+  display: inline-block; padding: 1px var(--space-2); border-radius: 999px; font-size: var(--fs-xs);
+  font-weight: 600; border: 1px solid var(--line-strong); color: var(--fg-muted); white-space: nowrap;
+}
+.access-root { border-color: var(--alarm); color: var(--alarm); }
+.access-operator { border-color: var(--warn); color: var(--warn); }
+.access-diagnostic { border-color: var(--accent); color: var(--accent); }
+
+.secret-form h3, .secret-detail h3 { display: flex; align-items: center; gap: var(--space-2); margin: 0 0 var(--space-3); }
+.secret-form select, .secret-form textarea { width: 100%; }
+.secret-desc { grid-column: 1 / -1; }
+.secret-fields { margin: var(--space-3) 0 0; padding: var(--space-3); border: 1px solid var(--line); border-radius: var(--radius-2); }
+.secret-fields legend { padding: 0 var(--space-1); font-size: var(--fs-sm); color: var(--fg-muted); }
+.secret-text { -webkit-text-security: disc; }
+.secret-facts { display: grid; grid-template-columns: repeat(auto-fit, minmax(12rem, 1fr)); gap: var(--space-2) var(--space-4); margin: var(--space-3) 0; }
+.secret-facts dt { font-size: var(--fs-xs); color: var(--fg-muted); text-transform: uppercase; letter-spacing: 0.05em; }
+.secret-facts dd { margin: 0; overflow-wrap: anywhere; }
+.secret-acts, .stepup-acts { display: flex; flex-wrap: wrap; gap: var(--space-2); margin: var(--space-3) 0; }
+.secret-detail h4 { margin: var(--space-4) 0 var(--space-2); }
+
+.stepup { border-color: var(--accent); }
+.stepup-title { margin: 0 0 var(--space-1); }
+.stepup-fields { display: grid; grid-template-columns: repeat(auto-fit, minmax(13rem, 1fr)); gap: var(--space-3); margin-top: var(--space-2); }
+.stepup-otp input:disabled { opacity: 0.6; cursor: not-allowed; }
+.stepup-note { margin: 0; font-size: var(--fs-xs); }
+
+.revealed { border: 1px solid var(--warn); background: var(--warn-bg); border-radius: var(--radius-2); padding: var(--space-3); margin: var(--space-3) 0; }
+.revealed p { margin: 0 0 var(--space-2); }
+.revealed-fields { margin: 0; display: grid; gap: var(--space-2); }
+.revealed-row { display: grid; grid-template-columns: minmax(7rem, 12rem) minmax(0, 1fr); gap: var(--space-3); align-items: start; }
+.revealed-row dt { font-size: var(--fs-xs); color: var(--fg-muted); text-transform: uppercase; letter-spacing: 0.05em; padding-top: 2px; }
+.revealed-row dd { margin: 0; display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-1); min-width: 0; }
+.revealed-value { overflow-wrap: anywhere; user-select: all; }
+.revealed-multi { white-space: pre-wrap; display: block; max-height: 12rem; overflow: auto; width: 100%; }
+@media (max-width: 600px) { .revealed-row { grid-template-columns: minmax(0, 1fr); } }
+
+.lease-list, .secret-history, .grant-list { list-style: none; margin: 0; padding: 0; border-top: 1px solid var(--line); }
+.lease-list li, .secret-history li, .grant-list li {
+  display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2) var(--space-3);
+  padding: var(--space-2) 0; border-bottom: 1px solid var(--line); font-size: var(--fs-sm);
+}
+.secret-history li > span:first-child { color: var(--fg-muted); min-width: 6rem; }
+.history-denied { color: var(--alarm); }
+.grant-list .person-id { flex: 1 1 14rem; }

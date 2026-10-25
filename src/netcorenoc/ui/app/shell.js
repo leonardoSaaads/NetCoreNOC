@@ -37,6 +37,8 @@ import { Sidebar } from "./sidebar.js";
 import { Refused, Unknown } from "./widgets.js";
 import { Icon } from "./icons.js";
 import { resolve, navigate, startRouting, currentFragment } from "./router.js";
+import { planeOf } from "./registry.js";
+import { PlaneSwitch } from "./plane.js";
 import { session, scopeSummary, onSessionChange, can } from "./session.js";
 import { Avatar } from "./avatar.js";
 import { theme, setTheme, nextTheme, navState, setNavState, nextNavState } from "./theme.js";
@@ -53,6 +55,10 @@ export class Shell extends Component {
     // reason one control over: a preference the framework cannot observe is a control that does
     // not repaint. The cookie is where it PERSISTS; this is where it lives (DECISIONS #290).
     this.state = { fragment: currentFragment(), live: store.get(), nav: navState() };
+    // ADR #454: the last screen seen in each plane, so the top bar's switch goes back to it.
+    // Memory only — this console keeps nothing in browser storage (F2).
+    this.lastByPlane = {};
+    this.plane = "broker";
     this.headingRef = null;
     this.lastViewId = null;
   }
@@ -95,6 +101,11 @@ export class Shell extends Component {
     const decision = this.decision();
     const live = this.state.live;
     const activeId = decision.kind === "view" ? decision.view.id : null;
+    // The plane is the route's: a refused or unknown address keeps the plane the operator was in.
+    if (decision.kind === "view") {
+      this.plane = planeOf(decision.view);
+      this.lastByPlane[this.plane] = this.state.fragment || `#/${decision.view.id}`;
+    }
     // The sidebar badge has always meant "situations that have not left", and it still does:
     // v0.16.0 split that population into `new` and `open`, so the filter names what it excludes
     // rather than what it includes (DECISIONS #254).
@@ -103,12 +114,13 @@ export class Shell extends Component {
     };
 
     return html`<div id="app" class=${cx("shell", `nav-${this.state.nav}`)}>
-      <${Sidebar} capabilities=${active.capabilities} activeId=${activeId}
+      <${Sidebar} capabilities=${active.capabilities} activeId=${activeId} plane=${this.plane}
                   counts=${counts} collapsed=${this.state.nav === "collapsed"}
                   onNavigate=${navigate} />
       <div class="main">
         <${TopBar} live=${live} onSignOut=${this.props.onSignOut}
-                   nav=${this.state.nav} onNav=${() => this.toggleNav()} />
+                   nav=${this.state.nav} onNav=${() => this.toggleNav()}
+                   plane=${this.plane} lastByPlane=${this.lastByPlane} />
         <${Banners} stats=${live.stats} />
         <main id="work" class="work" tabindex="-1">
           <${WorkHeading} decision=${decision}
@@ -158,7 +170,7 @@ function WorkHeading({ decision, headingRef }) {
  * something an operator does something about. Neither is a new mechanism — the warnings already
  * interrupted and every health figure was already served — and that is the point.
  */
-function TopBar({ live, onSignOut, nav, onNav }) {
+function TopBar({ live, onSignOut, nav, onNav, plane, lastByPlane }) {
   const active = session();
   const scope = scopeSummary();
   const connection = live.connection;
@@ -184,6 +196,8 @@ function TopBar({ live, onSignOut, nav, onNav }) {
         null}
       <span class="tz" title=${TZ_TITLE}>${TIMEZONE}${" "}${utcOffset(new Date())}</span>
     </div>
+    <${PlaneSwitch} capabilities=${active.capabilities} plane=${plane} last=${lastByPlane}
+                    onNavigate=${navigate} />
     ${/* **The bell and the health control sit on the RIGHT, with the account controls.**
           v0.16.4 put them beside the connection dot on the left, 723 px from the account name at
           1440 px. Left is where the appliance says what it IS doing — nav, connection, clock —

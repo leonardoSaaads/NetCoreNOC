@@ -67,6 +67,8 @@ const ICONS = {
   audit: { d: ["M10 13.5a4 4 0 0 0 5.7.3l2.6-2.6a4 4 0 0 0-5.7-5.7l-1.5 1.5",
                "M14 10.5a4 4 0 0 0-5.7-.3l-2.6 2.6a4 4 0 0 0 5.7 5.7l1.5-1.5"] },
   account: { d: ["M5 20v-1a4.5 4.5 0 0 1 4.5-4.5h5A4.5 4.5 0 0 1 19 19v1"], c: [[12, 8, 3.5]] },
+  // ADR #454: the NOC's credential vault — a padlock, because what it holds opens things.
+  vault: { d: ["M6 10.5h12v9.5H6v-9.5Z", "M8.5 10.5V7.5a3.5 3.5 0 0 1 7 0v3", "M12 14.5v2"] },
 
   // -- the theme control's three states ------------------------------------------------
   moon: { d: ["M20 14.5A8.5 8.5 0 0 1 9.5 4a8.5 8.5 0 1 0 10.5 10.5Z"] },

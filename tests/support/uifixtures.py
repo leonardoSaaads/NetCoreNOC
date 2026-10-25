@@ -120,6 +120,9 @@ CLIENT_GETS: list[tuple[str, str]] = [
     ("config.read", "/api/snmp"),
     ("config.read", "/api/email"),
     ("tokens.manage", "/api/reference"),
+    # The NOC plane (ADRs #454-#458): the vault and its custodians.
+    ("secrets.read", "/api/noc/secrets"),
+    ("secrets.grants", "/api/noc/grants"),
 ]
 
 #: Writes the harness answers without applying. The value is what the real route returns on success.
