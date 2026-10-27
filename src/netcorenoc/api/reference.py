@@ -28,6 +28,7 @@ PUBLIC = "Sign-in and recovery"
 VAULT, AGENTS = "NOC — Secrets", "NOC — Agents and leases"
 CASES = "NOC — Cases"
 AUTOMATION = "NOC — Executor and playbooks"
+ORG, MCP = "NOC — Organization", "NOC — MCP"
 
 REFERENCE: dict[tuple[str, str], Entry] = {
     ("POST", "/api/login"): Entry(PUBLIC, "Sign in with a username and password (sets a cookie)"),
@@ -184,4 +185,22 @@ REFERENCE: dict[tuple[str, str], Entry] = {
     ("GET", "/api/noc/playbooks/{playbook_id}"): Entry(AUTOMATION, "One playbook, tree and runs"),
     ("POST", "/api/noc/playbooks/{playbook_id}"): Entry(AUTOMATION, "Replace a playbook's tree"),
     ("POST", "/api/noc/playbooks/{playbook_id}/enabled"): Entry(AUTOMATION, "Switch it on or off"),
+    # ADRs #465-#467: the NOC's agents, their runs, routing a case, and the MCP endpoint.
+    ("GET", "/api/noc/agents"): Entry(ORG, "The NOC's agents and who reports to whom"),
+    ("POST", "/api/noc/agents"): Entry(ORG, "Hire an agent (its key is shown once)"),
+    ("GET", "/api/noc/agents/me"): Entry(ORG, "Who you are as an agent: instructions, cases, run"),
+    ("GET", "/api/noc/agents/{agent_id}"): Entry(ORG, "One agent: settings, runs, cases, activity"),
+    ("POST", "/api/noc/agents/{agent_id}"): Entry(ORG, "Change an agent's settings"),
+    ("POST", "/api/noc/agents/{agent_id}/invoke"): Entry(ORG, "Wake an agent now"),
+    ("POST", "/api/noc/agents/{agent_id}/pause"): Entry(
+        ORG, "Pause an agent (its key opens nothing)"
+    ),
+    ("POST", "/api/noc/agents/{agent_id}/resume"): Entry(ORG, "Let a paused agent work again"),
+    ("POST", "/api/noc/agents/{agent_id}/terminate"): Entry(ORG, "Retire an agent for good"),
+    ("POST", "/api/noc/agents/{agent_id}/key"): Entry(ORG, "Give an agent a new key"),
+    ("GET", "/api/noc/runs/{run_id}"): Entry(ORG, "One run of an agent, step by step"),
+    ("POST", "/api/noc/runs/{run_id}/finish"): Entry(ORG, "Report your run finished"),
+    ("POST", "/api/noc/cases/{sid}/assign"): Entry(CASES, "Route a case to an agent or the people"),
+    ("POST", "/api/noc/cases/{sid}/escalate"): Entry(CASES, "Escalate a case to the next tier"),
+    ("POST", "/api/mcp"): Entry(MCP, "The MCP endpoint: tools for AI agents (JSON-RPC)"),
 }
