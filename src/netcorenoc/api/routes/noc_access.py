@@ -14,6 +14,7 @@
 from __future__ import annotations
 
 import time
+from collections.abc import Mapping
 from typing import Any
 
 from fastapi import Depends, FastAPI, HTTPException, Request
@@ -29,7 +30,7 @@ from netcorenoc.engine.noc import lease
 MAX_LIVE_LEASES = 20
 
 
-def _summary(row: dict[str, Any]) -> dict[str, Any]:
+def _summary(row: Mapping[str, Any]) -> dict[str, Any]:
     """What an agent learns about a credential it may lease: where and how much, never what."""
     return {
         k: row[k]
@@ -232,42 +233,11 @@ def register(app: FastAPI, ctx: AppContext) -> None:
         body: IntrospectIn, request: Request, principal: auth.Principal = Depends(security)
     ) -> dict[str, Any]:
         now = time.time()
-        try:
-            claims = lease.decode(body.lease, now)
-        except lease.LeaseError as exc:
-            return {"active": False, "reason": str(exc)}
-        custodian = await gate.is_custodian(ctx, request, principal)
-        async with store.reading():
-            row = await store.noc_lease_by_digest(lease.digest(claims.jti))
-            secret = await store.noc_get_secret(claims.sid)
-            still_agent = await store.noc_has_grant(claims.sub, "agent")
-        reason = None
-        if row is None or row["secret_id"] != claims.sid:
-            reason = "unknown"
-        elif not custodian and principal.ref != claims.sub:
-            reason = "issued to another agent"
-        elif row["revoked_at"] is not None:
-            reason = "revoked"
-        elif now > row["expires_at"]:
-            reason = "expired"
-        elif secret is None or not secret["agent_access"] or secret["version"] != claims.ver:
-            reason = "the credential changed or agents lost access to it"
-        elif not still_agent:
-            reason = "its agent is no longer an agent"
-        if reason is not None:
-            if reason == "issued to another agent":
-                async with write_txn():
-                    await audit_row(
-                        request,
-                        principal,
-                        "noc.lease.use",
-                        "denied",
-                        object_type="noc_secret",
-                        object_id=str(claims.sid),
-                        details={"reason": reason},
-                    )
-            return {"active": False, "reason": reason}
-        assert row is not None and secret is not None
+        state = await gate.lease_state(ctx, request, principal, body.lease, now)
+        if state.reason is not None:
+            return {"active": False, "reason": state.reason}
+        claims, row, secret = state.claims, state.row, state.secret
+        assert claims is not None and row is not None and secret is not None
         async with write_txn():
             await store.noc_use_lease(int(row["id"]), now)
             await audit_row(

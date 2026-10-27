@@ -80,6 +80,33 @@ Two rules that have held since v0.1.0 and are not going to change:
 
 *(This table has no rows for v0.17.0 or v0.18.0: neither release wrote one, and inventing upgrade notes for a release somebody else built would be describing an upgrade nobody tested.)*
 
+## Unreleased — the executor and playbooks (#462, #463)
+
+Nothing to do to upgrade the database: migration **0035** adds the playbook tables and the SSH
+host key beside each credential. Then:
+
+* **SSH needs the `noc` extra** when you install from the wheel: `pip install "netcorenoc[noc]"`
+  (`asyncssh`). The image and the Nix package install it. Without it, an SSH act answers
+  "unavailable"; SNMP and reachability still work.
+* **The first SSH connection to a device pins its host key.** If a device is later replaced, open
+  its credential in *Secrets* and choose *Forget…* (a step-up) before the next connection; until
+  then every connection to it is refused, as an impostor's would be.
+* **No playbook exists until someone stores one**, so every new case still goes to the NOC queue.
+  A stored playbook is active at once and acts only on credentials whose agent access is on.
+
+## Unreleased — NOC cases (#459-#461)
+
+Nothing to do to upgrade: migration **0034** adds the case tables and the trigger that opens one
+for every situation that becomes `open`. Then:
+
+* **Situations already open get a case**, in the NOC queue, counted from the migration — when each
+  was opened was never recorded, and a guess would charge the NOC for time before it existed.
+* **A situation with a case is kept** by retention, as one with a label is: its case, cycles and
+  feed are the NOC's record.
+* **Viewers now reach the NOC plane** (Cases and KPIs, and a case's feed), because a case is the
+  customer's to read too. They see networks rather than addresses, and no names; narrow
+  `cases.read` or `cases.post` in *Roles* to withhold either.
+
 ## Unreleased — the NOC plane and its credential vault (#454-#458)
 
 Nothing to do to upgrade: migration **0033** adds the vault's four tables and runs by itself. Then:

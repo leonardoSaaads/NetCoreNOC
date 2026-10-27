@@ -194,6 +194,21 @@ PERMISSIONS: dict[str, str] = {
     "secrets.reveal": "editor",
     "secrets.lease": "viewer",
     "secrets.grants": "admin",
+    # NOC cases (ADRs #459-#461). Reading a case and posting on its feed is the customer's side
+    # too, so `viewer`; the visibility of each post is decided per post. Working a case — taking
+    # it, editing the customer update, setting it pending, resolving it, which closes its
+    # situation — is the NOC's: `editor`, the same rank as closing a situation. An AI agent works
+    # cases with an editor-role token narrowed to what it needs (`ceiling ∩ policy`).
+    "cases.read": "viewer",
+    "cases.post": "viewer",
+    "cases.work": "editor",
+    # Acting on a case one does not own, and reading every `specified` post: the NOC manager's.
+    "cases.manage": "admin",
+    # Playbooks (ADR #463) act on every matching case across the estate, with no person in the
+    # loop and no visibility scope — an admin's power, like autonomy's. An AI agent that writes
+    # them holds an admin-role token narrowed to what it needs (`ceiling ∩ policy`).
+    "playbooks.read": "admin",
+    "playbooks.write": "admin",
     # **The poller's two capabilities are NOT here**, and their absence is the decision rather
     # than an oversight. D3 slips to v0.21.1 (ADR #373, HANDOFF §1), and a capability with no
     # route behind it is a placeholder — which `ui/app/registry.js` already refuses, on the ground

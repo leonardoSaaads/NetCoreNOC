@@ -220,6 +220,12 @@ UNDRIVEN_QUERY_PARAMS: dict[tuple[str, str], tuple[str, ...]] = {
     ("GET", "/api/catalogue/rules"): ("limit", "offset", "source"),
     ("GET", "/api/catalogue/tree"): ("node",),
     ("POST", "/api/catalogue/import"): ("dry_run",),
+    # ADRs #459-#461: the queue's views, the KPI window and the feed's paging, recorded at their
+    # defaults; every view, `mine`, the windows and `before` are driven in
+    # `tests/api/test_noc_cases.py` and `tests/api/test_declaration.py`.
+    ("GET", "/api/noc/cases"): ("limit", "mine", "view"),
+    ("GET", "/api/noc/cases/kpis"): ("days",),
+    ("GET", "/api/noc/cases/{sid}/feed"): ("before", "limit"),
 }
 
 #: Headers dropped from the record, with the reason each one is not a behaviour of this project.

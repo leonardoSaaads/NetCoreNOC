@@ -515,6 +515,14 @@ ROUTE_ORDER_BASELINE: list[tuple[str, str]] = [
     ("GET", "/app/views/parts/stepup.js"),
     ("GET", "/app/views/parts/secretdetail.js"),
     ("GET", "/app/views/parts/nocgrants.js"),
+    ("GET", "/app/views/cases.js"),
+    ("GET", "/app/views/nockpis.js"),
+    ("GET", "/app/views/parts/caseclock.js"),
+    ("GET", "/app/views/parts/caseform.js"),
+    ("GET", "/app/views/parts/caseacts.js"),
+    ("GET", "/app/views/parts/casefeed.js"),
+    ("GET", "/app/views/parts/casedetail.js"),
+    ("GET", "/app/views/playbooks.js"),
     ("GET", "/vendor/preact-10.29.8.module.js"),
     ("GET", "/vendor/htm-3.1.1.module.js"),
     ("GET", "/style.css"),
@@ -657,6 +665,24 @@ ROUTE_ORDER_BASELINE: list[tuple[str, str]] = [
     ("POST", "/api/noc/secrets/{secret_id}/lease"),
     ("POST", "/api/noc/leases/introspect"),
     ("POST", "/api/noc/leases/{lease_id}/revoke"),
+    ("GET", "/api/noc/cases"),
+    ("GET", "/api/noc/cases/kpis"),
+    ("GET", "/api/noc/cases/{sid}"),
+    ("POST", "/api/noc/cases/{sid}/take"),
+    ("POST", "/api/noc/cases/{sid}/release"),
+    ("POST", "/api/noc/cases/{sid}"),
+    ("POST", "/api/noc/cases/{sid}/status"),
+    ("POST", "/api/noc/cases/{sid}/resolve"),
+    ("GET", "/api/noc/cases/{sid}/feed"),
+    ("POST", "/api/noc/cases/{sid}/feed"),
+    ("GET", "/api/noc/people"),
+    ("POST", "/api/noc/exec"),
+    ("POST", "/api/noc/secrets/{secret_id}/hostkey"),
+    ("GET", "/api/noc/playbooks"),
+    ("POST", "/api/noc/playbooks"),
+    ("GET", "/api/noc/playbooks/{playbook_id}"),
+    ("POST", "/api/noc/playbooks/{playbook_id}"),
+    ("POST", "/api/noc/playbooks/{playbook_id}/enabled"),
 ]
 
 
@@ -763,7 +789,13 @@ async def test_the_api_route_order_is_unchanged_by_the_ui_rewrite(store: Store) 
     # is under the new `/api/noc/` prefix, and below `/api/noc/secrets/{secret_id}` each sub-path is
     # a concrete segment (`…/delete`, `…/reveal`, `…/agents`, `…/check`, `…/lease`); the two lease
     # paths differ in length (`/introspect` against `/{lease_id}/revoke`) (ADRs #454-#458).
-    assert len(live) == 132, (
+    # **Unreleased: 132 -> 143.** NOC cases' eleven (ADRs #459-#461): `/api/noc/cases/kpis` is
+    # registered before `/api/noc/cases/{sid}`, which would otherwise read it as a case id; every
+    # act on a case is a concrete segment below `{sid}`; `/api/noc/people` is a new segment.
+    # **Unreleased: 143 -> 150.** The executor and playbooks (ADRs #462, #463): `/api/noc/exec` and
+    # `/api/noc/playbooks` are new segments, `…/{playbook_id}/enabled` is concrete below its id,
+    # and `…/secrets/{secret_id}/hostkey` is a concrete segment beside `…/check` and `…/lease`.
+    assert len(live) == 150, (
         f"the /api surface is {len(live)} pairs; v0.16.0 adds exactly five, v0.16.2 exactly one, "
         f"v0.16.3 exactly one, v0.16.5 exactly one — `POST /api/alarms/clear` — v0.18.0 exactly "
         f"one, `GET /api/correlation`, and v0.21.0 exactly thirteen for maintenance windows, "
@@ -1400,8 +1432,19 @@ def test_the_queue_put_on_the_hot_path_is_non_blocking() -> None:
 #: `0033_noc_vault.sql`, `api/models_noc.py`, `api/noc_gate.py`, the `secrets` and `noc_access`
 #: routes, and six console modules (`plane`, `views/secrets`, `parts/secretform`, `stepup`,
 #: `secretdetail`, `nocgrants`).
-SRC_TREE_DIGEST = "c54a426395b589392e9370014c94fc97920c8b1db7248c8dffa89b6f59c0637b"
-SRC_FILE_COUNT = 401
+#: **Then 401 -> 422.** Twenty-one added, none removed — NOC cases (ADRs #459-#461):
+#: `crosscutting/audit_noc.py` (the NOC's audit actions, split at the guard), `engine/noc/`
+#: `cases`, `kpi`, `feed`, `case_ops` and `case_loop`, `store/noc_cases.py` and
+#: `store/noc_feed.py`, migration `0034_noc_cases.sql`, `api/models_cases.py`,
+#: `api/case_view.py`, `api/case_close.py`, the `cases` and `case_feed` routes, and seven console
+#: modules (`views/cases`, `views/nockpis`, `parts/caseclock`, `caseform`, `caseacts`,
+#: `casefeed`, `casedetail`).
+#: **Then 422 -> 431.** Nine added, none removed — the executor and playbooks (ADRs #462, #463):
+#: `engine/noc/` `commands`, `executor`, `playbook` and `runbook`, `store/noc_playbooks.py`,
+#: migration `0035_noc_automation.sql`, the `noc_exec` and `playbooks` routes, and the
+#: `views/playbooks` console module.
+SRC_TREE_DIGEST = "8146ef1ee0d229590ed3d8aacb018f34f4178163862df9deca7aa937b4f63851"
+SRC_FILE_COUNT = 431
 SRC_VERSION_FILE = "src/netcorenoc/__init__.py"
 
 

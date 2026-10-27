@@ -9,11 +9,13 @@ The console has two **planes**, switched from the middle of the top bar (ADR #45
 * **Broker** (phase 1) — receiving traps, correlating them into situations, training the models
   that do it, and the inventory. Every screen below except Secrets.
 * **NOC** (phase 2) — working the situations that reach the operations centre, with people and AI
-  agents. Today one screen: **Secrets**, the credentials used to reach equipment.
+  agents: **Cases**, **KPIs** and **Playbooks**, and **Secrets**, the credentials used to reach
+  equipment.
 
 The sidebar shows the plane you are in; a link into a screen opens its plane, and the switch
-returns to the last screen you had open there. A principal who can reach no NOC screen (every
-viewer, today) sees no switch. The plane changes what is offered, never what is allowed.
+returns to the last screen you had open there. A principal who can reach no NOC screen sees no
+switch; a viewer reaches Cases (the customer's side of a case) and nothing of the vault. The plane
+changes what is offered, never what is allowed.
 
 The Broker's views come in three groups, plus the Overview and your account. **A view you
 cannot use is not rendered** — a viewer sees no `Administer` group at all, rather than a group of
@@ -47,6 +49,44 @@ disabled controls.
 | **Quarantine** | Datagrams the parser refused. **Reading this list is audited** |
 | **Audit log** | The hash-chained record of every change, and its verification state |
 
+## NOC — Cases
+
+| View | The question it answers |
+|---|---|
+| **Cases** | What the NOC has to take, what it is working, what waits on someone else, and what is over. Tabs **Queue**, **Working**, **Pending**, **Resolved**, **All**, each with its count, and *Only mine*. Every row: priority, the case, its status, its owner, the **take** clock ("12m left", "late 15m"), the customer-update clock, the next update and when it opened. Read again every 15 s |
+| **KPIs** | How fast the NOC takes a case and documents it, over 24 hours, 7 or 30 days: taken within target, median time to take, the time past target summed over every late take, customer updates within 30 minutes, and the same per priority |
+| **Playbooks** | Which troubleshooting trees check a new case before the NOC is called, and how each has done. A list — the name, what it matches (vendors, trap OIDs, severities), on or off, its runs and how they ended — and one playbook opened below it as its tree: each step, what it does, where each answer leads, down to the leaves (resolve, wait, NOC queue), its JSON and its last runs. An admin's screen |
+
+A situation the Broker opens becomes a case in the NOC queue (ADR #459). Opening one shows, top to
+bottom: the priority, title, status and owner; the **status path** (Queue → Working → Pending →
+Resolved → Closed, with *Automated* and *Validate* when they apply); the clocks; what you may do
+now; the **customer update**; and the **feed**.
+
+* **Take** makes the case yours and *Working*; the take clock stops (critical 25 min, major 1 h,
+  minor 2 h — ADR #460). *Take it over* takes someone else's; *Back to the queue* gives yours back.
+* **The customer update** — title, executive summary, description, current analysis, NOC next step,
+  customer next step, next update and priority — is edited by the owner and read by everyone who
+  can read the case. Each company whose equipment the situation touches may have its **own
+  executive summary**; an empty one reads the case's. The update's clock (30 min) stops the first
+  time it is complete.
+* **Set pending…** names who the NOC waits on (customer, carrier or fiber provider, scheduled
+  maintenance, dispatch, device access, connectivity, vendor, site access, field technician, RCA)
+  and when it looks again. It needs the complete customer update. When the next update comes, or a
+  person posts on the feed, the case returns to the queue.
+* **Resolve…** records the cause and the solution and closes the situation on the Broker. Tick
+  *I checked the device* only when the alarms are verifiably gone: then they are cleared too.
+* **The feed** is the conversation and the case's history. Each post says who reads it —
+  **Internal** (the NOC), **Specified** (the people you name) or **All with access** (the customer
+  too). A viewer posts to *All* only, sees networks rather than addresses, and no names.
+* **Automated** means a playbook is checking the case (ADR #463): each of its steps, and the
+  device's answer, appears in the feed as an internal event under the playbook's name. Taking the
+  case stops it — the person wins. A run that resolves the case says what it found; one that
+  cannot decide, runs out of time or fails sends the case to the queue, and the take clock starts
+  there.
+* **Playbooks are written by agents**, through the API, after they resolve a case; one is active
+  as soon as it is stored, and acts only through read-only commands and credentials whose agent
+  access is on. *Switch off* stops it matching new cases.
+
 ## NOC — Equipment access
 
 | View | The question it answers |
@@ -69,6 +109,9 @@ disabled controls.
 * **Agents** are service tokens an admin named under *Custodians & agents*. They never see a secret:
   they lease a credential a custodian switched agents on for, and each lease, use and end is in the
   credential's history.
+* **SSH host key**: the first SSH connection to a device pins the key it presents, and the panel
+  says when; a different key later is refused. After replacing a device, *Forget…* (a step-up)
+  lets the next connection pin the new one. Changing the host or port forgets it too.
 
 **Your account** opens from your photo and name in the top bar: your photo, display name and
 recovery email, your password (and where two-factor sign-in stands), and what you can do, by

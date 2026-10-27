@@ -66,10 +66,13 @@ class RetentionMixin(StoreBase):
         # situation carrying an event keeps its one row, like a situation carrying a label, and
         # both shells are collected by the ordinary later pass once the **audit sweep**
         # (`prune_dataset_audit`) has removed what was holding them.
+        # ADR #459: a situation the NOC worked keeps its row too — its case, cycles and feed are
+        # the NOC's record, and they are keyed by it.
         cur = await self.conn.execute(
             "DELETE FROM situation s WHERE s.status='resolved' AND s.closed_at < ? "
             "AND NOT EXISTS (SELECT 1 FROM feedback f WHERE f.situation_id = s.id) "
-            "AND NOT EXISTS (SELECT 1 FROM situation_event e WHERE e.situation_id = s.id)",
+            "AND NOT EXISTS (SELECT 1 FROM situation_event e WHERE e.situation_id = s.id) "
+            "AND NOT EXISTS (SELECT 1 FROM noc_case c WHERE c.situation_id = s.id)",
             (cutoff,),
         )
         # The count is what was actually collected, not what was eligible: a labelled

@@ -1,4 +1,4 @@
-"""Broker | NOC and NOC → Secrets in the DOM harness (ADRs #454-#458).
+"""Broker | NOC and NOC → Secrets in the DOM harness (ADRs #454-#458, #459).
 
 Driven against route tables captured from the real server, with one credential stored through the
 real API, so what is asserted is what the console does with what the appliance really sends:
@@ -62,10 +62,13 @@ async def test_the_top_bar_switches_planes_and_the_sidebar_follows(store: Store)
     assert broker["navGroups"] == ["Operations", "Evidence", "Administer"]
     noc = _render(tables["admin"], "#/secrets")
     assert ".plane-noc.plane-on" in noc["dump"]
-    assert noc["navItems"] == ["Secrets"] and noc["navGroups"] == ["Equipment access"]
-    # A viewer reaches no NOC screen, so there is no switch at all — not a greyed half.
-    viewer = _render(tables["viewer"], "#/overview")
-    assert ".plane-switch" not in viewer["dump"]
+    assert noc["navItems"] == ["Cases", "KPIs", "Playbooks", "Secrets"]
+    assert noc["navGroups"] == ["Cases", "Equipment access"]
+    # A viewer reads cases (the customer's side), so the switch is there — and the NOC plane
+    # offers them the cases and nothing of the vault: never a greyed half.
+    viewer = _render(tables["viewer"], "#/cases")
+    assert ".plane-noc.plane-on" in viewer["dump"]
+    assert viewer["navItems"] == ["Cases", "KPIs"] and viewer["navGroups"] == ["Cases"]
     refused = _render(tables["viewer"], "#/secrets")
     assert refused["refused"] is True
     assert not [p for p in refused["requestPaths"] if "/api/noc/" in p], "a refusal asks nothing"
@@ -112,3 +115,45 @@ async def test_a_reveal_carries_its_step_up_in_its_own_body(store: Store) -> Non
     ]
     assert result["revealedText"] is not None and "noc" in result["revealedText"]
     assert SECRET not in result["revealedText"], "a secret field is masked until asked"
+
+
+async def _case_routes(store: Store) -> tuple[dict[str, dict[str, Any]], int]:
+    """Each role's captured table with one case in the NOC queue, and that case's own reads."""
+    import time
+
+    from netcorenoc.engine.noc import case_loop
+
+    import util
+
+    _engine, _queue, app = await authutil.make_env(store)
+    async with store.lock:
+        sid = await store.create_situation(time.time(), None)
+        alarm = await store.ingest(util.event(device="10.0.0.1", ts=time.time()))
+        await store.add_alarm_to_situation(sid, alarm.alarm_id)
+        await store.conn.execute("UPDATE situation SET severity='critical' WHERE id=?", (sid,))
+        await store.promote_situation(sid, time.time(), "promote")
+        await store.commit()
+    await case_loop.tick(store)
+    tables = {role: await uifixtures.capture(app, role) for role in ("viewer", "editor")}
+    for role in tables:
+        client = await authutil.client_as(app, role)
+        try:
+            for path in (f"/api/noc/cases/{sid}", f"/api/noc/cases/{sid}/feed"):
+                tables[role][path] = {"status": 200, "json": (await client.get(path)).json()}
+        finally:
+            await client.aclose()
+    return tables, sid
+
+
+@dom_test
+async def test_the_queue_shows_the_take_clock_and_only_the_noc_works_a_case(store: Store) -> None:
+    tables, sid = await _case_routes(store)
+    queue = _render(tables["editor"], "#/cases")
+    assert ".case-open" in queue["dump"] and f'"{sid}"' in queue["dump"]
+    assert '"Critical"' in queue["dump"] and '"25m left"' in queue["dump"], "the take clock runs"
+    editor = _render(tables["editor"], f"#/cases/{sid}")
+    viewer = _render(tables["viewer"], f"#/cases/{sid}")
+    # "Take" labels a clock and a history column for everyone; it is a button only for the NOC.
+    assert editor["dump"].count('"Take"') == viewer["dump"].count('"Take"') + 1
+    assert ".case-path" in editor["dump"] and "Read-only for you." in viewer["dump"]
+    assert '"Internal"' not in viewer["dump"], "a viewer is offered only what it may post"

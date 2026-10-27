@@ -181,6 +181,54 @@ that an editor can always stop it. Turning a grade on is admin-only (#412).
   absolute one. A stolen cookie expires on the absolute clock whatever the holder does.
 * Service tokens are per-identity and revocable. The value is shown once and stored hashed.
 
+## NOC cases: who reads, who works, what a customer is shown (ADRs #459-#461)
+
+* **Reading a case is reading its situation**: `cases.read` (viewer) and the same scope predicate,
+  so a case outside the caller's scope is the same 404 as one that does not exist. Posting is
+  `cases.post` (viewer); working — taking, editing, setting pending, resolving — is `cases.work`
+  (editor), and every act but taking is the owner's; `cases.manage` (admin) acts on any case.
+* **Each post carries its visibility**: `internal` to whoever holds `cases.work`, `specified` to its
+  author, the people it names and `cases.manage`, `all` to every reader. Someone who cannot read
+  `internal` cannot write it. Posts are append-only in the database.
+* **Below editor**, every text of a case — its fields and its posts — shows device addresses as
+  their network, by pattern rather than by word, and people as "NOC engineer", "NOC agent" or
+  "Operator"; a scoped reader is not shown the situation's derived name, built from every member's
+  address.
+* **Resolving clears alarms only when the resolver states they were verified clear on the device**,
+  as the broker's own `manual_clear` gestures, and only the members the resolver can see.
+* Six audit actions (`noc.case.*`), under the actor's name, person or agent; the case loop's moves
+  are events in the feed.
+
+## Acting on a device: the executor and playbooks (ADRs #462, #463)
+
+* **The secret never leaves the process.** An agent sends its lease and a command
+  (`POST /api/noc/exec`); the appliance checks the lease (the same function introspection uses),
+  opens the seal, connects, and answers with the device's text — never a field of the credential.
+  A playbook uses the vault the same way, and only credentials whose agent access a custodian
+  switched on.
+* **Read only, enforced twice.** A command must start with a read verb for the lease's access level
+  (`show`, `display`, `get`; `ping` and `traceroute` need `diagnostic`) and may contain no
+  separator, redirection, substitution or control character, and no word that writes or escalates
+  (`configure`, `commit`, `reload`, `clear`, `set`, `delete`, `enable`…); a playbook's SSH steps are
+  checked when it is stored and again before each run. The only values put into a command, a branch
+  test or a leaf's text are the element's address and the root alarm's entity, refused unless plain;
+  a test that cannot be filled decides nothing, and the case goes to the NOC queue.
+* **What a device says is untrusted.** Its answer is bounded (64 KiB), marked `untrusted`, and in a
+  feed post introduced as the device's text, not instructions — SNMPv1/v2c data is
+  attacker-controllable and must never steer an agent. A playbook branches on fixed tests of that
+  text (contains, a number above or below), never on an evaluated expression.
+* **SSH host keys are pinned on first use**; a different key later is refused, so a credential is
+  never offered to an impostor. Moving the credential, or a custodian's *Forget…* with a step-up,
+  clears the pin.
+* **A person wins over automation**: a playbook applies its leaf only while the case is still
+  `auto`; it resolves the case and clears alarms only when the tree verified them clear on the
+  device; anything else, a timeout or a failure, goes to the NOC queue.
+* **Playbooks are an admin's** (`playbooks.read`, `playbooks.write`): one acts on every matching
+  case in every scope. An agent writing them uses an admin-role token narrowed to those
+  capabilities.
+* Audit: `noc.exec` for every act on a device (actor, credential, kind, duration, size and a digest
+  of the command — never its output), `noc.playbook.create`, `.update` and `.run`.
+
 ## The credential vault (NOC → Secrets)
 
 Phase 2 keeps the credentials people and AI agents use to reach equipment — SSH passwords and keys,

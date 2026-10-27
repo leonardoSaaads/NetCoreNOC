@@ -231,7 +231,7 @@ in a complex, dynamic ISP network — from the trap stream alone.
 
 Everything in this document, and everything you can run today, is phase 1.
 
-### Phase 2 — automated first response *(begun: the NOC plane and its credential vault)*
+### Phase 2 — automated first response *(begun: the NOC plane, its cases, its credential vault, the executor and playbooks)*
 
 Takes phase 1's output and acts as a **NOC level 1**: an AI plus a library of diagnostic and
 remediation scripts that **evolve and are scored over time**, trying the steps a human would try. If
@@ -248,12 +248,25 @@ reachability checks are the first code to do network I/O to equipment, and they 
 connect with nothing held, and take the lock only to record. **The second is still open**: what a
 script's evidence of having worked actually is.
 
+**Cases** (ADRs #459-#461): every situation that becomes `open` has a case in the same
+transaction (a trigger, so no path to `open` can forget the NOC). A case loop off the ingest path
+puts it in the NOC queue, returns pending cases at their next update, and reconciles cases whose
+situation resolved on its own; the take and customer-update clocks are kept per queue cycle; the
+feed carries each post's visibility and the case's own history.
+
+**The executor and playbooks** (ADRs #462, #463): an agent's lease becomes one read-only act on its
+device — SSH, SNMP GET or reachability — with the seal opened inside the appliance, the SSH host
+key pinned, and the answer marked untrusted. A playbook is a JSON tree an agent writes after
+resolving a case; a new case one matches goes to `auto`, a loop of its own walks the tree with
+nothing held across I/O, and the leaf resolves the case, sets it pending, or queues it — only while
+nobody has taken it. This is the script library's first form: what it lacks is the score.
+
 **What exists** (ADRs #454-#458): the console's **Broker | NOC** switch; the NOC's **Secrets**
 screen; a vault that seals each device credential twice, under two keys and two ciphers, bound to
 the host it works for; custodians, a step-up for every act on a secret, and a stated placeholder for
 the second factor; status lights from checks that never open the seal; and **leases** — what an AI
-agent holds instead of a credential. **What does not, yet**: anything that acts on a device with a
-lease (the executor), the MCP server agents will reach it through, and the script library. Their
+agent holds instead of a credential. **What does not, yet**: the MCP server agents will reach it
+through, write commands on a device, and scoring a playbook by whether its resolutions held. Their
 design and the review of the current API for agents are in
 [`plans/noc-phase2.md`](plans/noc-phase2.md).
 

@@ -234,7 +234,7 @@ jobs:
           # carries the same pin for the same reason.
           v=$(NETCORENOC_SECRET_KEY_FILE=/tmp/ci-data/secret.key \
             /tmp/clean/bin/python -m netcorenoc db status | awk '$1 == "version" {print $2}')
-          test "$v" = 33 || { echo "::error::the appliance booted at schema $v, not 33"; exit 1; }
+          test "$v" = 35 || { echo "::error::the appliance booted at schema $v, not 35"; exit 1; }
           echo "schema version $v, all migrations applied"
           # The key was created owner-only beside the spool, and the runtime role owns no table.
           test "$(stat -c %a /tmp/ci-data/secret.key)" = 600
@@ -387,10 +387,10 @@ jobs:
       - name: The database is PostgreSQL, migrated, and not reachable from the host
         run: |
           docker compose exec -T netcorenoc python -m netcorenoc db status | tee status.txt
-          grep -q '^version *33 ' status.txt
+          grep -q '^version *35 ' status.txt
           docker compose ps --format '{{.Service}} {{.Ports}}' | tee ports.txt
           ! grep -E '^postgres .*->5432' ports.txt  # exposed on the network, published nowhere
-          docker compose logs db-migrate | grep -q 'at version 33: migrations applied'
+          docker compose logs db-migrate | grep -q 'at version 35: migrations applied'
           # ADR #455: the secrets key was created owner-only on its own volume, not beside secret.key.
           test "$(docker compose exec -T netcorenoc stat -c %a /var/lib/netcorenoc-vault/secrets.key)" = 600
           ! docker compose exec -T netcorenoc test -e /home/netcorenoc/secrets.key

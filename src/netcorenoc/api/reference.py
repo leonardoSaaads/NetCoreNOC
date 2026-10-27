@@ -26,6 +26,8 @@ ELEMENTS, CATALOGUE, MAINT, MODELS = "Network elements", "Trap catalogue", "Main
 ADMIN, ACCESS, AUDIT, SETTINGS = "People", "Access policy", "Audit", "Settings"
 PUBLIC = "Sign-in and recovery"
 VAULT, AGENTS = "NOC — Secrets", "NOC — Agents and leases"
+CASES = "NOC — Cases"
+AUTOMATION = "NOC — Executor and playbooks"
 
 REFERENCE: dict[tuple[str, str], Entry] = {
     ("POST", "/api/login"): Entry(PUBLIC, "Sign in with a username and password (sets a cookie)"),
@@ -162,4 +164,24 @@ REFERENCE: dict[tuple[str, str], Entry] = {
     ("POST", "/api/noc/secrets/{secret_id}/lease"): Entry(AGENTS, "Lease a credential (agents)"),
     ("POST", "/api/noc/leases/introspect"): Entry(AGENTS, "Is a lease active, and for what"),
     ("POST", "/api/noc/leases/{lease_id}/revoke"): Entry(AGENTS, "End a lease"),
+    ("GET", "/api/noc/cases"): Entry(CASES, "The NOC queue and the cases in each status"),
+    ("GET", "/api/noc/cases/kpis"): Entry(CASES, "Take and documentation times against target"),
+    ("GET", "/api/noc/cases/{sid}"): Entry(CASES, "One case: customer update, clocks, cycles"),
+    ("POST", "/api/noc/cases/{sid}"): Entry(CASES, "Edit a case's customer update (its owner)"),
+    ("POST", "/api/noc/cases/{sid}/take"): Entry(CASES, "Take a case: it becomes yours, Working"),
+    ("POST", "/api/noc/cases/{sid}/release"): Entry(CASES, "Put your case back in the NOC queue"),
+    ("POST", "/api/noc/cases/{sid}/status"): Entry(CASES, "Set your case pending until its update"),
+    ("POST", "/api/noc/cases/{sid}/resolve"): Entry(
+        CASES, "Resolve your case; closes its situation"
+    ),
+    ("GET", "/api/noc/cases/{sid}/feed"): Entry(CASES, "A case's feed, as far as you may read it"),
+    ("POST", "/api/noc/cases/{sid}/feed"): Entry(CASES, "Post on a case's feed"),
+    ("GET", "/api/noc/people"): Entry(CASES, "People a specified post may name"),
+    ("POST", "/api/noc/exec"): Entry(AUTOMATION, "Act on a device with a lease (read only)"),
+    ("POST", "/api/noc/secrets/{secret_id}/hostkey"): Entry(VAULT, "Forget a pinned host key"),
+    ("GET", "/api/noc/playbooks"): Entry(AUTOMATION, "Playbooks: what each matches, its runs"),
+    ("POST", "/api/noc/playbooks"): Entry(AUTOMATION, "Store a playbook (read-only steps)"),
+    ("GET", "/api/noc/playbooks/{playbook_id}"): Entry(AUTOMATION, "One playbook, tree and runs"),
+    ("POST", "/api/noc/playbooks/{playbook_id}"): Entry(AUTOMATION, "Replace a playbook's tree"),
+    ("POST", "/api/noc/playbooks/{playbook_id}/enabled"): Entry(AUTOMATION, "Switch it on or off"),
 }

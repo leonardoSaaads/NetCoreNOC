@@ -213,6 +213,9 @@ def register(app: FastAPI, ctx: AppContext) -> None:
                 if resealed
                 else 0
             )
+            if before["host"] != meta["host"] or before["port"] != meta["port"]:
+                # ADR #462: a key pinned for one device says nothing about another.
+                await store.noc_set_host_key(secret_id, None, now)
             await audit_row(
                 request,
                 principal,

@@ -26,6 +26,10 @@ dependencies = [
 # v0.30.0 (DECISIONS #444): SNMPv3 *privacy* needed `cryptography`, then optional. A core dependency
 # since ADR #453; the extra stays so `pip install ".[snmpv3]"` in existing scripts still works.
 snmpv3 = ["cryptography>=43"]
+# ADR #462: the NOC executor's SSH client, optional — without it the executor answers
+# "unavailable" for SSH and everything else runs. 2.14.2 is the first with the Terrapin fix
+# (CVE-2023-48795).
+noc = ["asyncssh>=2.14.2"]
 dev = [
     "pytest>=8.2",
     "pytest-asyncio>=0.24",
@@ -46,6 +50,8 @@ dev = [
     "setuptools>=69",
     # The `snmpv3` extra, so the suite exercises every privacy protocol (DECISIONS #444).
     "cryptography>=43",
+    # The `noc` extra, so the suite drives the executor against a real SSH server (ADR #462).
+    "asyncssh>=2.14.2",
 ]
 
 [project.urls]

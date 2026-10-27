@@ -6399,3 +6399,114 @@ From this release an entry is about six lines: decision, reason, release.*
   agent's own bearer token is useless if copied out of a model's context; the secret stays on the
   appliance's side for the executor — the next step, `docs/plans/noc-phase2.md` — to use on the
   agent's behalf.
+
+## 459. A situation the broker opens is a case the NOC works, in the same transaction (unreleased)
+
+- **Decision** (`migrations/0034_noc_cases.sql`, `engine/noc/cases.py`, `engine/noc/case_ops.py`,
+  `engine/noc/case_loop.py`, `api/routes/cases.py`): a trigger on `situation` gives every situation
+  that becomes `open` a `noc_case` row in the transaction that opened it, so every path to `open`
+  — promotion, feedback, a move, a merge, a split, a hand clear, autonomy, an operator's split —
+  is covered and the broker's code is unchanged. A trap still belongs to one situation; a case is
+  that situation, worked, keyed by its id. The case starts `new`; a supervised loop (every 5 s,
+  off the ingest path) dispatches it to automated checks or to the **NOC queue**, takes a pending
+  case back to the queue when its next update comes, resolves an untaken case whose situation
+  resolved on its own (or merged), asks an owner to **validate** one that did, and closes a case
+  resolved a day ago. Statuses are the handbook's super-states: queue, working, ten pending
+  statuses (customer, carrier/fiber provider, scheduled maintenance, dispatch, device access,
+  connectivity, vendor, site access, field tech, RCA), validate, resolved, closed. Leaving
+  `working` for a pending status requires the complete **customer update** — title, description,
+  executive summary, current analysis, NOC next step, customer next step, and a next update in the
+  future. Taking is `cases.work` (editor); every other act is the owner's (`cases.manage`, admin,
+  acts on any). Resolving needs a cause from a closed vocabulary and the solution; it closes the
+  situation, and clears its alarms only when the resolver states they were verified clear on the
+  device — then as the broker's own `manual_clear` gestures (`api/case_close.py`). Each act is one
+  write transaction, one `noc.case.*` audit row, and an internal event in the feed. Retention keeps
+  a situation that has a case. Each organization whose elements the situation touches may have its
+  own executive summary; the case's is the default. Case routes are `scoped`, through the same
+  predicate as the situation's.
+- **Reason**: the owner asked for a Salesforce-like case on every situation that reaches `open`,
+  with the five fields, an executive summary per company, a queue, pending statuses that wait for
+  a next update, and the handbook's lifecycle. One trigger rather than a call on each path, because
+  a path added later must not be able to forget the NOC.
+
+## 460. The NOC is measured by two clocks per queue cycle, and a miss reports its overrun (unreleased)
+
+- **Decision** (`engine/noc/kpi.py`, `noc_case_cycle`): every entry into the NOC queue — the
+  situation opened, automation did not conclude, a person posted on a pending case, a next update
+  came, an owner released it — is a cycle. Its **take** clock runs from entering the queue to the
+  first take: critical 25 minutes, major 1 hour, minor (and below) 2 hours, the priority derived
+  from the situation's severity when it enters. Past the target it keeps counting and reports the
+  overrun. Its **document** clock runs from the take to a complete customer update: 30 minutes. A
+  cycle that ends untaken is *withdrawn* and not charged. The handbook's update cadence (working:
+  30 min / 2 h / 6 h, pending: 1 h / 3 h / 6 h) is shown beside a next update as advice, not
+  enforced. `GET /api/noc/cases/kpis` sums a window: met, missed, late, median, total overrun, per
+  priority.
+- **Reason**: "Critical 25 minutes, Major 1 hour, Minor 2 hours to be taken… count how long it
+  passes until taken", "half an hour to fill in the information". A maintenance window three days
+  out is a legitimate next update, so the cadence advises rather than refuses.
+
+## 461. A case feed post says who may read it; a person's post sends a pending case back (unreleased)
+
+- **Decision** (`engine/noc/feed.py`, `noc_case_post`, `api/routes/case_feed.py`): posts are
+  append-only (a trigger refuses edits and deletes). Visibility per post: `internal` — whoever
+  holds `cases.work`, people and agents; `specified` — its author, the people it names, and
+  `cases.manage`; `all` — everyone who may read the case. Posting is `cases.post` (viewer, the
+  customer's side); a reader who cannot read `internal` cannot write it. **A person's post on a
+  pending case returns it to the NOC queue** in the same transaction, unless they own it; an
+  agent's post does not. The case's own history (taken, updated, set pending, requeued) is in the
+  same stream as internal events. Below editor, every text — fields and posts — shows addresses as
+  their network, matched by pattern, and people as "NOC engineer", "NOC agent" or "Operator".
+- **Reason**: the owner's three visibilities, and "if an operator posts on the feed, the case must
+  go back to the NOC queue". The handbook's own warning — internal text must never reach a
+  customer — is why every post carries its visibility on screen.
+
+## 462. The executor acts on a device for an agent, read only, with the host key pinned (unreleased)
+
+- **Decision** (`engine/noc/executor.py`, `engine/noc/commands.py`, `api/routes/noc_exec.py`,
+  migration `0035`): `POST /api/noc/exec` turns an agent's lease into one act on its device — a
+  read-only SSH command (an exec channel, or an interactive session for CLIs that need one), an
+  SNMP GET of up to twenty OIDs (v1/v2c or v3, through pysnmp), or a reachability check (ICMP through
+  the system's `ping` when it may be used, else a TCP connection). The lease is checked by the one
+  function introspection now uses too (`noc_gate.lease_state`). **The appliance opens the seal**; the
+  answer carries the device's text, bounded to 64 KiB and marked `untrusted`, never the credential.
+  **Read only, enforced twice**: a command must start with a read verb (`show`, `display`/`dis`,
+  `get`; `ping` and `traceroute` need the diagnostic level), contain no `; | & > < \` $(` or control
+  character, and no word that writes or escalates (`configure`, `commit`, `reload`, `clear`, `set`…).
+  **The SSH host key is pinned on first use** and a different key later is refused; moving the
+  credential to another host or port forgets it, and a custodian may forget it with a step-up after
+  replacing a device. SSH is the optional `noc` extra (`asyncssh>=2.14.2`, past the Terrapin fix);
+  the image installs it; without it SSH answers "unavailable". Every act is a `noc.exec` audit row
+  (agent, credential, kind, a digest and the first characters of the command, outcome) and a lease
+  use; naming a case posts the act and its answer to the case feed, `internal`.
+- **Reason**: the owner chose asyncssh as an optional extra and read-only commands for agents and
+  playbooks. A lease that only described a credential could not reach a device; this is where the
+  secret is used without leaving the appliance, and where what a device says is fenced off from
+  what a model might take as instructions.
+
+## 463. Playbooks: troubleshooting trees agents write, run before the NOC is called (unreleased)
+
+- **Decision** (`engine/noc/playbook.py`, `engine/noc/runbook.py`, `api/routes/playbooks.py`,
+  migration `0035`): a playbook is a JSON tree — **data, never code**, validated whole when stored:
+  known keys only, bounded sizes, every branch reaching a leaf, no cycle, nothing unreachable, and
+  every SSH step read-only. A step does one thing (`reach`, `ssh`, `snmp_get`) or only decides, and
+  branches on four fixed tests: did it work, does the answer contain a phrase (or not), is the
+  number after a label above or below a value, is the element of a vendor. The only values put into
+  a command, a test's phrase or a leaf's text are the element's address and the root alarm's entity,
+  refused unless plain; a test naming one the situation lacks cannot decide, and the case is queued.
+  Leaves end the case three ways: `resolve` (a cause, a solution, and `clear_alarms` when the tree
+  verified the alarm is gone on the device), `pending` (a status, the customer update, the next
+  update), or `queue`. A playbook matches on vendors, trap OID prefixes and severities. **A new case
+  that a playbook matches goes to `auto` first**; the playbook loop walks it outside the lock, posts
+  every step and the device's answer to the case feed, audits every device act (`noc.exec`) and the
+  run (`noc.playbook.run`) under the playbook's name, and applies the leaf only while the case is
+  still `auto` — a person who took it wins. A run past its `timeout_s` (30 s – 30 min), a failed
+  one, one whose conclusion could not be applied, or one a restart interrupted sends the case to the
+  NOC queue; its take clock starts there. A playbook is active as soon as it is stored; reading and
+  writing them is `playbooks.*`, an admin's power — an AI agent uses an admin-role token narrowed to
+  what it needs. The credential a step uses is the vault's, for the element's address, with agent
+  access switched on, at the least access level the command needs.
+- **Reason**: the owner's design — after a case is resolved the agent writes a tree (ping, is it
+  Ciena, is it SAOS 10, is the alarm still active on the device, then the port's power…) so the next
+  similar case is handled without calling the NOC; and the owner's choice that playbooks are active
+  at once, read only. Fixed tests on the device's text, never evaluated expressions, are what let an
+  AI write a playbook without being able to write a program.

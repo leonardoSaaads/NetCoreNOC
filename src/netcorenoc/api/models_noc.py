@@ -17,6 +17,7 @@ from netcorenoc.engine.noc import lease
 
 __all__ = [
     "AgentAccessIn",
+    "ExecIn",
     "GrantIn",
     "IntrospectIn",
     "LeaseIn",
@@ -97,3 +98,18 @@ class IntrospectIn(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     lease: str = Field(min_length=1, max_length=lease.MAX_LEASE_CHARS)
+
+
+class ExecIn(BaseModel):
+    """One act on the device a lease is for (ADR #462): a read-only SSH command, an SNMP GET of
+    up to twenty OIDs, or a reachability check. ``situation_id`` names the case the act is for,
+    whose feed then records it."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    lease: str = Field(min_length=1, max_length=lease.MAX_LEASE_CHARS)
+    action: Literal["ssh", "snmp_get", "reach"]
+    command: str | None = Field(default=None, max_length=512)
+    mode: Literal["exec", "shell"] = "exec"
+    oids: list[str] = Field(default_factory=list, max_length=20)
+    situation_id: int | None = Field(default=None, ge=1)
