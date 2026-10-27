@@ -8,6 +8,10 @@ Two clocks run on every **cycle** — one entry of a case into the NOC queue (`n
 * **Document** — from the take to the customer update being complete (title, description, executive
   summary, current analysis, both next steps, next update): 30 minutes.
 
+One clock runs on the **case** (ADR #464): **Restore** — the handbook's Time to Resolve/Restore,
+from the situation opening to the case reaching `validate` or `resolved`: 4 hours critical, 24
+hours major, 72 hours minor, at the case's current priority.
+
 A cycle that ends without a take — the situation cleared, automation resolved it — is
 **withdrawn**: no clock is charged for it.
 
@@ -30,10 +34,12 @@ from netcorenoc.engine.noc.cases import PENDING
 __all__ = [
     "CLOSE_AFTER_S",
     "DOCUMENT_TARGET_S",
+    "RESTORE_TARGET_S",
     "TAKE_TARGET_S",
     "UPDATE_CADENCE_S",
     "cadence",
     "document",
+    "restore",
     "summary",
     "take",
 ]
@@ -42,6 +48,12 @@ __all__ = [
 TAKE_TARGET_S: dict[str, float] = {"critical": 25 * 60.0, "major": 60 * 60.0, "minor": 120 * 60.0}
 #: From being taken to a complete customer update.
 DOCUMENT_TARGET_S = 30 * 60.0
+#: The handbook's Time to Resolve/Restore (Table 2), from the event to `validate` or `resolved`.
+RESTORE_TARGET_S: dict[str, float] = {
+    "critical": 4 * 3600.0,
+    "major": 24 * 3600.0,
+    "minor": 72 * 3600.0,
+}
 #: The handbook's update frequency: the furthest ahead a next update should be.
 UPDATE_CADENCE_S: dict[str, dict[str, float]] = {
     "working": {"critical": 30 * 60.0, "major": 2 * 3600.0, "minor": 6 * 3600.0},
@@ -92,6 +104,13 @@ def document(cycle: Mapping[str, Any], now: float) -> dict[str, Any] | None:
     if done is None and left is not None:
         out["state"] = "missed"
     return out
+
+
+def restore(case: Mapping[str, Any], now: float) -> dict[str, Any]:
+    """The case's restore clock: running or late until the case first reached `validate` or
+    `resolved` (`restored_at`), then met or missed."""
+    target = RESTORE_TARGET_S[str(case["priority"])]
+    return _clock(float(case["opened_at"]), _f(case.get("restored_at")), now, target)
 
 
 def cadence(case: Mapping[str, Any], now: float) -> dict[str, Any] | None:
@@ -157,5 +176,9 @@ def summary(cycles: Iterable[Mapping[str, Any]], now: float) -> dict[str, Any]:
             "median_s": round(statistics.median(doc_s), 1) if doc_s else None,
         },
         "by_priority": by_priority,
-        "targets": {"take_s": TAKE_TARGET_S, "document_s": DOCUMENT_TARGET_S},
+        "targets": {
+            "take_s": TAKE_TARGET_S,
+            "document_s": DOCUMENT_TARGET_S,
+            "restore_s": RESTORE_TARGET_S,
+        },
     }

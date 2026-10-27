@@ -18,7 +18,11 @@ _CASE = (
     "c.current_analysis, c.noc_next_step, c.customer_next_step, c.next_update_at, c.owner_ref, "
     "c.owner_name, c.owner_kind, c.opened_at, c.status_at, c.cause, c.solution, c.resolution, "
     "c.resolved_at, c.resolved_by, c.alarms_cleared, c.version, c.created_at, c.updated_at, "
-    "c.updated_by, s.status AS situation_status, s.severity, s.resolution AS situation_resolution, "
+    "c.updated_by, c.priority_by, c.restored_at, c.agent_id, c.assigned_at, c.tier, "
+    "c.escalated_at, c.with_people, "
+    "(SELECT g.name FROM noc_agent g WHERE g.id = c.agent_id) AS agent_name, "
+    "s.status AS situation_status, s.severity, "
+    "s.resolution AS situation_resolution, "
     "COALESCE(s.operator_name, s.model_name, s.derived_name) AS situation_name, "
     "(SELECT COUNT(*) FROM situation_alarm sa WHERE sa.situation_id = c.situation_id) AS members"
 )
@@ -38,9 +42,8 @@ EDITABLE = (
     "next_update_at",
     "priority",
 )
-_PRIORITY_OF = (
-    "CASE s.severity WHEN 'critical' THEN 'critical' WHEN 'major' THEN 'major' ELSE 'minor' END"
-)
+#: The severities a case priority is drawn from, worst first (`noc_case_severity`).
+_WORST_FIRST = ("critical", "major", "minor", "warning", "indeterminate")
 _IN_SCOPE = (
     "EXISTS (SELECT 1 FROM situation_alarm sa JOIN alarm a ON a.id = sa.alarm_id "
     "WHERE sa.situation_id = c.situation_id AND a.ne_id = ANY(?))"
@@ -178,11 +181,73 @@ class NocCaseMixin(StoreBase):
         if not names:
             return
         sets = ", ".join(f"{name} = ?" for name in names)
+        # A priority a person or an agent sets is theirs from then on (`priority_by`, 0036).
+        owned = ", priority_by = ?" if "priority" in names else ""
         await self.conn.execute(
-            f"UPDATE noc_case SET {sets}, version = version + 1, updated_at = ?, "  # nosec B608
+            f"UPDATE noc_case SET {sets}{owned}, version = version + 1, updated_at = ?, "  # nosec B608
             "updated_by = ? WHERE situation_id = ?",
-            (*(fields[name] for name in names), now, actor, situation_id),
+            (
+                *(fields[name] for name in names),
+                *([actor] if owned else []),
+                now,
+                actor,
+                situation_id,
+            ),
         )
+        if owned:
+            await self._cycle_priority(situation_id, str(fields["priority"]))
+
+    async def noc_case_raise_priority(self, situation_id: int, priority: str, now: float) -> None:
+        """The appliance's own priority change: `priority_by` stays NULL, so it keeps deciding."""
+        await self.conn.execute(
+            "UPDATE noc_case SET priority = ?, version = version + 1, updated_at = ?, "
+            "updated_by = 'system' WHERE situation_id = ?",
+            (priority, now, situation_id),
+        )
+        await self._cycle_priority(situation_id, priority)
+
+    async def _cycle_priority(self, situation_id: int, priority: str) -> None:
+        """The open, untaken cycle's take target follows the case (0036); a taken one keeps the
+        priority it was taken under."""
+        await self.conn.execute(
+            "UPDATE noc_case_cycle SET priority = ? "
+            "WHERE situation_id = ? AND taken_at IS NULL AND ended_at IS NULL",
+            (priority, situation_id),
+        )
+
+    async def noc_case_severity(self, situation_id: int) -> str | None:
+        """What the Broker shows for the situation, worst first: its own severity (autonomy's —
+        the worst member, one level higher when it spans many elements) and each active member's
+        (all of them when none is active) with the Broker's precedence — declared, the
+        catalogue's rule, then what the trap carried or was learned (`store/active.py`). None
+        when nothing places any."""
+        cur = await self.conn.execute(
+            "SELECT a.class_id, c.oid, a.severity_rank, a.status FROM situation_alarm sa "
+            "JOIN alarm a ON a.id = sa.alarm_id JOIN alarm_class c ON c.id = a.class_id "
+            "WHERE sa.situation_id = ?",
+            (situation_id,),
+        )
+        rows = await cur.fetchall()
+        band = await self._band_of()  # type: ignore[attr-defined]
+        live = [r for r in rows if r["status"] == "active"] or rows
+        bands = {band(int(r["class_id"]), str(r["oid"]), r["severity_rank"]) for r in live}
+        cur = await self.conn.execute(
+            "SELECT severity FROM situation WHERE id = ?", (situation_id,)
+        )
+        own = await cur.fetchone()
+        if own is not None and own[0] is not None:
+            bands.add(str(own[0]))
+        return next((word for word in _WORST_FIRST if word in bands), None)
+
+    async def noc_cases_auto_priority(self, limit: int = 200) -> list[int]:
+        """Live cases whose priority is still the appliance's and could still rise."""
+        cur = await self.conn.execute(
+            "SELECT situation_id FROM noc_case WHERE priority_by IS NULL "
+            "AND priority <> 'critical' AND status NOT IN ('resolved', 'closed') "
+            "ORDER BY situation_id LIMIT ?",
+            (limit,),
+        )
+        return [int(r[0]) for r in await cur.fetchall()]
 
     async def noc_case_set_summary(
         self, situation_id: int, organization_id: int, summary: str, now: float, actor: str
@@ -229,13 +294,14 @@ class NocCaseMixin(StoreBase):
         )
 
     async def noc_case_enqueue(self, situation_id: int, reason: str, now: float) -> str:
-        """Into the NOC queue: unowned, re-prioritized from the situation's severity now, and a
-        new cycle for the take clock. ``reason == 'opened'`` counts from when it opened."""
+        """Into the NOC queue: unowned, at the case's priority (`engine/noc/case_ops.py` derives it
+        first), and a new cycle for the take clock. ``reason == 'opened'`` counts from when it
+        opened."""
         cur = await self.conn.execute(
-            f"UPDATE noc_case c SET status = 'queue', status_at = ?, priority = {_PRIORITY_OF}, "  # nosec B608
+            "UPDATE noc_case SET status = 'queue', status_at = ?, "
             "owner_ref = NULL, owner_name = NULL, owner_kind = NULL, version = version + 1, "
-            "updated_at = ?, updated_by = 'system' FROM situation s "
-            "WHERE s.id = c.situation_id AND c.situation_id = ? RETURNING c.priority, c.opened_at",
+            "updated_at = ?, updated_by = 'system' "
+            "WHERE situation_id = ? RETURNING priority, opened_at",
             (now, now, situation_id),
         )
         row = await cur.fetchone()

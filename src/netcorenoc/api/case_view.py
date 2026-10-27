@@ -87,6 +87,12 @@ def actions(case: Mapping[str, Any], reader: feed.Reader) -> list[str]:
         out.append(act)
     if status not in ("resolved", "closed") and (yours or reader.admin):
         out.append("edit")
+    # ADR #467: routing to an agent and climbing the chain. The handler decides who may: an
+    # agent only within its own reports, a person on a case they own or that nobody has.
+    if status in cases.LIVE and (yours or reader.admin or status in cases.UNOWNED):
+        out.append("assign")
+    if status in cases.LIVE and (yours or reader.admin or case.get("agent_id") is not None):
+        out.append("escalate")
     return out
 
 
@@ -113,9 +119,27 @@ def case_view(
         "super_state": cases.super_state(status),
         "priority": case["priority"],
         "priority_label": cases.PRIORITIES[str(case["priority"])],
+        # True while the appliance decides it from the alarms (ADR #464); a person's is theirs.
+        "priority_auto": case.get("priority_by") is None,
         **{name: text(case[name]) for name in cases.TEXT_FIELDS if name != "solution"},
         "next_update_at": case["next_update_at"],
         "cadence": kpi.cadence(case, now),
+        # ADR #467: the agent the case is routed to, the tier it has climbed to, and whether it is
+        # past the agents, with the NOC team.
+        "agent": None
+        if case.get("agent_id") is None
+        else (
+            {"id": case["agent_id"], "name": case.get("agent_name")}
+            if shaping.sees_people(reader.role)
+            else {"id": None, "name": "NOC agent"}
+        ),
+        "assigned_at": case.get("assigned_at"),
+        "tier": case.get("tier", 1),
+        "with_people": bool(case.get("with_people")),
+        "escalated_at": case.get("escalated_at"),
+        "level_label": "With the NOC team"
+        if case.get("with_people")
+        else f"With NOC Tier {case.get('tier') or 1}",
         "owner": _who(
             case.get("owner_ref"),
             case.get("owner_name"),
@@ -134,9 +158,14 @@ def case_view(
             "name": text(case["situation_name"] or "") if whole else "",
             "members": case["members"],
         },
-        "clocks": None
-        if current is None
-        else {"take": kpi.take(current, now), "document": kpi.document(current, now)},
+        "clocks": {
+            **(
+                {}
+                if current is None
+                else {"take": kpi.take(current, now), "document": kpi.document(current, now)}
+            ),
+            "restore": kpi.restore(case, now),
+        },
         "missing": cases.missing(case, "pending_customer", now=now),
         "actions": actions(case, reader),
         "resolution": None

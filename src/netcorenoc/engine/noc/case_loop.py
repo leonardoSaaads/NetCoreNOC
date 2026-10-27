@@ -9,7 +9,10 @@ Every few seconds, off the ingest path (#454): read what is due on a reader, the
 * a case whose **situation resolved** on the broker's side — every alarm cleared, an operator
   closed it, it was merged — is resolved if nobody owned it (or it was merged), and otherwise
   asks its owner to **validate** the resolution;
-* a case **resolved** a day ago is closed.
+* a case **resolved** a day ago is closed;
+* a live case whose priority is still the appliance's is **raised** when a worse alarm joined its
+  situation (`case_ops.reprioritize`, ADR #464) — every `REPRIORITIZE_EVERY` passes, since it reads
+  each such case's members.
 
 A person posting on a pending case requeues it too, but that is the post's own request
 (`api/routes/case_feed.py`), not a sweep: it should not wait five seconds to be seen.
@@ -27,10 +30,12 @@ from netcorenoc.engine.noc import case_ops, cases, kpi
 if TYPE_CHECKING:
     from netcorenoc.store import Store
 
-__all__ = ["LOOK_EVERY_S", "Automation", "case_loop", "tick"]
+__all__ = ["LOOK_EVERY_S", "REPRIORITIZE_EVERY", "Automation", "case_loop", "tick"]
 
 #: How often the loop looks. The NOC's shortest clock is 25 minutes; five seconds is invisible.
 LOOK_EVERY_S = 5.0
+#: Every how many passes the priorities are re-derived (30 s).
+REPRIORITIZE_EVERY = 6
 
 #: Decides, under the lock, whether a new case starts with automated checks (ADR #463).
 Automation = Callable[["Store", int], Awaitable[bool]]
@@ -41,19 +46,33 @@ async def tick(
     *,
     now: Callable[[], float] = time.time,
     automation: Automation | None = None,
+    reprioritize: bool = True,
 ) -> dict[str, int]:
     """One pass; returns how many cases each act moved."""
-    counts = {"dispatched": 0, "requeued": 0, "validate": 0, "resolved": 0, "closed": 0}
+    counts = {
+        "dispatched": 0,
+        "requeued": 0,
+        "validate": 0,
+        "resolved": 0,
+        "closed": 0,
+        "raised": 0,
+    }
     at = now()
     async with store.reading():
         fresh = await store.noc_cases_in("new")
         due = await store.noc_cases_due(at)
         orphaned = await store.noc_cases_orphaned()
         stale = await store.noc_cases_resolved_before(at - kpi.CLOSE_AFTER_S)
-    if not (fresh or due or orphaned or stale):
+        rising = await store.noc_cases_auto_priority() if reprioritize else []
+    fresh_set = set(fresh)
+    rising = [sid for sid in rising if sid not in fresh_set]  # dispatch derives those itself
+    if not (fresh or due or orphaned or stale or rising):
         return counts
     async with store.lock:
         at = now()
+        for sid in rising:
+            if await case_ops.reprioritize(store, sid, at) is not None:
+                counts["raised"] += 1
         for sid in fresh:
             case = await store.noc_case(sid)
             if case is None or case["status"] != "new":
@@ -94,6 +113,8 @@ async def tick(
 
 async def case_loop(store: Store, automation: Automation | None = None) -> None:
     """The supervised loop (a crash is the supervisor's to count and restart)."""
+    passes = 0
     while True:
-        await tick(store, automation=automation)
+        await tick(store, automation=automation, reprioritize=passes % REPRIORITIZE_EVERY == 0)
+        passes += 1
         await asyncio.sleep(LOOK_EVERY_S)
