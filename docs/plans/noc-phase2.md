@@ -3,7 +3,7 @@
 Phase 2 is the half of the product that works a situation once phase 1 (the **Broker**) has made
 one: people and AI agents diagnosing and, later, remediating, with a time budget and an escalation
 (`architecture.md`, "The three phases"). This page is the plan for it, written as measurements and
-open questions (`CONTRIBUTING.md`). What is built is described by ADRs #454-#461, not here.
+open questions (`CONTRIBUTING.md`). What is built is described by ADRs #454-#463, not here.
 
 ## 1. Where it stands
 
@@ -18,9 +18,11 @@ open questions (`CONTRIBUTING.md`). What is built is described by ADRs #454-#461
 | **Cases** — a case per opened situation, the NOC queue, the customer update, pending statuses | built (#459) |
 | The NOC's clocks: take (25 min / 1 h / 2 h) and customer update (30 min), with the overrun | built (#460) |
 | The case feed: Internal / Specified / All, a person's post requeues a pending case | built (#461) |
-| **Executor** — something that acts on a device with a lease | not built (§4) |
+| **Executor** — one read-only act on a device for a lease: SSH, SNMP GET, reachability | built (#462), §4 |
+| SSH host keys pinned on first use, forgotten by a custodian with a step-up | built (#462) |
+| **Playbooks** — troubleshooting trees agents write, run on a matching case before the NOC queue | built (#463) |
 | **MCP server** — how an agent reaches all of this | not built (§3); the case routes are its first tools |
-| Script library, scoring scripts, time budget, escalation | not built |
+| Scoring a playbook (did it resolve cases that stayed resolved), escalation | not built |
 
 ## 2. The current API, reviewed for AI agents (MCP)
 
@@ -100,7 +102,10 @@ second API with its own authorization. A stdio adapter that forwards to it serve
 | `list_leasable_credentials` | `GET /api/noc/agent` | `secrets.lease` | read-only |
 | `lease_credential` | `POST /api/noc/secrets/{id}/lease` | `secrets.lease` | not destructive; not idempotent until G8 |
 | `release_lease` | `POST /api/noc/leases/{id}/revoke` | `secrets.lease` | idempotent |
-| `run_diagnostic` | the executor (§4) | `secrets.lease` + the lease | open-world; destructive per access level |
+| `noc_exec` | `POST /api/noc/exec` | `secrets.lease` + the lease | open-world; read only (#462) |
+| `noc_list_playbooks` | `GET /api/noc/playbooks` | `playbooks.read` | read-only |
+| `noc_create_playbook` | `POST /api/noc/playbooks` | `playbooks.write` | active at once; validated whole |
+| `noc_update_playbook` | `POST /api/noc/playbooks/{id}` | `playbooks.write` | `version` against lost updates |
 | `escalate` | phase 3 | — | — |
 
 **Never a tool**: anything that returns a secret, reveals a credential, names a custodian or an
@@ -108,13 +113,13 @@ agent, or switches agent access on. Those are a person's, behind a step-up; the 
 on every one of them (#456), so the MCP server could not offer them if it tried.
 
 **Human in the loop**: the MCP *elicitation* request — the server asking the person in the agent's
-host to confirm — for any `run_diagnostic` at the `operator` or `root` level.
+host to confirm — for any device act at the `operator` or `root` level, when one exists — today every act is read only.
 
-## 4. The executor (the next step, not built)
+## 4. The executor (built: #462, except item 4)
 
 What uses a lease on the agent's behalf, keeping the secret on the appliance's side:
 
-1. The agent calls `run_diagnostic(lease, command)`. The executor introspects the lease
+1. The agent calls `noc_exec(lease, command)`. The executor introspects the lease
    (`POST /api/noc/leases/introspect` semantics, in process), checks the command against the policy
    for the lease's access level, opens the seal itself, connects, runs, and returns **bounded,
    redacted output marked untrusted** (G6). The secret never leaves the process.
@@ -122,19 +127,17 @@ What uses a lease on the agent's behalf, keeping the secret on the appliance's s
    its own, writing its audit rows in short transactions.
 3. **Host-key pinning**: the first accepted SSH host key is recorded per credential; a different
    key later turns the light red and refuses — a credential is never offered to an impostor.
-4. **The light learns the credential**: a successful login is the first time green can mean "the
+4. **The light learns the credential** (not built): a successful login is the first time green can mean "the
    credential works", and the screen will say which of the two it means (#457).
 5. **Every command is audited**: lease, agent, a digest and the first characters of the command, exit
    status, duration, output size.
 
 ## 5. Open questions for the owner
 
-1. **The SSH client.** The core has no SSH implementation. `asyncssh` as an optional extra (`noc`),
-   imported lazily, with the executor reported unavailable without it — the pattern of the `snmpv3`
-   extra (#444) — or another choice?
-2. **Command policy.** Per access level, per vendor allow-lists (`view_only`: `show …`;
-   `diagnostic`: also `ping`, `traceroute`)? A person's approval for every `operator` and `root`
-   command, or a change window?
+1. ~~**The SSH client.**~~ Answered: `asyncssh` as the optional `noc` extra (#462).
+2. ~~**Command policy.**~~ Answered for now: read only, for agents and playbooks alike (#462, #463).
+   Write commands — at the `operator` and `root` levels, with a person's approval or a change
+   window — remain open.
 3. **Two-factor sign-in.** TOTP (RFC 6238) needs only the standard library; enrolment needs a way to
    show the shared secret (an `otpauth://` URI and the secret as text, since drawing a QR code with
    no dependency is its own small project). Next, before the executor, or after?

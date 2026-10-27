@@ -20,9 +20,11 @@ of that database gives away no secret, no password and no way to rewrite history
 data and secrets are sealed with a key the database never sees, the appliance's database role owns
 nothing, and administrators reset passwords without ever reading one. Phase 2 begins: the console
 gains a **NOC** plane beside the Broker, and the NOC a credential vault for people and AI agents
-(#454-#458), and a case for every situation it works, with a queue, a feed and its clocks
-(#459-#461). The schema is PostgreSQL's baseline, **migration 0031**, which includes SQLite's
-0030, **0032**, **0033** and **0034** (schema 34). See
+(#454-#458), a case for every situation it works, with a queue, a feed and its clocks
+(#459-#461), and the first automated response: read-only acts on a device for an agent's lease,
+and playbooks that check a new case before the NOC is called (#462, #463). The schema is
+PostgreSQL's baseline, **migration 0031**, which includes SQLite's 0030, **0032**, **0033**,
+**0034** and **0035** (schema 35). See
 [`MIGRATION.md`](MIGRATION.md): the SQLite file is **imported once**, before the first start; the
 appliance is three processes and a spool on disk, and a container needs two CPUs. No grouping
 decision changes (`make eval` is byte-identical).
@@ -74,6 +76,27 @@ stored device credential is unreadable (#455).
   (#461). Six audit actions (`noc.case.*`).
 - Built for agents: explicit operation ids, the catalogue on the list, `actions` per case, ISO 8601
   times, a `version` against lost updates.
+
+### Added — the executor and playbooks: the first automated response (#462, #463)
+
+- **`POST /api/noc/exec`** turns an agent's lease into one act on its device: a read-only SSH
+  command, an SNMP GET of up to twenty OIDs, or a reachability check. The appliance opens the seal;
+  the answer is the device's text, bounded to 64 KiB and marked `untrusted`, never the credential.
+  Read only twice over: a command must start with a read verb (`show`, `display`, `get`; `ping` and
+  `traceroute` at the diagnostic level) and carry no separator, redirection or writing word (#462).
+- **SSH host keys are pinned on first use**; a different key later is refused. Moving a credential
+  to another host or port forgets its key; *Forget…* on the credential, with a step-up, after a
+  device is replaced. SSH is the optional `noc` extra (`asyncssh`); the image installs it.
+  Migration **0035** (schema 35).
+- **NOC → Playbooks**: troubleshooting trees, as JSON, that agents write after resolving a case —
+  reach it, is it Ciena, is it SAOS 10, is the alarm still active on the device, the port's power…
+  A new case a playbook matches (vendor, trap OID, severity) goes to `auto` first; every step and
+  the device's answer go to the case feed; the leaf resolves it (clearing the alarms only when the
+  tree verified them clear), sets it pending with the customer update, or queues it. A run past its
+  time budget, a failed one or one a restart interrupted goes to the NOC queue. Active as soon as
+  stored, read only; an admin's to read and write (#463).
+- Four audit actions: `noc.exec` for every act on a device — by an agent or by a playbook —
+  `noc.playbook.create`, `noc.playbook.update` and `noc.playbook.run`.
 
 ### Fixed
 

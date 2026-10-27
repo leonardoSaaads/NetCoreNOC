@@ -126,6 +126,7 @@ CLIENT_GETS: list[tuple[str, str]] = [
     # ADRs #459, #460: the queue as the Cases screen first reads it, and the KPIs.
     ("cases.read", "/api/noc/cases?view=queue"),
     ("cases.read", "/api/noc/cases/kpis?days=7"),
+    ("playbooks.read", "/api/noc/playbooks"),
 ]
 
 #: Writes the harness answers without applying. The value is what the real route returns on success.

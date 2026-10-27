@@ -227,6 +227,11 @@ Privacy needs the optional `cryptography` package: `pip install "netcorenoc[snmp
 image and the Nix package include it; without it an encrypted trap is quarantined as
 `v3-privacy-unavailable`.
 
+The NOC's SSH acts — an agent's `POST /api/noc/exec` and a playbook's `ssh` steps — need the
+optional `asyncssh` package: `pip install "netcorenoc[noc]"`. The Docker image and the Nix package
+include it; without it an SSH act answers "unavailable", and SNMP GET and reachability still
+work (ADR #462).
+
 ## Outgoing email (v0.30.0)
 
 **Settings → Email** configures the SMTP server password-recovery links are sent through. Pick a

@@ -103,6 +103,8 @@ MODULE_ORDER: tuple[str, ...] = (
     "routes/noc_access.py",
     "routes/cases.py",
     "routes/case_feed.py",
+    "routes/noc_exec.py",
+    "routes/playbooks.py",
 )
 
 #: **The floor a subset must not be able to clear** (F98).

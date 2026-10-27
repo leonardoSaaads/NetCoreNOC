@@ -80,6 +80,20 @@ Two rules that have held since v0.1.0 and are not going to change:
 
 *(This table has no rows for v0.17.0 or v0.18.0: neither release wrote one, and inventing upgrade notes for a release somebody else built would be describing an upgrade nobody tested.)*
 
+## Unreleased — the executor and playbooks (#462, #463)
+
+Nothing to do to upgrade the database: migration **0035** adds the playbook tables and the SSH
+host key beside each credential. Then:
+
+* **SSH needs the `noc` extra** when you install from the wheel: `pip install "netcorenoc[noc]"`
+  (`asyncssh`). The image and the Nix package install it. Without it, an SSH act answers
+  "unavailable"; SNMP and reachability still work.
+* **The first SSH connection to a device pins its host key.** If a device is later replaced, open
+  its credential in *Secrets* and choose *Forget…* (a step-up) before the next connection; until
+  then every connection to it is refused, as an impostor's would be.
+* **No playbook exists until someone stores one**, so every new case still goes to the NOC queue.
+  A stored playbook is active at once and acts only on credentials whose agent access is on.
+
 ## Unreleased — NOC cases (#459-#461)
 
 Nothing to do to upgrade: migration **0034** adds the case tables and the trigger that opens one

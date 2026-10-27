@@ -696,11 +696,14 @@ async def test_f43_every_path_served_today_still_registers(store: Store) -> None
     # Unreleased: 249 -> 267 and 132 -> 143 — NOC cases (ADRs #459-#461): eleven /api pairs (the
     # queue, the KPIs, a case and its five acts, its feed, the people a post may name) and seven
     # UI modules (Cases, KPIs, and a case's clocks, form, acts, feed and detail).
-    assert len(served) == 267, f"the served surface moved: {len(served)} method/path pairs"
+    # Unreleased: 267 -> 275 and 143 -> 150 — the executor and playbooks (ADRs #462, #463): seven
+    # /api pairs (an act on a device, forgetting a host key, five playbook routes) and one UI
+    # module (the Playbooks screen).
+    assert len(served) == 275, f"the served surface moved: {len(served)} method/path pairs"
     api_pairs = {(method, path) for method, path in served if path.startswith("/api")}
     # **v0.19.0: 53 -> 55.** `GET /api/models` and `POST /api/models/register`: what the
     # models are doing, and turning one of this appliance's own fits into an artefact.
-    assert len(api_pairs) == 143, (
+    assert len(api_pairs) == 150, (
         f"the /api surface moved: {len(api_pairs)} pairs. v0.16.0 adds exactly five — the "
         f"operator's five gestures — v0.16.2 adds exactly one, `POST …/promote` (DECISIONS #273), "
         f"v0.16.5 adds exactly one, `POST /api/alarms/clear` (DECISIONS #301), "
@@ -871,11 +874,14 @@ async def test_f42_every_path_served_today_still_registers(store: Store) -> None
     # Unreleased: 249 -> 267 and 132 -> 143 — NOC cases (ADRs #459-#461): eleven /api pairs (the
     # queue, the KPIs, a case and its five acts, its feed, the people a post may name) and seven
     # UI modules (Cases, KPIs, and a case's clocks, form, acts, feed and detail).
-    assert len(served) == 267, f"the served surface moved: {len(served)} method/path pairs"
+    # Unreleased: 267 -> 275 and 143 -> 150 — the executor and playbooks (ADRs #462, #463): seven
+    # /api pairs (an act on a device, forgetting a host key, five playbook routes) and one UI
+    # module (the Playbooks screen).
+    assert len(served) == 275, f"the served surface moved: {len(served)} method/path pairs"
     api_pairs = {(method, path) for method, path in served if path.startswith("/api")}
     # **v0.19.0: 53 -> 55.** `GET /api/models` and `POST /api/models/register`: what the
     # models are doing, and turning one of this appliance's own fits into an artefact.
-    assert len(api_pairs) == 143, (
+    assert len(api_pairs) == 150, (
         f"the /api surface moved: {len(api_pairs)} pairs. v0.16.0 adds exactly five — the "
         f"operator's five gestures — v0.16.2 adds exactly one, `POST …/promote` (DECISIONS #273), "
         f"v0.16.5 adds exactly one, `POST /api/alarms/clear` (DECISIONS #301), "
@@ -969,8 +975,9 @@ def test_every_unscoped_declaration_carries_a_written_justification() -> None:
     # statements about models and switches, naming no network element (ADRs #405, #412, #413).
     # ADR #454: 30 -> 42 — twelve NOC routes, custodian-gated rather than scope-gated, each with
     # its reason written beside it in `noc_map.py`. ADR #461: 42 -> 43, the people a `specified`
-    # post may name — accounts, not elements.
-    assert len(entries) == 43, entries
+    # post may name — accounts, not elements. ADR #462: 43 -> 45, an act on a device with a lease
+    # and forgetting a pinned host key — gated by the lease and by custody, not by scope.
+    assert len(entries) == 45, entries
     unjustified = [lines[i].strip() for i in entries if not lines[i - 1].strip().startswith("#")]
     assert not unjustified, (
         "every `unscoped` route must be preceded by a comment saying why it is not scoped:\n  "
@@ -1091,7 +1098,9 @@ def test_the_three_postures_are_all_populated() -> None:
     # API reference — `config.*` and `tokens.manage`, whose minimum role is `admin`.
     # Unreleased: 43 -> 44. Resetting a person's password, by `users.manage` (ADR #453).
     # Unreleased: 44 -> 46. The NOC's custodians and agents, read and named by `secrets.grants`.
-    assert len(ADMIN_ONLY) == 46, len(ADMIN_ONLY)
+    # Unreleased: 46 -> 51. The five playbook routes (ADR #463): a playbook acts on every
+    # matching case across every scope, so reading and writing one is `playbooks.*`, admin.
+    assert len(ADMIN_ONLY) == 51, len(ADMIN_ONLY)
     # v0.18.0: 6 -> 7. `GET /api/correlation` is `unscoped` for `GET /api/scorer`'s reason
     # — counters over the scorer's own decisions are a statement about arithmetic and
     # name no network element (Part II).
@@ -1107,7 +1116,8 @@ def test_the_three_postures_are_all_populated() -> None:
     # v0.26.0: 25 -> 30, the five routes named there too.
     # Unreleased: 30 -> 42, the twelve NOC routes below admin (ADRs #454-#458).
     # Unreleased: 42 -> 43, `GET /api/noc/people` (ADR #461).
-    assert len(UNSCOPED) == 43, UNSCOPED
+    # Unreleased: 43 -> 45, `POST /api/noc/exec` and `POST …/hostkey` (ADR #462).
+    assert len(UNSCOPED) == 45, UNSCOPED
     # v0.16.0: 12 -> 17. Every one of the five gestures names a network element and every one
     # is below `admin`, so every one is `scoped` — the write perimeter F34 established,
     # widened by exactly the routes this release adds.

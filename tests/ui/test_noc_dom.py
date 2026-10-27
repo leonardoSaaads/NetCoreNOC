@@ -62,7 +62,7 @@ async def test_the_top_bar_switches_planes_and_the_sidebar_follows(store: Store)
     assert broker["navGroups"] == ["Operations", "Evidence", "Administer"]
     noc = _render(tables["admin"], "#/secrets")
     assert ".plane-noc.plane-on" in noc["dump"]
-    assert noc["navItems"] == ["Cases", "KPIs", "Secrets"]
+    assert noc["navItems"] == ["Cases", "KPIs", "Playbooks", "Secrets"]
     assert noc["navGroups"] == ["Cases", "Equipment access"]
     # A viewer reads cases (the customer's side), so the switch is there — and the NOC plane
     # offers them the cases and nothing of the vault: never a greyed half.

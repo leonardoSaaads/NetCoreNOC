@@ -6459,3 +6459,54 @@ From this release an entry is about six lines: decision, reason, release.*
 - **Reason**: the owner's three visibilities, and "if an operator posts on the feed, the case must
   go back to the NOC queue". The handbook's own warning — internal text must never reach a
   customer — is why every post carries its visibility on screen.
+
+## 462. The executor acts on a device for an agent, read only, with the host key pinned (unreleased)
+
+- **Decision** (`engine/noc/executor.py`, `engine/noc/commands.py`, `api/routes/noc_exec.py`,
+  migration `0035`): `POST /api/noc/exec` turns an agent's lease into one act on its device — a
+  read-only SSH command (an exec channel, or an interactive session for CLIs that need one), an
+  SNMP GET of up to twenty OIDs (v1/v2c or v3, through pysnmp), or a reachability check (ICMP through
+  the system's `ping` when it may be used, else a TCP connection). The lease is checked by the one
+  function introspection now uses too (`noc_gate.lease_state`). **The appliance opens the seal**; the
+  answer carries the device's text, bounded to 64 KiB and marked `untrusted`, never the credential.
+  **Read only, enforced twice**: a command must start with a read verb (`show`, `display`/`dis`,
+  `get`; `ping` and `traceroute` need the diagnostic level), contain no `; | & > < \` $(` or control
+  character, and no word that writes or escalates (`configure`, `commit`, `reload`, `clear`, `set`…).
+  **The SSH host key is pinned on first use** and a different key later is refused; moving the
+  credential to another host or port forgets it, and a custodian may forget it with a step-up after
+  replacing a device. SSH is the optional `noc` extra (`asyncssh>=2.14.2`, past the Terrapin fix);
+  the image installs it; without it SSH answers "unavailable". Every act is a `noc.exec` audit row
+  (agent, credential, kind, a digest and the first characters of the command, outcome) and a lease
+  use; naming a case posts the act and its answer to the case feed, `internal`.
+- **Reason**: the owner chose asyncssh as an optional extra and read-only commands for agents and
+  playbooks. A lease that only described a credential could not reach a device; this is where the
+  secret is used without leaving the appliance, and where what a device says is fenced off from
+  what a model might take as instructions.
+
+## 463. Playbooks: troubleshooting trees agents write, run before the NOC is called (unreleased)
+
+- **Decision** (`engine/noc/playbook.py`, `engine/noc/runbook.py`, `api/routes/playbooks.py`,
+  migration `0035`): a playbook is a JSON tree — **data, never code**, validated whole when stored:
+  known keys only, bounded sizes, every branch reaching a leaf, no cycle, nothing unreachable, and
+  every SSH step read-only. A step does one thing (`reach`, `ssh`, `snmp_get`) or only decides, and
+  branches on four fixed tests: did it work, does the answer contain a phrase (or not), is the
+  number after a label above or below a value, is the element of a vendor. The only values put into
+  a command, a test's phrase or a leaf's text are the element's address and the root alarm's entity,
+  refused unless plain; a test naming one the situation lacks cannot decide, and the case is queued.
+  Leaves end the case three ways: `resolve` (a cause, a solution, and `clear_alarms` when the tree
+  verified the alarm is gone on the device), `pending` (a status, the customer update, the next
+  update), or `queue`. A playbook matches on vendors, trap OID prefixes and severities. **A new case
+  that a playbook matches goes to `auto` first**; the playbook loop walks it outside the lock, posts
+  every step and the device's answer to the case feed, audits every device act (`noc.exec`) and the
+  run (`noc.playbook.run`) under the playbook's name, and applies the leaf only while the case is
+  still `auto` — a person who took it wins. A run past its `timeout_s` (30 s – 30 min), a failed
+  one, one whose conclusion could not be applied, or one a restart interrupted sends the case to the
+  NOC queue; its take clock starts there. A playbook is active as soon as it is stored; reading and
+  writing them is `playbooks.*`, an admin's power — an AI agent uses an admin-role token narrowed to
+  what it needs. The credential a step uses is the vault's, for the element's address, with agent
+  access switched on, at the least access level the command needs.
+- **Reason**: the owner's design — after a case is resolved the agent writes a tree (ping, is it
+  Ciena, is it SAOS 10, is the alarm still active on the device, then the port's power…) so the next
+  similar case is handled without calling the NOC; and the owner's choice that playbooks are active
+  at once, read only. Fixed tests on the device's text, never evaluated expressions, are what let an
+  AI write a playbook without being able to write a program.

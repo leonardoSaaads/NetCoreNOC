@@ -522,6 +522,7 @@ ROUTE_ORDER_BASELINE: list[tuple[str, str]] = [
     ("GET", "/app/views/parts/caseacts.js"),
     ("GET", "/app/views/parts/casefeed.js"),
     ("GET", "/app/views/parts/casedetail.js"),
+    ("GET", "/app/views/playbooks.js"),
     ("GET", "/vendor/preact-10.29.8.module.js"),
     ("GET", "/vendor/htm-3.1.1.module.js"),
     ("GET", "/style.css"),
@@ -675,6 +676,13 @@ ROUTE_ORDER_BASELINE: list[tuple[str, str]] = [
     ("GET", "/api/noc/cases/{sid}/feed"),
     ("POST", "/api/noc/cases/{sid}/feed"),
     ("GET", "/api/noc/people"),
+    ("POST", "/api/noc/exec"),
+    ("POST", "/api/noc/secrets/{secret_id}/hostkey"),
+    ("GET", "/api/noc/playbooks"),
+    ("POST", "/api/noc/playbooks"),
+    ("GET", "/api/noc/playbooks/{playbook_id}"),
+    ("POST", "/api/noc/playbooks/{playbook_id}"),
+    ("POST", "/api/noc/playbooks/{playbook_id}/enabled"),
 ]
 
 
@@ -784,7 +792,10 @@ async def test_the_api_route_order_is_unchanged_by_the_ui_rewrite(store: Store) 
     # **Unreleased: 132 -> 143.** NOC cases' eleven (ADRs #459-#461): `/api/noc/cases/kpis` is
     # registered before `/api/noc/cases/{sid}`, which would otherwise read it as a case id; every
     # act on a case is a concrete segment below `{sid}`; `/api/noc/people` is a new segment.
-    assert len(live) == 143, (
+    # **Unreleased: 143 -> 150.** The executor and playbooks (ADRs #462, #463): `/api/noc/exec` and
+    # `/api/noc/playbooks` are new segments, `…/{playbook_id}/enabled` is concrete below its id,
+    # and `…/secrets/{secret_id}/hostkey` is a concrete segment beside `…/check` and `…/lease`.
+    assert len(live) == 150, (
         f"the /api surface is {len(live)} pairs; v0.16.0 adds exactly five, v0.16.2 exactly one, "
         f"v0.16.3 exactly one, v0.16.5 exactly one — `POST /api/alarms/clear` — v0.18.0 exactly "
         f"one, `GET /api/correlation`, and v0.21.0 exactly thirteen for maintenance windows, "
@@ -1428,8 +1439,12 @@ def test_the_queue_put_on_the_hot_path_is_non_blocking() -> None:
 #: `api/case_view.py`, `api/case_close.py`, the `cases` and `case_feed` routes, and seven console
 #: modules (`views/cases`, `views/nockpis`, `parts/caseclock`, `caseform`, `caseacts`,
 #: `casefeed`, `casedetail`).
-SRC_TREE_DIGEST = "630cf0e87ba80a92082cf05e373244e4a73fd0428d7b4c8a5629c8acab257bd6"
-SRC_FILE_COUNT = 422
+#: **Then 422 -> 431.** Nine added, none removed — the executor and playbooks (ADRs #462, #463):
+#: `engine/noc/` `commands`, `executor`, `playbook` and `runbook`, `store/noc_playbooks.py`,
+#: migration `0035_noc_automation.sql`, the `noc_exec` and `playbooks` routes, and the
+#: `views/playbooks` console module.
+SRC_TREE_DIGEST = "8146ef1ee0d229590ed3d8aacb018f34f4178163862df9deca7aa937b4f63851"
+SRC_FILE_COUNT = 431
 SRC_VERSION_FILE = "src/netcorenoc/__init__.py"
 
 

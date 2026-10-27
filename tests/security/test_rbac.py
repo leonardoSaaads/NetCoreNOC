@@ -457,6 +457,9 @@ def test_every_capability_names_the_role_it_was_designed_for() -> None:
         "cases.post": "viewer",
         "cases.work": "editor",
         "cases.manage": "admin",
+        # ADR #463: playbooks act on every matching case across the estate — an admin's.
+        "playbooks.read": "admin",
+        "playbooks.write": "admin",
     }, (
         "the capability table changed. Every derived check — role_allows, the resolver, the "
         "route table, the authorization matrix — reads this dict and will agree with whatever it "
