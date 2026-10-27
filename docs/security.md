@@ -181,6 +181,24 @@ that an editor can always stop it. Turning a grade on is admin-only (#412).
   absolute one. A stolen cookie expires on the absolute clock whatever the holder does.
 * Service tokens are per-identity and revocable. The value is shown once and stored hashed.
 
+## NOC cases: who reads, who works, what a customer is shown (ADRs #459-#461)
+
+* **Reading a case is reading its situation**: `cases.read` (viewer) and the same scope predicate,
+  so a case outside the caller's scope is the same 404 as one that does not exist. Posting is
+  `cases.post` (viewer); working — taking, editing, setting pending, resolving — is `cases.work`
+  (editor), and every act but taking is the owner's; `cases.manage` (admin) acts on any case.
+* **Each post carries its visibility**: `internal` to whoever holds `cases.work`, `specified` to its
+  author, the people it names and `cases.manage`, `all` to every reader. Someone who cannot read
+  `internal` cannot write it. Posts are append-only in the database.
+* **Below editor**, every text of a case — its fields and its posts — shows device addresses as
+  their network, by pattern rather than by word, and people as "NOC engineer", "NOC agent" or
+  "Operator"; a scoped reader is not shown the situation's derived name, built from every member's
+  address.
+* **Resolving clears alarms only when the resolver states they were verified clear on the device**,
+  as the broker's own `manual_clear` gestures, and only the members the resolver can see.
+* Six audit actions (`noc.case.*`), under the actor's name, person or agent; the case loop's moves
+  are events in the feed.
+
 ## The credential vault (NOC → Secrets)
 
 Phase 2 keeps the credentials people and AI agents use to reach equipment — SSH passwords and keys,

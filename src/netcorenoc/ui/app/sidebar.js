@@ -49,6 +49,7 @@ export const GROUPS = [
   { id: "operations", label: "Operations", plane: "broker" },
   { id: "evidence", label: "Evidence", plane: "broker" },
   { id: "administer", label: "Administer", plane: "broker" },
+  { id: "cases", label: "Cases", plane: "noc" },
   { id: "access", label: "Equipment access", plane: "noc" },
 ];
 

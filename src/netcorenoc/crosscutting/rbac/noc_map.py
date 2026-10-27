@@ -1,4 +1,4 @@
-"""The NOC plane's routes: the capability each requires and its scope posture (ADRs #454-#458).
+"""The NOC plane's routes: the capability each requires and its scope posture (ADRs #454-#461).
 
 Split from `route_map.py` at the 400-line guard, on the seam the product now has: the broker's
 routes there, the NOC's here. `route_map.py` folds both tables into `ROUTE_PERMISSIONS` and
@@ -9,6 +9,9 @@ the custodian list, not visibility scoping. A credential names a management addr
 be an inventoried element, an admin who names a custodian is trusting them with the vault, and a
 person who is not a custodian is answered the same — empty, or refused — whatever their scope.
 Each entry still carries its own line, because `tests/api/test_declaration.py` reads them.
+
+**Every case route is `scoped`**: a case is its situation, worked, and is visible exactly when the
+situation is — the same predicate (`perimeter.situation_in_scope`), the same 404.
 """
 
 from __future__ import annotations
@@ -33,6 +36,18 @@ NOC_ROUTE_PERMISSIONS: dict[tuple[str, str], str] = {
     ("POST", "/api/noc/leases/introspect"): "secrets.lease",
     # An agent ends its own lease; a custodian ends anyone's. The handler decides which.
     ("POST", "/api/noc/leases/{lease_id}/revoke"): "secrets.lease",
+    # -- cases (ADRs #459-#461) --
+    ("GET", "/api/noc/cases"): "cases.read",
+    ("GET", "/api/noc/cases/kpis"): "cases.read",
+    ("GET", "/api/noc/cases/{sid}"): "cases.read",
+    ("POST", "/api/noc/cases/{sid}"): "cases.work",
+    ("POST", "/api/noc/cases/{sid}/take"): "cases.work",
+    ("POST", "/api/noc/cases/{sid}/release"): "cases.work",
+    ("POST", "/api/noc/cases/{sid}/status"): "cases.work",
+    ("POST", "/api/noc/cases/{sid}/resolve"): "cases.work",
+    ("GET", "/api/noc/cases/{sid}/feed"): "cases.read",
+    ("POST", "/api/noc/cases/{sid}/feed"): "cases.post",
+    ("GET", "/api/noc/people"): "cases.work",
 }
 
 NOC_ROUTE_SCOPE: dict[tuple[str, str], Literal["scoped", "unscoped", "admin_only"]] = {
@@ -64,6 +79,18 @@ NOC_ROUTE_SCOPE: dict[tuple[str, str], Literal["scoped", "unscoped", "admin_only
     ("POST", "/api/noc/leases/introspect"): "unscoped",
     # Ending a lease: the lease's holder or a custodian, whatever their scope.
     ("POST", "/api/noc/leases/{lease_id}/revoke"): "unscoped",
+    ("GET", "/api/noc/cases"): "scoped",
+    ("GET", "/api/noc/cases/kpis"): "scoped",
+    ("GET", "/api/noc/cases/{sid}"): "scoped",
+    ("POST", "/api/noc/cases/{sid}"): "scoped",
+    ("POST", "/api/noc/cases/{sid}/take"): "scoped",
+    ("POST", "/api/noc/cases/{sid}/release"): "scoped",
+    ("POST", "/api/noc/cases/{sid}/status"): "scoped",
+    ("POST", "/api/noc/cases/{sid}/resolve"): "scoped",
+    ("GET", "/api/noc/cases/{sid}/feed"): "scoped",
+    ("POST", "/api/noc/cases/{sid}/feed"): "scoped",
+    # The accounts a `specified` post may name: people, not elements; every scope reads the same.
+    ("GET", "/api/noc/people"): "unscoped",
 }
 
 assert set(NOC_ROUTE_SCOPE) == set(NOC_ROUTE_PERMISSIONS), "the two NOC tables must agree"

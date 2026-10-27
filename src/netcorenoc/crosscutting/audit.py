@@ -24,6 +24,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
 from netcorenoc.crosscutting import vault
+from netcorenoc.crosscutting.audit_noc import NOC_ACTIONS
 
 if TYPE_CHECKING:
     from netcorenoc.store import Store
@@ -209,21 +210,7 @@ ACTIONS: frozenset[str] = frozenset(
         "situation.proposal.accept",
         "situation.proposal.reject",
         "league.decide",
-        # The NOC plane's credential vault (ADRs #455-#458). One action per act an auditor asks
-        # about separately — who created, changed, deleted or READ a credential, who let agents
-        # use it, who named a custodian or an agent, and which agent leased, used or let go of
-        # one. A failed step-up is the attempted act with outcome `denied`; `noc.secret.read` is
-        # written only as a denial. No row ever holds a secret value or a lease.
-        "noc.secret.create",
-        "noc.secret.update",
-        "noc.secret.delete",
-        "noc.secret.reveal",
-        "noc.secret.read",
-        "noc.secret.agents",
-        "noc.grant.change",
-        "noc.lease.issue",
-        "noc.lease.use",
-        "noc.lease.revoke",
+        *NOC_ACTIONS,  # the NOC plane's (ADRs #455-#461), `audit_noc.py`
     }
 )
 

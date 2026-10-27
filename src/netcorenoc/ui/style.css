@@ -3288,3 +3288,83 @@ table.data.league-table td, table.data.league-table th { white-space: nowrap; }
 .secret-history li > span:first-child { color: var(--fg-muted); min-width: 6rem; }
 .history-denied { color: var(--alarm); }
 .grant-list .person-id { flex: 1 1 14rem; }
+
+/* ---------- NOC → Cases (ADRs #459-#461) ---------- */
+.cases-bar { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); flex-wrap: wrap; margin-bottom: var(--space-3); }
+.cases-mine { display: inline-flex; align-items: center; gap: var(--space-1); font-size: var(--fs-sm); }
+.case-count { font-family: var(--mono); font-weight: 600; margin-left: var(--space-1); }
+.case-open { padding: 0; text-align: left; }
+.case-priority {
+  display: inline-block; padding: 1px var(--space-2); border-radius: 999px; font-size: var(--fs-xs);
+  font-weight: 700; white-space: nowrap; text-transform: uppercase; letter-spacing: 0.04em;
+}
+.case-priority.sev-critical { background: var(--sev-critical-fill); color: var(--sev-critical-ink); }
+.case-priority.sev-major { background: var(--sev-major-fill); color: var(--sev-major-ink); }
+.case-priority.sev-minor { background: var(--sev-minor-fill); color: var(--sev-minor-ink); }
+.case-status { font-size: var(--fs-sm); font-weight: 600; white-space: nowrap; }
+.case-queue, .case-automation { color: var(--warn); }
+.case-working, .case-validate { color: var(--accent); }
+.case-pending { color: var(--fg-muted); }
+.case-resolved, .case-closed { color: var(--quiet); }
+.clock { font-family: var(--mono); font-size: var(--fs-sm); white-space: nowrap; }
+.clock-ok { color: var(--fg); }
+.clock-late { color: var(--alarm); font-weight: 600; }
+.clock-off { color: var(--fg-muted); }
+
+.case-detail { display: grid; gap: var(--space-3); }
+.case-head { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2) var(--space-3); }
+.case-head h2 { margin: 0; font-size: var(--fs-lg); flex: 1 1 18rem; overflow-wrap: anywhere; }
+.case-owner { color: var(--fg-muted); font-size: var(--fs-sm); }
+.case-path { list-style: none; display: flex; margin: 0; padding: 0; overflow-x: auto; }
+.case-step {
+  flex: 1 0 auto; padding: var(--space-1) var(--space-3); font-size: var(--fs-sm); text-align: center;
+  background: var(--bg-raised); color: var(--fg-muted); border: 1px solid var(--line);
+  margin-right: -1px; white-space: nowrap;
+}
+.case-step:first-child { border-radius: var(--radius-2) 0 0 var(--radius-2); }
+.case-step:last-child { border-radius: 0 var(--radius-2) var(--radius-2) 0; }
+.case-step.done { color: var(--fg); }
+.case-step.here { background: var(--accent); color: var(--accent-fg); border-color: var(--accent); font-weight: 700; }
+.case-clocks { display: grid; grid-template-columns: repeat(auto-fit, minmax(10rem, 1fr)); gap: var(--space-2) var(--space-4); margin: 0; }
+.case-clocks dt { font-size: var(--fs-xs); color: var(--fg-muted); text-transform: uppercase; letter-spacing: 0.05em; }
+.case-clocks dd { margin: 0; }
+.case-actions { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); }
+.case-columns { display: grid; grid-template-columns: minmax(0, 3fr) minmax(0, 2fr); gap: var(--space-4); align-items: start; }
+@media (max-width: 900px) { .case-columns { grid-template-columns: minmax(0, 1fr); } }
+.case-update h3, .case-act h3, .case-resolution h3 { margin: 0 0 var(--space-2); }
+.case-form textarea, .case-form input, .case-form select, .case-act textarea, .case-act select, .case-act input { width: 100%; }
+.case-wide { grid-column: 1 / -1; }
+.case-orgs { margin: var(--space-3) 0 0; padding: var(--space-3); border: 1px solid var(--line); border-radius: var(--radius-2); display: grid; gap: var(--space-2); }
+.case-orgs legend { padding: 0 var(--space-1); font-size: var(--fs-sm); color: var(--fg-muted); }
+.case-view { display: grid; grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr)); gap: var(--space-2) var(--space-4); margin: 0; }
+.case-view dt { font-size: var(--fs-xs); color: var(--fg-muted); text-transform: uppercase; letter-spacing: 0.05em; }
+.case-view dd { margin: 0; }
+.case-text { white-space: pre-wrap; overflow-wrap: anywhere; }
+.case-links { margin: var(--space-3) 0; }
+.case-cycles summary { cursor: pointer; color: var(--fg-muted); font-size: var(--fs-sm); }
+.case-resolution { border-color: var(--quiet); }
+
+.case-feed { display: grid; gap: var(--space-2); }
+.feed-compose { display: grid; gap: var(--space-2); }
+.feed-compose textarea { width: 100%; }
+.feed-compose-row { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--space-2); }
+.feed-vis { display: inline-flex; flex-wrap: wrap; gap: var(--space-1); }
+.feed-vis-opt { display: inline-flex; align-items: center; gap: var(--space-1); padding: 2px var(--space-2); border: 1px solid var(--line); border-radius: 999px; font-size: var(--fs-sm); cursor: pointer; }
+.feed-vis-opt.on { border-color: var(--accent); color: var(--accent); }
+.feed-readers { display: flex; flex-wrap: wrap; gap: var(--space-1) var(--space-3); }
+.feed-events { font-size: var(--fs-sm); color: var(--fg-muted); }
+.feed-list { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--space-2); }
+.feed-item { border: 1px solid var(--line); border-left-width: 3px; border-radius: var(--radius-2); padding: var(--space-2) var(--space-3); }
+.feed-internal { border-left-color: var(--accent); }
+.feed-specified { border-left-color: var(--warn); }
+.feed-all { border-left-color: var(--quiet); }
+.feed-event { border-style: dashed; border-left-width: 1px; color: var(--fg-muted); font-size: var(--fs-sm); }
+.feed-head { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); font-size: var(--fs-sm); }
+.feed-body { margin: var(--space-1) 0 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+.feed-badge { font-size: var(--fs-xs); padding: 0 var(--space-1); border-radius: var(--radius-1); border: 1px solid var(--line-strong); }
+.feed-badge-internal { color: var(--accent); border-color: var(--accent); }
+.feed-badge-specified { color: var(--warn); border-color: var(--warn); }
+.feed-badge-all { color: var(--quiet); border-color: var(--quiet); }
+.noc-kpis { display: grid; gap: var(--space-3); }
+.case-detail > .linkish { justify-self: start; }
+.clock-note { font-family: var(--sans); font-size: var(--fs-xs); color: var(--warn); }

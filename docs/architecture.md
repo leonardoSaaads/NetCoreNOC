@@ -231,7 +231,7 @@ in a complex, dynamic ISP network — from the trap stream alone.
 
 Everything in this document, and everything you can run today, is phase 1.
 
-### Phase 2 — automated first response *(begun: the NOC plane and its credential vault)*
+### Phase 2 — automated first response *(begun: the NOC plane, its cases and its credential vault)*
 
 Takes phase 1's output and acts as a **NOC level 1**: an AI plus a library of diagnostic and
 remediation scripts that **evolve and are scored over time**, trying the steps a human would try. If
@@ -247,6 +247,12 @@ never runs on the ingest path and never holds `store.lock` across network I/O �
 reachability checks are the first code to do network I/O to equipment, and they read on a reader,
 connect with nothing held, and take the lock only to record. **The second is still open**: what a
 script's evidence of having worked actually is.
+
+**Cases** (ADRs #459-#461): every situation that becomes `open` has a case in the same
+transaction (a trigger, so no path to `open` can forget the NOC). A case loop off the ingest path
+puts it in the NOC queue, returns pending cases at their next update, and reconciles cases whose
+situation resolved on its own; the take and customer-update clocks are kept per queue cycle; the
+feed carries each post's visibility and the case's own history.
 
 **What exists** (ADRs #454-#458): the console's **Broker | NOC** switch; the NOC's **Secrets**
 screen; a vault that seals each device credential twice, under two keys and two ciphers, bound to

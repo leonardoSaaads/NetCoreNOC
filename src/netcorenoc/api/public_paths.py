@@ -179,6 +179,14 @@ UNAUTHENTICATED_PATHS: frozenset[str] = frozenset(
         "/app/views/parts/stepup.js",
         "/app/views/parts/secretdetail.js",
         "/app/views/parts/nocgrants.js",
+        # Cases (ADRs #459-#461): the queue, the KPIs and one case's parts.
+        "/app/views/cases.js",
+        "/app/views/nockpis.js",
+        "/app/views/parts/caseclock.js",
+        "/app/views/parts/caseform.js",
+        "/app/views/parts/caseacts.js",
+        "/app/views/parts/casefeed.js",
+        "/app/views/parts/casedetail.js",
         "/login-bg.svg",
         # Vendored third-party assets, pinned by CHECKSUMS.txt.
         "/vendor/htm-3.1.1.module.js",

@@ -9,11 +9,12 @@ The console has two **planes**, switched from the middle of the top bar (ADR #45
 * **Broker** (phase 1) — receiving traps, correlating them into situations, training the models
   that do it, and the inventory. Every screen below except Secrets.
 * **NOC** (phase 2) — working the situations that reach the operations centre, with people and AI
-  agents. Today one screen: **Secrets**, the credentials used to reach equipment.
+  agents: **Cases** and **KPIs**, and **Secrets**, the credentials used to reach equipment.
 
 The sidebar shows the plane you are in; a link into a screen opens its plane, and the switch
-returns to the last screen you had open there. A principal who can reach no NOC screen (every
-viewer, today) sees no switch. The plane changes what is offered, never what is allowed.
+returns to the last screen you had open there. A principal who can reach no NOC screen sees no
+switch; a viewer reaches Cases (the customer's side of a case) and nothing of the vault. The plane
+changes what is offered, never what is allowed.
 
 The Broker's views come in three groups, plus the Overview and your account. **A view you
 cannot use is not rendered** — a viewer sees no `Administer` group at all, rather than a group of
@@ -46,6 +47,35 @@ disabled controls.
 | **Settings** | Six tabs: **Models** (what decides links — the league's champion, chosen by the judge or pinned), **Autonomy** (four grades, the self-suspension trigger, every act and its verdict), **Site training** (the budget, start and stop), **SNMP** (which versions and communities the receiver accepts, and the SNMPv3 users), **Email** (the SMTP server recovery links go through) and **System** (every parameter, in three classes, with its precedence and its impact) |
 | **Quarantine** | Datagrams the parser refused. **Reading this list is audited** |
 | **Audit log** | The hash-chained record of every change, and its verification state |
+
+## NOC — Cases
+
+| View | The question it answers |
+|---|---|
+| **Cases** | What the NOC has to take, what it is working, what waits on someone else, and what is over. Tabs **Queue**, **Working**, **Pending**, **Resolved**, **All**, each with its count, and *Only mine*. Every row: priority, the case, its status, its owner, the **take** clock ("12m left", "late 15m"), the customer-update clock, the next update and when it opened. Read again every 15 s |
+| **KPIs** | How fast the NOC takes a case and documents it, over 24 hours, 7 or 30 days: taken within target, median time to take, the time past target summed over every late take, customer updates within 30 minutes, and the same per priority |
+
+A situation the Broker opens becomes a case in the NOC queue (ADR #459). Opening one shows, top to
+bottom: the priority, title, status and owner; the **status path** (Queue → Working → Pending →
+Resolved → Closed, with *Automated* and *Validate* when they apply); the clocks; what you may do
+now; the **customer update**; and the **feed**.
+
+* **Take** makes the case yours and *Working*; the take clock stops (critical 25 min, major 1 h,
+  minor 2 h — ADR #460). *Take it over* takes someone else's; *Back to the queue* gives yours back.
+* **The customer update** — title, executive summary, description, current analysis, NOC next step,
+  customer next step, next update and priority — is edited by the owner and read by everyone who
+  can read the case. Each company whose equipment the situation touches may have its **own
+  executive summary**; an empty one reads the case's. The update's clock (30 min) stops the first
+  time it is complete.
+* **Set pending…** names who the NOC waits on (customer, carrier or fiber provider, scheduled
+  maintenance, dispatch, device access, connectivity, vendor, site access, field technician, RCA)
+  and when it looks again. It needs the complete customer update. When the next update comes, or a
+  person posts on the feed, the case returns to the queue.
+* **Resolve…** records the cause and the solution and closes the situation on the Broker. Tick
+  *I checked the device* only when the alarms are verifiably gone: then they are cleared too.
+* **The feed** is the conversation and the case's history. Each post says who reads it —
+  **Internal** (the NOC), **Specified** (the people you name) or **All with access** (the customer
+  too). A viewer posts to *All* only, sees networks rather than addresses, and no names.
 
 ## NOC — Equipment access
 

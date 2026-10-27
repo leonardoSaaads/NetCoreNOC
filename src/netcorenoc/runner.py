@@ -38,7 +38,7 @@ from netcorenoc.crosscutting.settings import (
     redact_url,
 )
 from netcorenoc.crosscutting.supervisor import Supervisor as Supervisor
-from netcorenoc.engine.noc import probe
+from netcorenoc.engine.noc import case_loop, probe
 from netcorenoc.engine.operate import intake, pipeline
 from netcorenoc.engine.operate.deadline import KPI_KEY, Kpi
 from netcorenoc.engine.operate.engine import Engine
@@ -409,10 +409,11 @@ async def _serve(settings: Settings, store: Store) -> None:
                 ),
             )
         ),
-        # ADR #457: the vault's reachability checks, off the ingest path and outside the lock.
+        # ADRs #457, #459: the vault's checks and the case loop, off the ingest path.
         asyncio.create_task(
             supervisor.run("noc-checks", lambda: probe.check_loop(store, settings.noc_check_s))
         ),
+        asyncio.create_task(supervisor.run("noc-cases", lambda: case_loop.case_loop(store))),
         asyncio.create_task(_serve_http(server, url)),
     ]
     try:

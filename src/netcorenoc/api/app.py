@@ -169,9 +169,12 @@ def create_app(
     routes.email.register(app, ctx)
     routes.recovery.register(app, ctx)
     routes.apidoc.register(app, ctx)
-    # The NOC plane (ADRs #454-#458), appended for the same reason: the vault, then who may hold it.
+    # The NOC plane (ADRs #454-#461), appended for the same reason: the vault, then who may hold
+    # it, then cases (`/kpis` before `/{sid}`, which would read it as a case id) and their feed.
     routes.secrets.register(app, ctx)
     routes.noc_access.register(app, ctx)
+    routes.cases.register(app, ctx)
+    routes.case_feed.register(app, ctx)
 
     # F40: the gate's completeness half. `DeclaredRoutes` refuses at registration and gives the
     # better error; this re-checks the *result*, so a route registered by any other path — an

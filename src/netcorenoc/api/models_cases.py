@@ -1,0 +1,89 @@
+"""The request surface of NOC cases and their feed (ADRs #459-#461).
+
+Every field is bounded here, at the edge, with the same caps the database's CHECKs hold. A time is
+accepted as epoch seconds or as an ISO 8601 instant **with** its offset — an agent writes the
+second more naturally than the first, and an instant without an offset names no instant.
+"""
+
+from __future__ import annotations
+
+from datetime import datetime
+from typing import Literal
+
+from pydantic import BaseModel, ConfigDict, Field, field_validator
+
+__all__ = ["CaseFieldsIn", "PostIn", "ReleaseIn", "ResolveIn", "StatusIn"]
+
+#: The most organizations one update may set a summary for.
+MAX_SUMMARIES = 50
+
+
+def _instant(value: float | datetime | None) -> float | None:
+    if value is None or isinstance(value, float | int):
+        return None if value is None else float(value)
+    if value.tzinfo is None:
+        raise ValueError("an ISO 8601 time needs its offset (Z or +hh:mm)")
+    return value.timestamp()
+
+
+class CaseFieldsIn(BaseModel):
+    """Any subset of the customer update; what is left out is left as it is. ``summaries`` maps an
+    organization's id to its own executive summary ('' removes it). ``version``, when sent, must be
+    the case's current one: a 409 says someone else changed it since you read it."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    title: str | None = Field(default=None, max_length=120)
+    description: str | None = Field(default=None, max_length=4000)
+    executive_summary: str | None = Field(default=None, max_length=200)
+    current_analysis: str | None = Field(default=None, max_length=8000)
+    noc_next_step: str | None = Field(default=None, max_length=4000)
+    customer_next_step: str | None = Field(default=None, max_length=4000)
+    next_update_at: float | datetime | None = None
+    priority: Literal["critical", "major", "minor"] | None = None
+    summaries: dict[int, str] | None = Field(default=None, max_length=MAX_SUMMARIES)
+    version: int | None = Field(default=None, ge=1)
+
+    _when = field_validator("next_update_at")(_instant)
+
+
+class StatusIn(BaseModel):
+    """Move a case to a pending status — with its next update, if not already set."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    status: str = Field(min_length=1, max_length=40)
+    next_update_at: float | datetime | None = None
+    note: str = Field(default="", max_length=2000)
+    version: int | None = Field(default=None, ge=1)
+
+    _when = field_validator("next_update_at")(_instant)
+
+
+class ResolveIn(BaseModel):
+    """Resolve a case. ``alarms_verified_clear`` states that the alarms were checked on the device
+    and are no longer active: only then are the situation's traps cleared (the clear trap never
+    arrived). Without it the situation is closed and its alarms are left as they are."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    cause: str = Field(min_length=1, max_length=40)
+    solution: str = Field(min_length=1, max_length=8000)
+    alarms_verified_clear: bool = False
+    version: int | None = Field(default=None, ge=1)
+
+
+class ReleaseIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    note: str = Field(default="", max_length=2000)
+
+
+class PostIn(BaseModel):
+    """A post on the case feed. ``readers`` names the people a `specified` post is for."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    body: str = Field(min_length=1, max_length=8000)
+    visibility: Literal["internal", "specified", "all"]
+    readers: list[int] = Field(default_factory=list, max_length=20)

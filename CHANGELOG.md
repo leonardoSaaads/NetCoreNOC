@@ -20,8 +20,9 @@ of that database gives away no secret, no password and no way to rewrite history
 data and secrets are sealed with a key the database never sees, the appliance's database role owns
 nothing, and administrators reset passwords without ever reading one. Phase 2 begins: the console
 gains a **NOC** plane beside the Broker, and the NOC a credential vault for people and AI agents
-(#454-#458). The schema is PostgreSQL's baseline, **migration 0031**, which includes SQLite's 0030,
-**0032** and **0033** (schema 33). See
+(#454-#458), and a case for every situation it works, with a queue, a feed and its clocks
+(#459-#461). The schema is PostgreSQL's baseline, **migration 0031**, which includes SQLite's
+0030, **0032**, **0033** and **0034** (schema 34). See
 [`MIGRATION.md`](MIGRATION.md): the SQLite file is **imported once**, before the first start; the
 appliance is three processes and a spool on disk, and a container needs two CPUs. No grouping
 decision changes (`make eval` is byte-identical).
@@ -56,6 +57,23 @@ stored device credential is unreadable (#455).
   credential, carrying no secret, revocable, introspectable (#458).
 - `docs/plans/noc-phase2.md`: the API reviewed for AI agents (MCP), and the executor and MCP server
   to come.
+
+### Added — NOC cases: the queue, the customer update, the feed and the NOC's clocks (#459-#461)
+
+- **A situation the Broker opens is a case in the NOC queue**, created in the same transaction by
+  a trigger, so every path to `open` is covered (#459). Migration **0034** (schema 34).
+- **NOC → Cases**: the queue (Queue, Working, Pending, Resolved), and a case with the handbook's
+  lifecycle — take, the customer update (title, description, executive summary — and one per
+  company — current analysis, NOC and customer next steps, next update), ten pending statuses,
+  validate, resolve with a cause and a solution, closed a day later. Resolving closes the
+  situation; its alarms are cleared only when verified clear on the device (#459).
+- **NOC → KPIs**: the take clock (critical 25 min, major 1 h, minor 2 h) and the customer-update
+  clock (30 min) per entry into the queue, with the overrun of every late take (#460).
+- **The case feed**: Internal, Specified or All per post; a person's post on a pending case returns
+  it to the queue; the case's history in the same stream; addresses and names withheld below editor
+  (#461). Six audit actions (`noc.case.*`).
+- Built for agents: explicit operation ids, the catalogue on the list, `actions` per case, ISO 8601
+  times, a `version` against lost updates.
 
 ### Fixed
 

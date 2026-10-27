@@ -219,6 +219,14 @@ _UI_MODULES = (
     "app/views/parts/stepup.js",
     "app/views/parts/secretdetail.js",
     "app/views/parts/nocgrants.js",
+    # Cases (ADRs #459-#461): the queue, the KPIs, and one case's clocks, form, acts and feed.
+    "app/views/cases.js",
+    "app/views/nockpis.js",
+    "app/views/parts/caseclock.js",
+    "app/views/parts/caseform.js",
+    "app/views/parts/caseacts.js",
+    "app/views/parts/casefeed.js",
+    "app/views/parts/casedetail.js",
 )
 
 _VENDOR_ASSETS = (

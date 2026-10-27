@@ -50,6 +50,8 @@ import { Quarantine } from "./views/quarantine.js";
 import { Audit } from "./views/audit.js";
 import { Account } from "./views/account.js";
 import { Secrets } from "./views/secrets.js";
+import { Cases } from "./views/cases.js";
+import { NocKpis } from "./views/nockpis.js";
 
 /**
  * `id`         the URL fragment and the DOM's `data-view`
@@ -149,7 +151,20 @@ export const VIEWS = [
     summary: "The hash-chained record of every change, and its verification state.",
   },
 
-  /* ---------- NOC (phase 2): reaching equipment, for people and for agents ---------- */
+  /* ---------- NOC (phase 2): working situations, and reaching equipment ---------- */
+  {
+    // ADRs #459-#461. Every principal who may read a situation may read its case and post on its
+    // feed; taking and working one is `cases.work`, offered in the screen from the server's
+    // `actions`. First in the NOC plane: it is where the switch lands.
+    id: "cases", label: "Cases", icon: "cases", group: "cases", plane: "noc",
+    capability: "cases.read", component: Cases,
+    summary: "The NOC queue: situations to take, work, wait on, and resolve — with their clocks.",
+  },
+  {
+    id: "kpis", label: "KPIs", icon: "kpi", group: "cases", plane: "noc",
+    capability: "cases.read", component: NocKpis,
+    summary: "How fast the NOC takes a case and documents it, against the targets.",
+  },
   {
     // ADRs #454-#458. `secrets.read` is editor, and the screen still opens the vault only for a
     // custodian — an admin, or an editor an admin named; anyone else is told why, and offered

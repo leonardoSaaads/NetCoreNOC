@@ -3,7 +3,7 @@
 Phase 2 is the half of the product that works a situation once phase 1 (the **Broker**) has made
 one: people and AI agents diagnosing and, later, remediating, with a time budget and an escalation
 (`architecture.md`, "The three phases"). This page is the plan for it, written as measurements and
-open questions (`CONTRIBUTING.md`). What is built is described by ADRs #454-#458, not here.
+open questions (`CONTRIBUTING.md`). What is built is described by ADRs #454-#461, not here.
 
 ## 1. Where it stands
 
@@ -15,8 +15,11 @@ open questions (`CONTRIBUTING.md`). What is built is described by ADRs #454-#458
 | Second factor (TOTP: Google Authenticator, Authy) | **placeholder** — field drawn disabled, audit says `not-enrolled` |
 | Status lights from reachability checks | built (#457) — the endpoint, not the credential |
 | Leases: what an agent holds instead of a secret | built (#458) |
+| **Cases** — a case per opened situation, the NOC queue, the customer update, pending statuses | built (#459) |
+| The NOC's clocks: take (25 min / 1 h / 2 h) and customer update (30 min), with the overrun | built (#460) |
+| The case feed: Internal / Specified / All, a person's post requeues a pending case | built (#461) |
 | **Executor** — something that acts on a device with a lease | not built (§4) |
-| **MCP server** — how an agent reaches all of this | not built (§3) |
+| **MCP server** — how an agent reaches all of this | not built (§3); the case routes are its first tools |
 | Script library, scoring scripts, time budget, escalation | not built |
 
 ## 2. The current API, reviewed for AI agents (MCP)
@@ -87,6 +90,13 @@ second API with its own authorization. A stdio adapter that forwards to it serve
 | `list_situations` | `GET /api/situations` | `situations.read` | read-only |
 | `get_situation` | `GET /api/situations/{sid}` (brief, G4) | `situations.read` | read-only |
 | `get_element` | `GET /api/elements/{ne_id}` | `entities.read` | read-only |
+| `noc_list_cases` | `GET /api/noc/cases` | `cases.read` | read-only |
+| `noc_get_case` | `GET /api/noc/cases/{sid}` | `cases.read` | read-only |
+| `noc_take_case` | `POST /api/noc/cases/{sid}/take` | `cases.work` | idempotent for its owner |
+| `noc_update_case` | `POST /api/noc/cases/{sid}` | `cases.work` | `version` against lost updates |
+| `noc_set_case_pending` | `POST /api/noc/cases/{sid}/status` | `cases.work` | — |
+| `noc_resolve_case` | `POST /api/noc/cases/{sid}/resolve` | `cases.work` | destructive: closes the situation |
+| `noc_post_to_case` | `POST /api/noc/cases/{sid}/feed` | `cases.post` | not idempotent until G8 |
 | `list_leasable_credentials` | `GET /api/noc/agent` | `secrets.lease` | read-only |
 | `lease_credential` | `POST /api/noc/secrets/{id}/lease` | `secrets.lease` | not destructive; not idempotent until G8 |
 | `release_lease` | `POST /api/noc/leases/{id}/revoke` | `secrets.lease` | idempotent |
