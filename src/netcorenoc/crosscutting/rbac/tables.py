@@ -205,10 +205,22 @@ PERMISSIONS: dict[str, str] = {
     # Acting on a case one does not own, and reading every `specified` post: the NOC manager's.
     "cases.manage": "admin",
     # Playbooks (ADR #463) act on every matching case across the estate, with no person in the
-    # loop and no visibility scope — an admin's power, like autonomy's. An AI agent that writes
-    # them holds an admin-role token narrowed to what it needs (`ceiling ∩ policy`).
-    "playbooks.read": "admin",
-    "playbooks.write": "admin",
+    # loop and no visibility scope. ADR #465: `editor` is the ceiling that lets the NOC's agents
+    # (editor-role tokens) read and write them, and **the capability is necessary and never
+    # sufficient to write one**: the handler also requires the agent grant — the same that lets a
+    # token use credentials, which is what a playbook does — or `secrets.grants`, the admin's.
+    "playbooks.read": "editor",
+    "playbooks.write": "editor",
+    # The NOC's agents (ADRs #465-#467). Seeing the organization and each agent's runs is the
+    # NOC's (`editor`). Waking, pausing and resuming one is too — pausing is a kill switch, and a
+    # kill switch is cheap to grant and dangerous to withhold (#412); an agent may do it only to
+    # those below it. Hiring, changing and terminating one, and its key, are an admin's.
+    "agents.read": "editor",
+    "agents.run": "editor",
+    "agents.manage": "admin",
+    # The MCP endpoint (ADR #466) is a door, not a power: every tool behind it is a route with its
+    # own capability, and the tool list is filtered by what the caller holds.
+    "mcp.use": "viewer",
     # **The poller's two capabilities are NOT here**, and their absence is the decision rather
     # than an oversight. D3 slips to v0.21.1 (ADR #373, HANDOFF §1), and a capability with no
     # route behind it is a placeholder — which `ui/app/registry.js` already refuses, on the ground
@@ -250,6 +262,8 @@ AUDITED_DENIED_PERMISSIONS: frozenset[str] = frozenset(
         "secrets.write",
         "secrets.reveal",
         "secrets.grants",
+        # ADR #465: reaching for the agents' configuration — their instructions and their keys.
+        "agents.manage",
     }
 )
 

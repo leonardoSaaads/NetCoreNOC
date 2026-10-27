@@ -6502,11 +6502,100 @@ From this release an entry is about six lines: decision, reason, release.*
   still `auto` — a person who took it wins. A run past its `timeout_s` (30 s – 30 min), a failed
   one, one whose conclusion could not be applied, or one a restart interrupted sends the case to the
   NOC queue; its take clock starts there. A playbook is active as soon as it is stored; reading and
-  writing them is `playbooks.*`, an admin's power — an AI agent uses an admin-role token narrowed to
-  what it needs. The credential a step uses is the vault's, for the element's address, with agent
+  writing them is `playbooks.*` (an admin's until #465 made it the agents' too). The credential a step uses is the vault's, for the element's address, with agent
   access switched on, at the least access level the command needs.
 - **Reason**: the owner's design — after a case is resolved the agent writes a tree (ping, is it
   Ciena, is it SAOS 10, is the alarm still active on the device, then the port's power…) so the next
   similar case is handled without calling the NOC; and the owner's choice that playbooks are active
   at once, read only. Fixed tests on the device's text, never evaluated expressions, are what let an
   AI write a playbook without being able to write a program.
+
+## 464. A case's priority and its clocks follow what the Broker shows (unreleased)
+
+- **Decision** (`store/noc_cases.py`, `engine/noc/case_ops.py`, `engine/noc/kpi.py`, migration
+  `0036`): a case is dispatched — and re-queued — at the worst severity the Broker shows for its
+  situation: its own (autonomy's) and each active member's with the Broker's precedence (declared,
+  the catalogue's rule, what the trap carried or was learned). While `priority_by` is NULL the case
+  loop **raises** the priority when a worse alarm joins, never lowers it; a person or an agent that
+  sets it owns it from then on. **The open, untaken cycle's take target follows the priority**:
+  raised to critical after 30 minutes in the queue, a case is five minutes late, not on time for
+  another ninety. A taken cycle keeps the priority it was taken under. A third clock, the handbook's
+  **Time to Resolve/Restore** (Table 2: 4 h critical, 24 h major, 72 h minor), runs from the event
+  to `validate` or `resolved` (`restored_at`, kept by a trigger on the status) and restarts if a
+  case is taken back from `validate`.
+- **Reason**: the owner's test: a link-down the Broker showed as critical opened a minor case — the
+  case read `situation.severity`, which only autonomy writes, and was empty when the case opened —
+  and raising it to critical left the take target at the minor's two hours. Raising only, never
+  lowering, is so a clock is never relaxed after the fact.
+
+## 465. The NOC's agents: an organization of AI agents, each with its own key (unreleased)
+
+- **Decision** (`engine/noc/agents.py`, `store/noc_agents.py`, `api/routes/agents.py`,
+  `api/agent_hire.py`, migration `0037`): Paperclip's "company" is the NOC. An agent has a name, a
+  role (head, supervisor, project manager, engineer, specialist, analyst), a title, an icon, a tier
+  (1-4), a manager (`reports_to`; none means the NOC team — the people — at the top), what it is
+  good at, its instructions, its adapter and its limits (heartbeat, escalation time, run time,
+  monthly budget). The organization is a forest: a manager below the agent is refused as a loop;
+  terminating one moves its reports up. **Its identity is a service token**, role `editor`, named as
+  the agent so every act is recorded under its name, granted `agent` (the grant that lets it lease
+  and use credentials). The key is shown once to the admin when the agent runs elsewhere; for the
+  `claude` adapter the appliance keeps it sealed and never shows it; a `webhook` agent also gets a
+  signing key, shown once and kept sealed. A new key retires the old token (revoked, leases ended).
+  **A paused agent's key opens nothing** until a person resumes it — a kill switch that left the
+  agent free to act would not be one. Capabilities: `agents.read` and `agents.run` (wake, pause,
+  resume — a caller that is an agent only on the agents below it) are the NOC's, `agents.manage`
+  (hire, change, terminate, key) an admin's. `playbooks.*` becomes `editor`, and writing or
+  switching on a playbook also needs the agent grant or `secrets.grants` — a playbook uses
+  credentials the way a lease does.
+- **Reason**: the owner's design (Paperclip): a NOC organization with supervisors, project managers
+  and engineers, each agent with its own page; the owner's choices that the organization holds only
+  agents, with the people at the top, and that agents are run both elsewhere and by the appliance.
+  An agent is a caller like any other, so nothing about it needs a second authorization path.
+
+## 466. The MCP server: every tool is a route, called with the caller's own key (unreleased)
+
+- **Decision** (`api/routes/mcp.py`, `api/mcp.py`, `api/mcp_tools.py`, `api/asgi_call.py`): `POST
+  /api/mcp` speaks the Model Context Protocol over Streamable HTTP, **stateless** — one JSON-RPC
+  message per POST answered in JSON, no session — at the handshake revisions 2024-11-05 to
+  2025-11-25: `initialize`, `ping`, `tools/list`, `tools/call`, `prompts/list`, `prompts/get`
+  (`noc_agent`: the agent's instructions, then the NOC's rules). Anything else is "method not
+  found", which makes a newer client fall back to the handshake. **A tool is a route with a
+  different envelope**: thirty-three routes an agent works through, each called in process through
+  the ASGI application with the caller's own credentials — the perimeter, RBAC, scope, the write
+  transaction and the audit row are the route's, and nothing is reimplemented. Each tool's input
+  schema is the route's own (path, query and body, from the OpenAPI document, `$ref`s inlined), its
+  description the handler's docstring, and `tools/list` shows a caller only the tools its
+  capabilities reach. A refusal is a tool result with `isError` and the route's sentence; a device's
+  output is said, beside it, to be data. A cross-site `Origin` is refused. Each call an agent makes
+  is a step of its run — the one it was woken for, or one of its own that ends after five quiet
+  minutes — with its arguments shown without leases, tokens, keys or passwords. Tested against the
+  official MCP SDK over real HTTP.
+- **Reason**: `docs/plans/noc-phase2.md` §3 proposed exactly this, and the owner made the MCP server
+  this round's priority. In process rather than a separate server means one authorization, one
+  audit, one place a tool can be wrong.
+
+## 467. Routing and the climb, and how an agent is woken (unreleased)
+
+- **Decision** (`engine/noc/agent_loop.py`, `engine/noc/routing.py`, `engine/noc/webhook.py`,
+  `api/agent_runtime.py`, `api/routes/case_agents.py`): a queued case with no agent goes to the
+  **entry agent** with the fewest live cases, at Tier 1; it is routed, not taken — the take clock
+  runs until the agent takes it. A case not concluded within its agent's escalation time **climbs**
+  to the nearest working manager at the next tier (the handbook's With NOC Tier 2-4; Table 4.1:
+  every 30 minutes for critical, Tier 4 by the 90th minute; major every hour, minor every two), and
+  past the top to the NOC team — a case an agent had taken goes back to the queue for a person, a
+  new cycle (`escalated`). A case a person took does not climb. A person routes a case nobody has or
+  their own (`cases.manage` any); an agent delegates only its own cases, only to agents below it,
+  and escalates its own. **How an agent is woken**: `webhook` — a POST signed with HMAC-SHA256 over
+  the timestamp and the body (`X-NetCoreNOC-Signature`), carrying why, the case and where to work,
+  never a credential; the run stays open until the agent reports it finished (`POST
+  /api/noc/runs/{id}/finish`) or its time runs out. `claude` — the appliance runs the agent through
+  the Anthropic API with the official SDK (the optional `agents` extra): the agent's instructions
+  and the NOC's rules as the system prompt, its MCP tools as tools, each called in process with its
+  own key; `claude-opus-5-5` by default, adaptive thinking at the agent's effort, the server-side
+  refusal fallback on, the prompt cached; the API key is a vault credential a custodian let agents
+  use; the run records each step, its summary and its cost, and the agent is paused when its monthly
+  budget is spent. `external` — never woken. Heartbeats wake idle agents on a timer; wake-ups for an
+  agent already queued are merged; a run past its limit ends `timed_out`.
+- **Reason**: the owner's choices: both adapters, and routing with escalation through the hierarchy;
+  the handbook's escalation reminders are what the hierarchy is for. A signed wake-up that carries
+  no credential lets an agent anywhere be woken without the appliance ever sending a key.

@@ -64,8 +64,7 @@ DENIED_ACTION = {
     "users.manage": "user.update",
     "tokens.manage": "token.create",
     "config.read": "config.change",  # a denied config *access* is logged under the config action
-    "config.write": "config.change",
-    # v0.6.0 (F21): an attempted system-wide logic change, under the action it tried to perform.
+    "config.write": "config.change",  # (F21, v0.6.0) below: a logic change, under its own action
     "scorer.preview": "scorer.preview",
     "scorer.write": "scorer.config.update",
     # v0.7.0 (F27): an attempted privilege change, under the policy action it tried to perform.
@@ -77,6 +76,7 @@ DENIED_ACTION = {
     "secrets.write": "noc.secret.update",
     "secrets.reveal": "noc.secret.reveal",
     "secrets.grants": "noc.grant.change",
+    "agents.manage": "noc.agent.update",
 }
 # Fail fast at import if the presentation mapping drifts from the authorization source of truth.
 assert set(DENIED_ACTION) == set(rbac.AUDITED_DENIED_PERMISSIONS), (

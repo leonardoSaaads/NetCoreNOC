@@ -226,6 +226,9 @@ UNDRIVEN_QUERY_PARAMS: dict[tuple[str, str], tuple[str, ...]] = {
     ("GET", "/api/noc/cases"): ("limit", "mine", "view"),
     ("GET", "/api/noc/cases/kpis"): ("days",),
     ("GET", "/api/noc/cases/{sid}/feed"): ("before", "limit"),
+    # ADR #465: an agent's activity window, recorded at its default; driven in
+    # `tests/api/test_noc_agents.py`.
+    ("GET", "/api/noc/agents/{agent_id}"): ("days",),
 }
 
 #: Headers dropped from the record, with the reason each one is not a behaviour of this project.

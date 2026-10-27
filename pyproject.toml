@@ -30,6 +30,10 @@ snmpv3 = ["cryptography>=43"]
 # "unavailable" for SSH and everything else runs. 2.14.2 is the first with the Terrapin fix
 # (CVE-2023-48795).
 noc = ["asyncssh>=2.14.2"]
+# ADR #467: the `claude` agent adapter — the appliance runs an agent through the Anthropic API with
+# the official SDK. Optional: without it a `claude` agent's runs fail with that sentence, and
+# `webhook` and `external` agents (and the MCP endpoint) need nothing more.
+agents = ["anthropic>=2.3.0"]
 dev = [
     "pytest>=8.2",
     "pytest-asyncio>=0.24",
@@ -52,6 +56,10 @@ dev = [
     "cryptography>=43",
     # The `noc` extra, so the suite drives the executor against a real SSH server (ADR #462).
     "asyncssh>=2.14.2",
+    # The `agents` extra (ADR #467), and the official MCP SDK — the client the MCP endpoint is
+    # tested against, over real HTTP (ADR #466). Dev only: the server needs no MCP library.
+    "anthropic>=2.3.0",
+    "mcp>=2.3.0",
 ]
 
 [project.urls]
