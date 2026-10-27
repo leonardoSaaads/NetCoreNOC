@@ -693,11 +693,14 @@ async def test_f43_every_path_served_today_still_registers(store: Store) -> None
     # Unreleased: 229 -> 249 and 118 -> 132 — the NOC plane (ADRs #454-#458): fourteen /api pairs
     # (the vault, its custodians and agents, leases) and six UI modules (the Broker | NOC switch,
     # the Secrets screen and the four parts it composes).
-    assert len(served) == 249, f"the served surface moved: {len(served)} method/path pairs"
+    # Unreleased: 249 -> 267 and 132 -> 143 — NOC cases (ADRs #459-#461): eleven /api pairs (the
+    # queue, the KPIs, a case and its five acts, its feed, the people a post may name) and seven
+    # UI modules (Cases, KPIs, and a case's clocks, form, acts, feed and detail).
+    assert len(served) == 267, f"the served surface moved: {len(served)} method/path pairs"
     api_pairs = {(method, path) for method, path in served if path.startswith("/api")}
     # **v0.19.0: 53 -> 55.** `GET /api/models` and `POST /api/models/register`: what the
     # models are doing, and turning one of this appliance's own fits into an artefact.
-    assert len(api_pairs) == 132, (
+    assert len(api_pairs) == 143, (
         f"the /api surface moved: {len(api_pairs)} pairs. v0.16.0 adds exactly five — the "
         f"operator's five gestures — v0.16.2 adds exactly one, `POST …/promote` (DECISIONS #273), "
         f"v0.16.5 adds exactly one, `POST /api/alarms/clear` (DECISIONS #301), "
@@ -865,11 +868,14 @@ async def test_f42_every_path_served_today_still_registers(store: Store) -> None
     # Unreleased: 229 -> 249 and 118 -> 132 — the NOC plane (ADRs #454-#458): fourteen /api pairs
     # (the vault, its custodians and agents, leases) and six UI modules (the Broker | NOC switch,
     # the Secrets screen and the four parts it composes).
-    assert len(served) == 249, f"the served surface moved: {len(served)} method/path pairs"
+    # Unreleased: 249 -> 267 and 132 -> 143 — NOC cases (ADRs #459-#461): eleven /api pairs (the
+    # queue, the KPIs, a case and its five acts, its feed, the people a post may name) and seven
+    # UI modules (Cases, KPIs, and a case's clocks, form, acts, feed and detail).
+    assert len(served) == 267, f"the served surface moved: {len(served)} method/path pairs"
     api_pairs = {(method, path) for method, path in served if path.startswith("/api")}
     # **v0.19.0: 53 -> 55.** `GET /api/models` and `POST /api/models/register`: what the
     # models are doing, and turning one of this appliance's own fits into an artefact.
-    assert len(api_pairs) == 132, (
+    assert len(api_pairs) == 143, (
         f"the /api surface moved: {len(api_pairs)} pairs. v0.16.0 adds exactly five — the "
         f"operator's five gestures — v0.16.2 adds exactly one, `POST …/promote` (DECISIONS #273), "
         f"v0.16.5 adds exactly one, `POST /api/alarms/clear` (DECISIONS #301), "
@@ -962,8 +968,9 @@ def test_every_unscoped_declaration_carries_a_written_justification() -> None:
     # v0.26.0: 25 -> 30 — the decider, autonomy's status and kill switch, the search and the judge:
     # statements about models and switches, naming no network element (ADRs #405, #412, #413).
     # ADR #454: 30 -> 42 — twelve NOC routes, custodian-gated rather than scope-gated, each with
-    # its reason written beside it in `noc_map.py`.
-    assert len(entries) == 42, entries
+    # its reason written beside it in `noc_map.py`. ADR #461: 42 -> 43, the people a `specified`
+    # post may name — accounts, not elements.
+    assert len(entries) == 43, entries
     unjustified = [lines[i].strip() for i in entries if not lines[i - 1].strip().startswith("#")]
     assert not unjustified, (
         "every `unscoped` route must be preceded by a comment saying why it is not scoped:\n  "
@@ -1099,7 +1106,8 @@ def test_the_three_postures_are_all_populated() -> None:
     # v0.25.0: 21 -> 25, the four routes named at the justification test above.
     # v0.26.0: 25 -> 30, the five routes named there too.
     # Unreleased: 30 -> 42, the twelve NOC routes below admin (ADRs #454-#458).
-    assert len(UNSCOPED) == 42, UNSCOPED
+    # Unreleased: 42 -> 43, `GET /api/noc/people` (ADR #461).
+    assert len(UNSCOPED) == 43, UNSCOPED
     # v0.16.0: 12 -> 17. Every one of the five gestures names a network element and every one
     # is below `admin`, so every one is `scoped` — the write perimeter F34 established,
     # widened by exactly the routes this release adds.
@@ -1129,7 +1137,10 @@ def test_the_three_postures_are_all_populated() -> None:
     # cannot see (targeted, ADR #412).
     # v0.27.0: 39 -> 40. An answer to a proposal names two situations and 404s on either the
     # caller cannot see (targeted, ADR #428).
-    assert len(SCOPED) == 40, SCOPED
+    # Unreleased: 40 -> 50. NOC cases (ADRs #459-#461): a case is its situation, worked, and is
+    # scoped as the situation is — the queue and the KPIs narrow (collections), and the eight
+    # routes naming one case 404 on one the caller cannot see (targeted).
+    assert len(SCOPED) == 50, SCOPED
     assert len(rbac.ROUTE_SCOPE) == len(ADMIN_ONLY) + len(UNSCOPED) + len(SCOPED)
 
 
@@ -1147,6 +1158,12 @@ async def _status(client: httpx.AsyncClient, method: str, path: str) -> int:
 
 
 _BODIES: dict[tuple[str, str], dict[str, Any]] = {
+    # ADRs #459-#461: each case act in a shape that passes validation.
+    ("POST", "/api/noc/cases/{sid}"): {"title": "guard"},
+    ("POST", "/api/noc/cases/{sid}/release"): {"note": ""},
+    ("POST", "/api/noc/cases/{sid}/status"): {"status": "pending_customer"},
+    ("POST", "/api/noc/cases/{sid}/resolve"): {"cause": "other", "solution": "guard"},
+    ("POST", "/api/noc/cases/{sid}/feed"): {"body": "guard", "visibility": "all"},
     ("POST", "/api/situations/{sid}/feedback"): {"verdict": "confirm"},
     ("POST", "/api/labels"): {"kind": "ne", "id": 1, "label": "x"},
     # v0.16.0. The five gestures, in shapes that pass validation so the *posture* is what is
@@ -1288,6 +1305,16 @@ SCOPED_TARGETED = [
     ("GET", "/api/elements/{ne_id}/components"),
     # v0.26.0: an operator's severity names one situation (ADR #412).
     ("POST", "/api/situations/{sid}/severity"),
+    # ADRs #459-#461: a case is its situation, worked; naming one the caller cannot see is the
+    # same 404 as naming one that does not exist.
+    ("GET", "/api/noc/cases/{sid}"),
+    ("POST", "/api/noc/cases/{sid}"),
+    ("POST", "/api/noc/cases/{sid}/take"),
+    ("POST", "/api/noc/cases/{sid}/release"),
+    ("POST", "/api/noc/cases/{sid}/status"),
+    ("POST", "/api/noc/cases/{sid}/resolve"),
+    ("GET", "/api/noc/cases/{sid}/feed"),
+    ("POST", "/api/noc/cases/{sid}/feed"),
 ]
 SCOPED_COLLECTION = [r for r in SCOPED if r not in SCOPED_TARGETED]
 
@@ -1305,6 +1332,8 @@ async def test_scoped_routes_404_an_out_of_scope_target(
     engine, queue, app = await authutil.make_env(store)
     await _seed(store)
     out_of_scope_ne = await _out_of_scope_ids(store, engine, queue)
+    if route[1].startswith("/api/noc/cases"):
+        await _open_every_situation(store)  # so the case exists and the 404 is the scope's
     await _activate_scope(store, NARROW)
     method, path = route
     body = dict(_BODIES.get(route) or {})
@@ -1365,6 +1394,8 @@ async def test_scoped_collection_routes_answer_differently_under_a_policy(
     engine, queue, app = await authutil.make_env(store)
     await _out_of_scope_ids(store, engine, queue)
     method, path = route
+    if path.startswith("/api/noc/cases"):
+        await _open_every_situation(store)
     if path.startswith("/api/activity/"):
         # v0.22.0: these read a window ending NOW, and the fixture's traffic is from 2023 — so
         # both answers were empty and differed only in their `from`/`to`, which moved between the
@@ -1392,11 +1423,19 @@ async def test_scoped_collection_routes_answer_differently_under_a_policy(
 
 
 def _without_clock(body: bytes) -> bytes:
-    """A JSON object's body minus `from`/`to`, which are the wall clock and not the answer."""
+    """A JSON object's body minus `from`/`to`, which are the wall clock and not the answer. A case
+    list or the case KPIs reduce to what they count — their clocks run between the two reads."""
     try:
         parsed = json.loads(body)
     except ValueError:
         return body
+    if isinstance(parsed, dict) and "counts" in parsed and ("cases" in parsed or "take" in parsed):
+        kept = {
+            "counts": parsed["counts"],
+            "cases": [c["id"] for c in parsed.get("cases", [])],
+            "cycles": parsed.get("cycles"),
+        }
+        return json.dumps(kept, sort_keys=True).encode()
     if isinstance(parsed, dict) and {"from", "to"} <= set(parsed):
         parsed = {k: v for k, v in parsed.items() if k not in ("from", "to")}
         return json.dumps(parsed, sort_keys=True).encode()
@@ -1472,6 +1511,17 @@ async def _first_sse_update(app: object, cookie: str) -> bytes:
         await asyncio.wait_for(app(scope_env, receive, send), timeout=15.0)  # type: ignore[operator]
     assert captured, "no SSE update frame arrived"
     return captured[0]
+
+
+async def _open_every_situation(store: Store) -> None:
+    """Every live situation opened as an operator opens one, its case in the queue (ADR #459)."""
+    from netcorenoc.engine.noc import case_loop
+
+    async with store.lock:
+        for row in await store.list_situations(None, 100, None):
+            await store.promote_situation(int(row["id"]), BASE + 10, "promote")
+        await store.commit()
+    await case_loop.tick(store)
 
 
 async def _out_of_scope_ids(store: Store, engine: Any, queue: Any) -> dict[str, int]:

@@ -1402,7 +1402,14 @@ def test_f34_every_mutating_route_below_admin_resolves_scope() -> None:
     # list (people an admin named), a step-up for every read or change of a secret, and — for a
     # lease — the agent grant and the credential's own switch. `tests/api/test_noc_vault.py`
     # drives each of those refusals; `noc_map.py` states the posture beside every route.
-    session_only |= {route for route in rbac.ROUTE_PERMISSIONS if route[1].startswith("/api/noc/")}
+    # Cases (ADRs #459-#461) are the exception inside the NOC plane: a case is its situation,
+    # worked, and is scoped exactly as the situation is — so they are checked like every other.
+    # `/api/noc/people` lists accounts, not elements: there is no element in it to scope.
+    session_only |= {
+        route
+        for route in rbac.ROUTE_PERMISSIONS
+        if route[1].startswith("/api/noc/") and not route[1].startswith("/api/noc/cases")
+    }
     # The four spellings of *"this handler resolved the caller's visibility"*. The first is the
     # literal every route wrote until v0.21.0; the other three are `WindowAccess`'s, and
     # `test_every_indirect_scope_call_really_resolves_the_scope` reads their source so that
@@ -1457,6 +1464,14 @@ def test_f34_every_mutating_route_below_admin_resolves_scope() -> None:
         ("POST", "/api/alarms/{aid}/outlived/ack"): "async def acknowledge_outlived(",
         # v0.26.0: an operator's severity for a situation names a situation, hence its elements.
         ("POST", "/api/situations/{sid}/severity"): "async def situation_severity(",
+        # ADRs #459-#461: a case is its situation, worked; every act on it names the situation,
+        # and resolving one closes it — inside the perimeter for every reason the gestures are.
+        ("POST", "/api/noc/cases/{sid}"): "async def update_case(",
+        ("POST", "/api/noc/cases/{sid}/take"): "async def take_case(",
+        ("POST", "/api/noc/cases/{sid}/release"): "async def release_case(",
+        ("POST", "/api/noc/cases/{sid}/status"): "async def set_status(",
+        ("POST", "/api/noc/cases/{sid}/resolve"): "async def resolve_case(",
+        ("POST", "/api/noc/cases/{sid}/feed"): "async def post_to_case(",
     }
     unprotected: list[str] = []
     for (method, path), capability in sorted(rbac.ROUTE_PERMISSIONS.items()):
