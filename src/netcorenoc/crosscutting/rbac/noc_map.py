@@ -1,4 +1,4 @@
-"""The NOC plane's routes: the capability each requires and its scope posture (ADRs #454-#461).
+"""The NOC plane's routes: the capability each requires and its scope posture (ADRs #454-#463).
 
 Split from `route_map.py` at the 400-line guard, on the seam the product now has: the broker's
 routes there, the NOC's here. `route_map.py` folds both tables into `ROUTE_PERMISSIONS` and
@@ -48,6 +48,15 @@ NOC_ROUTE_PERMISSIONS: dict[tuple[str, str], str] = {
     ("GET", "/api/noc/cases/{sid}/feed"): "cases.read",
     ("POST", "/api/noc/cases/{sid}/feed"): "cases.post",
     ("GET", "/api/noc/people"): "cases.work",
+    # -- the executor and playbooks (ADRs #462, #463) --
+    # An act on a device is a use of a lease; the handler checks the lease as introspection does.
+    ("POST", "/api/noc/exec"): "secrets.lease",
+    ("POST", "/api/noc/secrets/{secret_id}/hostkey"): "secrets.write",
+    ("GET", "/api/noc/playbooks"): "playbooks.read",
+    ("POST", "/api/noc/playbooks"): "playbooks.write",
+    ("GET", "/api/noc/playbooks/{playbook_id}"): "playbooks.read",
+    ("POST", "/api/noc/playbooks/{playbook_id}"): "playbooks.write",
+    ("POST", "/api/noc/playbooks/{playbook_id}/enabled"): "playbooks.write",
 }
 
 NOC_ROUTE_SCOPE: dict[tuple[str, str], Literal["scoped", "unscoped", "admin_only"]] = {
@@ -91,6 +100,16 @@ NOC_ROUTE_SCOPE: dict[tuple[str, str], Literal["scoped", "unscoped", "admin_only
     ("POST", "/api/noc/cases/{sid}/feed"): "scoped",
     # The accounts a `specified` post may name: people, not elements; every scope reads the same.
     ("GET", "/api/noc/people"): "unscoped",
+    # Acting on a device with a lease: decided by the lease, its agent grant and the credential's
+    # switch, never by scope — the same gate as asking for the lease.
+    ("POST", "/api/noc/exec"): "unscoped",
+    # Forgetting a pinned host key: custodian-gated and stepped up; scope does not reach the vault.
+    ("POST", "/api/noc/secrets/{secret_id}/hostkey"): "unscoped",
+    ("GET", "/api/noc/playbooks"): "admin_only",
+    ("POST", "/api/noc/playbooks"): "admin_only",
+    ("GET", "/api/noc/playbooks/{playbook_id}"): "admin_only",
+    ("POST", "/api/noc/playbooks/{playbook_id}"): "admin_only",
+    ("POST", "/api/noc/playbooks/{playbook_id}/enabled"): "admin_only",
 }
 
 assert set(NOC_ROUTE_SCOPE) == set(NOC_ROUTE_PERMISSIONS), "the two NOC tables must agree"

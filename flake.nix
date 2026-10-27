@@ -25,6 +25,8 @@
             pydantic
             # ADR #453: seals personal data and secrets at rest; also decrypts SNMPv3 traps (#444).
             cryptography
+            # ADR #462: the NOC executor's SSH acts (the optional `noc` extra).
+            asyncssh
           ];
           # The full test suite needs the dev extras; run `make qa` in the dev shell.
           doCheck = false;

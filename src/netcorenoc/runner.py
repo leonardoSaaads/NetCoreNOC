@@ -27,6 +27,7 @@ from typing import Any
 import uvicorn
 
 from netcorenoc.api import QuietServer, create_app
+from netcorenoc.api.case_close import automation_broker
 from netcorenoc.crosscutting import administration, posture, secretbox, shaping, vault
 from netcorenoc.crosscutting.runtime import RuntimeConfig
 from netcorenoc.crosscutting.settings import (
@@ -38,7 +39,7 @@ from netcorenoc.crosscutting.settings import (
     redact_url,
 )
 from netcorenoc.crosscutting.supervisor import Supervisor as Supervisor
-from netcorenoc.engine.noc import case_loop, probe
+from netcorenoc.engine.noc import case_loop, probe, runbook
 from netcorenoc.engine.operate import intake, pipeline
 from netcorenoc.engine.operate.deadline import KPI_KEY, Kpi
 from netcorenoc.engine.operate.engine import Engine
@@ -393,6 +394,11 @@ async def _serve(settings: Settings, store: Store) -> None:
             await feed.rewind(supervisor.last_error.get("engine", ""))
         await engine.run()
 
+    noc = {  # ADRs #457, #459, #463: the vault's checks, cases, playbooks; off the ingest path.
+        "noc-checks": lambda: probe.check_loop(store, settings.noc_check_s),
+        "noc-cases": lambda: case_loop.case_loop(store, runbook.automation),
+        "noc-playbooks": lambda: runbook.run_loop(store, automation_broker(store, engine)),
+    }
     tasks = [
         asyncio.create_task(supervisor.run("engine", run_engine)),
         asyncio.create_task(
@@ -409,11 +415,7 @@ async def _serve(settings: Settings, store: Store) -> None:
                 ),
             )
         ),
-        # ADRs #457, #459: the vault's checks and the case loop, off the ingest path.
-        asyncio.create_task(
-            supervisor.run("noc-checks", lambda: probe.check_loop(store, settings.noc_check_s))
-        ),
-        asyncio.create_task(supervisor.run("noc-cases", lambda: case_loop.case_loop(store))),
+        *(asyncio.create_task(supervisor.run(name, loop)) for name, loop in noc.items()),
         asyncio.create_task(_serve_http(server, url)),
     ]
     try:

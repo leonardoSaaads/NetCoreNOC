@@ -71,6 +71,8 @@ const ICONS = {
   vault: { d: ["M6 10.5h12v9.5H6v-9.5Z", "M8.5 10.5V7.5a3.5 3.5 0 0 1 7 0v3", "M12 14.5v2"] },
   // ADR #459: a case — a folder with a tab, because a case is the file the NOC keeps.
   cases: { d: ["M3.5 7.5v11h17v-9H11l-2-2H3.5Z", "M7.5 13h9", "M7.5 16h6"] },
+  // ADR #463: a playbook — a tree that branches, because that is what it is.
+  playbook: { d: ["M6 4.5v15", "M6 9h6v6h6", "M12 9V4.5h6"], c: [[6, 19.5, 1.5], [18, 15, 1.5]] },
   // ADR #460: the NOC's clocks — a stopwatch.
   kpi: { d: ["M12 8.5v4.5l3 2", "M10 2.5h4", "M12 2.5v2"], c: [[12, 13, 7.5]] },
 

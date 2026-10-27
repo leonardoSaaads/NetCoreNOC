@@ -175,6 +175,8 @@ def create_app(
     routes.noc_access.register(app, ctx)
     routes.cases.register(app, ctx)
     routes.case_feed.register(app, ctx)
+    routes.noc_exec.register(app, ctx)  # ADR #462: the executor
+    routes.playbooks.register(app, ctx)  # ADR #463
 
     # F40: the gate's completeness half. `DeclaredRoutes` refuses at registration and gives the
     # better error; this re-checks the *result*, so a route registered by any other path — an

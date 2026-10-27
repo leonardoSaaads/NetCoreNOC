@@ -20,7 +20,7 @@ KEEP_CHECKS = 50
 _METADATA = (
     "id, ref, name, description, kind, access_level, host, port, protocol_version, version, "
     "agent_access, monitor, created_at, created_by, updated_at, updated_by, revealed_at, "
-    "revealed_by, checked_at"
+    "revealed_by, checked_at, host_key_at"
 )
 
 
@@ -60,7 +60,7 @@ class NocVaultMixin(StoreBase):
     async def noc_get_secret(
         self, secret_id: int, *, sealed: bool = False
     ) -> dict[str, Any] | None:
-        columns = f"{_METADATA}, sealed" if sealed else _METADATA
+        columns = f"{_METADATA}, sealed, host_key" if sealed else _METADATA
         cur = await self.conn.execute(
             f"SELECT {columns} FROM noc_secret WHERE id=?",  # nosec B608 - two literals
             (secret_id,),

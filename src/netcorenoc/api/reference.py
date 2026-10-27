@@ -27,6 +27,7 @@ ADMIN, ACCESS, AUDIT, SETTINGS = "People", "Access policy", "Audit", "Settings"
 PUBLIC = "Sign-in and recovery"
 VAULT, AGENTS = "NOC — Secrets", "NOC — Agents and leases"
 CASES = "NOC — Cases"
+AUTOMATION = "NOC — Executor and playbooks"
 
 REFERENCE: dict[tuple[str, str], Entry] = {
     ("POST", "/api/login"): Entry(PUBLIC, "Sign in with a username and password (sets a cookie)"),
@@ -176,4 +177,11 @@ REFERENCE: dict[tuple[str, str], Entry] = {
     ("GET", "/api/noc/cases/{sid}/feed"): Entry(CASES, "A case's feed, as far as you may read it"),
     ("POST", "/api/noc/cases/{sid}/feed"): Entry(CASES, "Post on a case's feed"),
     ("GET", "/api/noc/people"): Entry(CASES, "People a specified post may name"),
+    ("POST", "/api/noc/exec"): Entry(AUTOMATION, "Act on a device with a lease (read only)"),
+    ("POST", "/api/noc/secrets/{secret_id}/hostkey"): Entry(VAULT, "Forget a pinned host key"),
+    ("GET", "/api/noc/playbooks"): Entry(AUTOMATION, "Playbooks: what each matches, its runs"),
+    ("POST", "/api/noc/playbooks"): Entry(AUTOMATION, "Store a playbook (read-only steps)"),
+    ("GET", "/api/noc/playbooks/{playbook_id}"): Entry(AUTOMATION, "One playbook, tree and runs"),
+    ("POST", "/api/noc/playbooks/{playbook_id}"): Entry(AUTOMATION, "Replace a playbook's tree"),
+    ("POST", "/api/noc/playbooks/{playbook_id}/enabled"): Entry(AUTOMATION, "Switch it on or off"),
 }

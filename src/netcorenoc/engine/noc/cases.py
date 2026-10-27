@@ -228,6 +228,8 @@ _FROM: dict[str, frozenset[str]] = {
     "requeue": frozenset({"auto"}) | PENDING,
     "validate": frozenset({"working"}) | PENDING,
     "auto_resolve": frozenset({"new", "auto", "queue"}),
+    # A playbook's leaf that waits on someone: no owner, no take — automation is not the NOC.
+    "auto_pend": frozenset({"auto"}),
     "close": frozenset({"resolved"}),
 }
 _TO: dict[str, str] = {
@@ -246,7 +248,8 @@ _TO: dict[str, str] = {
 def transition(act: str, status: str, *, to: str | None = None) -> str:
     """The status ``act`` takes a case in ``status`` to, or a :class:`CaseError` saying why not.
 
-    ``pend`` names its pending status in ``to``; every other act decides its own.
+    ``pend`` and ``auto_pend`` name their pending status in ``to``; every other act decides its
+    own.
     """
     allowed = _FROM.get(act)
     if allowed is None:
@@ -255,7 +258,7 @@ def transition(act: str, status: str, *, to: str | None = None) -> str:
         raise CaseError(
             f"a case in {STATUSES.get(status, status)!r} cannot {act.replace('_', ' ')}"
         )
-    if act == "pend":
+    if act in ("pend", "auto_pend"):
         if to not in PENDING:
             raise CaseError(f"status: one of {', '.join(sorted(PENDING))}", 400)
         return to

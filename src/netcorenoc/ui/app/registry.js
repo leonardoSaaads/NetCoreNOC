@@ -52,6 +52,7 @@ import { Account } from "./views/account.js";
 import { Secrets } from "./views/secrets.js";
 import { Cases } from "./views/cases.js";
 import { NocKpis } from "./views/nockpis.js";
+import { Playbooks } from "./views/playbooks.js";
 
 /**
  * `id`         the URL fragment and the DOM's `data-view`
@@ -164,6 +165,13 @@ export const VIEWS = [
     id: "kpis", label: "KPIs", icon: "kpi", group: "cases", plane: "noc",
     capability: "cases.read", component: NocKpis,
     summary: "How fast the NOC takes a case and documents it, against the targets.",
+  },
+  {
+    // ADR #463: the trees agents write after resolving a case, run before the NOC is called.
+    // An admin's screen: a playbook acts on every matching case, across every scope.
+    id: "playbooks", label: "Playbooks", icon: "playbook", group: "cases", plane: "noc",
+    capability: "playbooks.read", component: Playbooks,
+    summary: "Troubleshooting trees agents wrote; each runs on matching cases before the queue.",
   },
   {
     // ADRs #454-#458. `secrets.read` is editor, and the screen still opens the vault only for a

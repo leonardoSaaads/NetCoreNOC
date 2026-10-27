@@ -32,7 +32,7 @@ __all__ = ["LOOK_EVERY_S", "Automation", "case_loop", "tick"]
 #: How often the loop looks. The NOC's shortest clock is 25 minutes; five seconds is invisible.
 LOOK_EVERY_S = 5.0
 
-#: Decides, under the lock, whether a new case starts with automated checks.
+#: Decides, under the lock, whether a new case starts with automated checks (ADR #463).
 Automation = Callable[["Store", int], Awaitable[bool]]
 
 

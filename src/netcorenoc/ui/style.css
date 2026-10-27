@@ -3368,3 +3368,17 @@ table.data.league-table td, table.data.league-table th { white-space: nowrap; }
 .noc-kpis { display: grid; gap: var(--space-3); }
 .case-detail > .linkish { justify-self: start; }
 .clock-note { font-family: var(--sans); font-size: var(--fs-xs); color: var(--warn); }
+
+/* ---------- NOC → Playbooks (ADR #463) ---------- */
+.pb-detail h3 { display: flex; align-items: baseline; gap: var(--space-2); margin: 0 0 var(--space-2); }
+.pb-detail h4 { margin: var(--space-4) 0 var(--space-2); }
+.pb-tree { overflow-x: auto; font-size: var(--fs-sm); }
+.pb-step { margin: var(--space-1) 0; }
+.pb-name { font-family: var(--mono); font-weight: 600; }
+.pb-branches { list-style: none; margin: var(--space-1) 0 0 var(--space-3); padding-left: var(--space-3); border-left: 1px solid var(--line-strong); display: grid; gap: var(--space-1); }
+.pb-if { display: block; color: var(--fg-muted); font-size: var(--fs-xs); }
+.pb-leaf { display: inline-block; padding: 1px var(--space-2); border-radius: var(--radius-1); border: 1px solid var(--line-strong); }
+.pb-resolve { border-color: var(--quiet); color: var(--quiet); }
+.pb-pending { border-color: var(--warn); color: var(--warn); }
+.pb-queue { border-color: var(--accent); color: var(--accent); }
+.pb-json { max-height: 24rem; overflow: auto; font-size: var(--fs-xs); background: var(--bg-sunken); padding: var(--space-2); border-radius: var(--radius-2); }

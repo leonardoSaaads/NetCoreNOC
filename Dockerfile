@@ -12,8 +12,9 @@ COPY pyproject.toml README.md LICENSE ./
 COPY src ./src
 # `.[snmpv3]` (v0.30.0, DECISIONS #444): the image decrypts SNMPv3 traps out of the box, so a
 # plug-and-play install never meets `v3-privacy-unavailable`. A pip install without the extra keeps
-# the five-dependency core.
-RUN pip install --no-cache-dir --prefix=/install ".[snmpv3]"
+# the five-dependency core. `noc` (ADR #462): the executor's SSH client, so the image can act on
+# equipment out of the box; a pip install without it answers "unavailable" for SSH.
+RUN pip install --no-cache-dir --prefix=/install ".[snmpv3,noc]"
 
 FROM python:3.12.8-slim
 # The IANA time-zone database (v0.21.0, D2). **An operating-system package, not a Python runtime

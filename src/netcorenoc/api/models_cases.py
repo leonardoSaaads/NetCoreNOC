@@ -8,11 +8,19 @@ second more naturally than the first, and an instant without an offset names no 
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Literal
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-__all__ = ["CaseFieldsIn", "PostIn", "ReleaseIn", "ResolveIn", "StatusIn"]
+__all__ = [
+    "CaseFieldsIn",
+    "PlaybookEnabledIn",
+    "PlaybookIn",
+    "PostIn",
+    "ReleaseIn",
+    "ResolveIn",
+    "StatusIn",
+]
 
 #: The most organizations one update may set a summary for.
 MAX_SUMMARIES = 50
@@ -87,3 +95,19 @@ class PostIn(BaseModel):
     body: str = Field(min_length=1, max_length=8000)
     visibility: Literal["internal", "specified", "all"]
     readers: list[int] = Field(default_factory=list, max_length=20)
+
+
+class PlaybookIn(BaseModel):
+    """A playbook to store or replace: the tree as a JSON object (`engine/noc/playbook.py` is the
+    authority on its shape), and the case it was learned from."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    document: dict[str, Any]
+    source_case: int | None = Field(default=None, ge=1)
+
+
+class PlaybookEnabledIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    enabled: bool

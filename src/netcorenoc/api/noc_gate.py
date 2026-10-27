@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import time
 from collections.abc import Mapping, Sequence
+from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
 from fastapi import HTTPException, Request
@@ -23,7 +24,7 @@ from fastapi import HTTPException, Request
 from netcorenoc.api.models_noc import StepUpIn
 from netcorenoc.api.perimeter import _client_ip
 from netcorenoc.crosscutting import auth, stepup
-from netcorenoc.engine.noc import health
+from netcorenoc.engine.noc import health, lease
 from netcorenoc.engine.noc.kinds import ACCESS_LEVELS, KINDS
 
 if TYPE_CHECKING:
@@ -100,6 +101,59 @@ async def confirm(
     return outcome
 
 
+@dataclass(frozen=True)
+class LeaseState:
+    """A lease, checked: ``reason`` is None when it may be used now, else the sentence why not."""
+
+    reason: str | None
+    claims: lease.Claims | None = None
+    row: Mapping[str, Any] | None = None
+    secret: Mapping[str, Any] | None = None
+
+
+async def lease_state(
+    ctx: AppContext, request: Request, principal: auth.Principal, token: str, now: float
+) -> LeaseState:
+    """**The** check of a lease, for introspection and for the executor alike (ADRs #458, #462):
+    signed and live, known, the caller's own (or the caller is a custodian), not revoked, not
+    expired, for a credential whose agent switch is on and whose version has not moved, held by a
+    token that is still an agent. A lease presented by another agent is audited as a denied use."""
+    try:
+        claims = lease.decode(token, now)
+    except lease.LeaseError as exc:
+        return LeaseState(str(exc))
+    custodian = await is_custodian(ctx, request, principal)
+    async with ctx.store.reading():
+        row = await ctx.store.noc_lease_by_digest(lease.digest(claims.jti))
+        secret = await ctx.store.noc_get_secret(claims.sid)
+        still_agent = await ctx.store.noc_has_grant(claims.sub, "agent")
+    reason = None
+    if row is None or row["secret_id"] != claims.sid:
+        reason = "unknown"
+    elif not custodian and principal.ref != claims.sub:
+        reason = "issued to another agent"
+    elif row["revoked_at"] is not None:
+        reason = "revoked"
+    elif now > row["expires_at"]:
+        reason = "expired"
+    elif secret is None or not secret["agent_access"] or secret["version"] != claims.ver:
+        reason = "the credential changed or agents lost access to it"
+    elif not still_agent:
+        reason = "its agent is no longer an agent"
+    if reason == "issued to another agent":
+        async with ctx.write_txn():
+            await ctx.perimeter.audit_row(
+                request,
+                principal,
+                "noc.lease.use",
+                "denied",
+                object_type="noc_secret",
+                object_id=str(claims.sid),
+                details={"reason": reason},
+            )
+    return LeaseState(reason, claims, row, secret)
+
+
 def view(row: Mapping[str, Any], checks: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
     """A credential as every response shows it: metadata and status, never the seal."""
     kind = KINDS.get(str(row["kind"]))
@@ -123,6 +177,8 @@ def view(row: Mapping[str, Any], checks: Sequence[Mapping[str, Any]]) -> dict[st
         "updated_by": row["updated_by"],
         "revealed_at": row["revealed_at"],
         "revealed_by": row["revealed_by"],
+        # ADR #462: whether the executor has pinned this device's SSH host key, and when.
+        "host_key_at": row.get("host_key_at"),
         "status": health.status(
             checks,
             checkable=kind is not None and kind.check is not None,

@@ -27,6 +27,7 @@ if TYPE_CHECKING:
 __all__ = [
     "SYSTEM",
     "Actor",
+    "auto_pend",
     "auto_resolve",
     "close",
     "dispatch",
@@ -225,7 +226,39 @@ async def resolve(
     )
 
 
-# -- the case loop's acts ----------------------------------------------------------------------
+# -- the case loop's and automation's acts -----------------------------------------------------
+
+
+async def auto_pend(
+    store: Store,
+    case: Mapping[str, Any],
+    actor: Actor,
+    now: float,
+    *,
+    status: str,
+    update: Mapping[str, str],
+    wait_s: int,
+    note: str = "",
+) -> bool:
+    """A playbook's `pending` leaf: its customer update written, the case waiting until
+    ``wait_s`` from now. When the update it carries is incomplete, the case goes to the NOC queue
+    instead, and this answers False. Nobody owns the case and no take is counted."""
+    sid = int(case["situation_id"])
+    to = cases.transition("auto_pend", str(case["status"]), to=status)
+    fields: dict[str, Any] = {k: v for k, v in update.items() if k in cases.TEXT_FIELDS}
+    fields["next_update_at"] = now + wait_s
+    merged = {**case, **fields}
+    lacking = cases.missing(merged, to, now=now)
+    if lacking:
+        await requeue(
+            store, sid, "automation", now, note=f"Its update lacked {', '.join(lacking)}."
+        )
+        return False
+    await store.noc_case_set_fields(sid, fields, now, actor.ref)
+    await store.noc_case_move(sid, to, now, actor.ref)
+    text = f"{actor.name} set the case to {cases.STATUSES[to]} until its next update."
+    await event(store, sid, f"{text} {note}".strip(), now, actor)
+    return True
 
 
 async def dispatch(store: Store, sid: int, now: float, *, automate: bool = False) -> None:

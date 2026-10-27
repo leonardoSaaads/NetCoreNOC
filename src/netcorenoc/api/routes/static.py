@@ -227,6 +227,7 @@ _UI_MODULES = (
     "app/views/parts/caseacts.js",
     "app/views/parts/casefeed.js",
     "app/views/parts/casedetail.js",
+    "app/views/playbooks.js",
 )
 
 _VENDOR_ASSETS = (

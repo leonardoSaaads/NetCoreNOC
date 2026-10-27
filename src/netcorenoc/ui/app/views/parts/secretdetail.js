@@ -130,6 +130,11 @@ export class SecretDetail extends Component {
     this.read();
   }
 
+  async forgetKey(stepup) {
+    await post(`/api/noc/secrets/${this.props.id}/hostkey`, { stepup });
+    this.changed();
+  }
+
   async agentsOn(stepup) {
     await post(`/api/noc/secrets/${this.props.id}/agents`, { enabled: true, stepup });
     this.changed();
@@ -147,6 +152,12 @@ export class SecretDetail extends Component {
       return html`<${StepUp} title=${`Reveal “${d.name}”`} action="Reveal"
         consequence="Who reads a credential, and when, is recorded in the audit log."
         secondFactor=${secondFactor} onConfirm=${(s) => this.reveal(s)}
+        onCancel=${() => this.setState({ mode: null })} />`;
+    }
+    if (mode === "hostkey") {
+      return html`<${StepUp} title=${`Forget the host key of “${d.name}”`} action="Forget it"
+        consequence="Only after the device was replaced: the next connection pins whatever key answers."
+        secondFactor=${secondFactor} onConfirm=${(s) => this.forgetKey(s)}
         onCancel=${() => this.setState({ mode: null })} />`;
     }
     if (mode === "agents") {
@@ -179,6 +190,10 @@ export class SecretDetail extends Component {
         <div><dt>Last read</dt><dd title=${timeTitle(d.revealed_at)}>${d.revealed_at
           ? `${relative(d.revealed_at)} by ${d.revealed_by}` : "never"}</dd></div>
         <div><dt>Agents</dt><dd>${d.agent_access ? "may lease it" : "off"}</dd></div>
+        <div><dt>SSH host key</dt><dd title=${timeTitle(d.host_key_at)}>${d.host_key_at
+          ? `pinned ${relative(d.host_key_at)}` : "not pinned yet"}${writable && d.host_key_at
+          ? html` <button type="button" class="linkish"
+              onClick=${() => this.setState({ mode: "hostkey" })}>Forget…</button>` : null}</dd></div>
       </dl>
       <div class="secret-acts">
         <button type="button" disabled=${busy}
