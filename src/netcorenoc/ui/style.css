@@ -3298,9 +3298,9 @@ table.data.league-table td, table.data.league-table th { white-space: nowrap; }
   display: inline-block; padding: 1px var(--space-2); border-radius: 999px; font-size: var(--fs-xs);
   font-weight: 700; white-space: nowrap; text-transform: uppercase; letter-spacing: 0.04em;
 }
-.case-priority.sev-critical { background: var(--sev-critical-fill); color: var(--sev-critical-ink); }
-.case-priority.sev-major { background: var(--sev-major-fill); color: var(--sev-major-ink); }
-.case-priority.sev-minor { background: var(--sev-minor-fill); color: var(--sev-minor-ink); }
+.case-priority.prio-critical { background: var(--sev-critical-fill); color: var(--sev-critical-ink); }
+.case-priority.prio-major { background: var(--sev-major-fill); color: var(--sev-major-ink); }
+.case-priority.prio-minor { background: var(--sev-minor-fill); color: var(--sev-minor-ink); }
 .case-status { font-size: var(--fs-sm); font-weight: 600; white-space: nowrap; }
 .case-queue, .case-automation { color: var(--warn); }
 .case-working, .case-validate { color: var(--accent); }

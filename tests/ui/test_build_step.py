@@ -419,7 +419,7 @@ UI_HASHES: dict[str, str] = {
         "c007261e6e816447bce017574889194bca1ace351e20e656689e7102828fb341"
     ),
     "app/views/parts/caseclock.js": (
-        "7771d543149830bb1d69f25e66f8e70ccc3f4c5ddc9c0c6ea25794267d9968db"
+        "58417271f906bc78851944921a7de9496921046c2103c4eddc280e7b19b560c5"
     ),
     "app/views/parts/casedetail.js": (
         "5012d80f43028b8b6fd4af2d7e68cd8991ad57a068a09a1ec4aa81c0daa9cd8c"
@@ -570,7 +570,7 @@ UI_HASHES: dict[str, str] = {
     "favicon.svg": "c11ec68d389057cc4d4145b3cdf77f3ebfec40150e9f409ff35a7cf419f524b7",
     "index.html": "d057123e5cfc1ab497db465df016c598e38b049fbde26ecc9ee868eb4899fad7",
     "login-bg.svg": "5f677f3371a2828c8d21668cd83381c105ccdc1780a66dc09fc6f6bc19d211d6",
-    "style.css": "a7f5819766312fafcdbe3c4e114abb6dcd9e5c21c9e9199531e56d5424180db5",
+    "style.css": "6b2e759ace44d2b9cfa6b3929f036fb3a76845824e2b87103baf1dc4f66016d2",
     "vendor/CHECKSUMS.txt": "408939056400f45a215cb576dc324bfc64f1b6bfae2d1b45bfce061b508128e8",
     "vendor/htm-3.1.1.module.js": (
         "ab33dd3f38059b9be4d5f5350128eefb2356639c4e0bbe9d9e8b3ba75847e9e4"
@@ -632,7 +632,7 @@ UI_SIZES: dict[str, int] = {
     "app/views/parts/capgrid.js": 6_766,
     "app/views/parts/card.js": 9_467,
     "app/views/parts/caseacts.js": 5_618,
-    "app/views/parts/caseclock.js": 2_587,
+    "app/views/parts/caseclock.js": 2_590,
     "app/views/parts/casedetail.js": 7_988,
     "app/views/parts/casefeed.js": 5_507,
     "app/views/parts/caseform.js": 6_718,
@@ -702,7 +702,7 @@ UI_SIZES: dict[str, int] = {
     "favicon.svg": 608,
     "index.html": 1_549,
     "login-bg.svg": 18_884,
-    "style.css": 199_571,
+    "style.css": 199_574,
     "vendor/CHECKSUMS.txt": 2_016,
     "vendor/htm-3.1.1.module.js": 1_207,
     "vendor/htm.LICENSE": 11_341,

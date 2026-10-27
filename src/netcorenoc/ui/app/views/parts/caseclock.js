@@ -46,7 +46,7 @@ export function NextUpdate({ cadence, now }) {
   </span>`;
 }
 
-const PRIORITY_TONE = { critical: "sev-critical", major: "sev-major", minor: "sev-minor" };
+const PRIORITY_TONE = { critical: "prio-critical", major: "prio-major", minor: "prio-minor" };
 
 export function Priority({ priority, label }) {
   return html`<span class=${cx("case-priority", PRIORITY_TONE[priority])}>${label || priority}</span>`;

@@ -1428,7 +1428,7 @@ def test_the_queue_put_on_the_hot_path_is_non_blocking() -> None:
 #: `api/case_view.py`, `api/case_close.py`, the `cases` and `case_feed` routes, and seven console
 #: modules (`views/cases`, `views/nockpis`, `parts/caseclock`, `caseform`, `caseacts`,
 #: `casefeed`, `casedetail`).
-SRC_TREE_DIGEST = "240fdb1ef0a5915d9617f66b68fe9970b89a52f6c63cb275779c83deb432d9bd"
+SRC_TREE_DIGEST = "630cf0e87ba80a92082cf05e373244e4a73fd0428d7b4c8a5629c8acab257bd6"
 SRC_FILE_COUNT = 422
 SRC_VERSION_FILE = "src/netcorenoc/__init__.py"
 
