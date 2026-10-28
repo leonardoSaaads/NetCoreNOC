@@ -3,7 +3,7 @@
 Phase 2 is the half of the product that works a situation once phase 1 (the **Broker**) has made
 one: people and AI agents diagnosing and, later, remediating, with a time budget and an escalation
 (`architecture.md`, "The three phases"). This page is the plan for it, written as measurements and
-open questions (`CONTRIBUTING.md`). What is built is described by ADRs #454-#463, not here.
+open questions (`CONTRIBUTING.md`). What is built is described by ADRs #454-#469, not here.
 
 ## 1. Where it stands
 
@@ -21,8 +21,14 @@ open questions (`CONTRIBUTING.md`). What is built is described by ADRs #454-#463
 | **Executor** — one read-only act on a device for a lease: SSH, SNMP GET, reachability | built (#462), §4 |
 | SSH host keys pinned on first use, forgotten by a custodian with a step-up | built (#462) |
 | **Playbooks** — troubleshooting trees agents write, run on a matching case before the NOC queue | built (#463) |
-| **MCP server** — how an agent reaches all of this | not built (§3); the case routes are its first tools |
-| Scoring a playbook (did it resolve cases that stayed resolved), escalation | not built |
+| A case's priority follows the Broker; the restore clock (4 h / 24 h / 72 h) | built (#464) |
+| **Agents** — an organization: roles, tiers, managers, instructions, keys, runs, budgets | built (#465) |
+| **MCP server** — `POST /api/mcp`, every tool a route called with the agent's own key | built (#466), §3 |
+| Routing to an entry agent, the climb through the tiers, webhook and Claude adapters | built (#467) |
+| The NOC plane redrawn — Agents, Organization, a case as a record with its milestones | built (#468) |
+| RouterOS read-only commands; a lab of two devices to log in to | built (#469) |
+| Scoring a playbook (did it resolve cases that stayed resolved) | not built |
+| A stdio adapter for desktop MCP clients; OAuth 2.1 for agents beyond the management LAN | not built |
 
 ## 2. The current API, reviewed for AI agents (MCP)
 
@@ -80,7 +86,7 @@ shape of answers and errors, safety, and size.
 
 None of these blocks the vault: they are the work that makes the **next** tools good ones.
 
-## 3. The MCP server (proposed, not built)
+## 3. The MCP server (built: #466 — the proposal, kept as written)
 
 **Where**: a Streamable-HTTP endpoint inside the appliance (`/mcp`), behind the same perimeter, the
 same declaration gate and the same audit — so a tool is a route with a different envelope, not a

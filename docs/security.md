@@ -212,7 +212,11 @@ that an editor can always stop it. Turning a grade on is admin-only (#412).
   (`configure`, `commit`, `reload`, `clear`, `set`, `delete`, `enable`…); a playbook's SSH steps are
   checked when it is stored and again before each run. The only values put into a command, a branch
   test or a leaf's text are the element's address and the root alarm's entity, refused unless plain;
-  a test that cannot be filled decides nothing, and the case goes to the NOC queue.
+  a test that cannot be filled decides nothing, and the case goes to the NOC queue. **MikroTik
+  RouterOS** has no read verb in front (ADR #469): a line beginning with `/` is read as RouterOS
+  and may run only when its command is `print`, `monitor … once` or (diagnostic) `ping`, with no
+  write word anywhere — each part of a hyphenated word counted, so `reset-counters` is refused —
+  and no `[ ]` or `{ }`, which RouterOS evaluates as a nested command.
 * **What a device says is untrusted.** Its answer is bounded (64 KiB), marked `untrusted`, and in a
   feed post introduced as the device's text, not instructions — SNMPv1/v2c data is
   attacker-controllable and must never steer an agent. A playbook branches on fixed tests of that
@@ -223,11 +227,39 @@ that an editor can always stop it. Turning a grade on is admin-only (#412).
 * **A person wins over automation**: a playbook applies its leaf only while the case is still
   `auto`; it resolves the case and clears alarms only when the tree verified them clear on the
   device; anything else, a timeout or a failure, goes to the NOC queue.
-* **Playbooks are an admin's** (`playbooks.read`, `playbooks.write`): one acts on every matching
-  case in every scope. An agent writing them uses an admin-role token narrowed to those
-  capabilities.
+* **Who writes playbooks** (ADR #465): `playbooks.read` and `playbooks.write` are an editor's, and
+  writing one is further gated on being one of the NOC's agents, or a person who may name the vault's
+  custodians (`secrets.grants`): one acts on every matching case in every scope.
 * Audit: `noc.exec` for every act on a device (actor, credential, kind, duration, size and a digest
   of the command — never its output), `noc.playbook.create`, `.update` and `.run`.
+
+## The NOC's AI agents and the MCP server (ADRs #465-#467, #469)
+
+* **An agent's identity is a key, never a password.** Each agent is hired with a service token
+  named as the agent (editor role, granted agent use of the vault). An agent run elsewhere is shown
+  its key once, in the answer to the hire; the appliance keeps a hash. An agent the appliance runs
+  itself (`claude`) is never shown one: its key is sealed in the vault and opened in process for
+  each run. A new key revokes the old one and ends its leases; retiring an agent revokes it for good.
+  **A paused agent's key opens nothing** — every request it makes is refused as unauthenticated.
+* **Every MCP tool is a route** (`POST /api/mcp`), called in process with the agent's own key:
+  the perimeter, RBAC, scope, the write transaction and the audit row are the route's, and a tool
+  can do exactly what the key could do with `curl`. `tools/list` shows only the tools the key's
+  capabilities reach; an agent acts on other agents only below it in the organization. A browser
+  request from another site (`Origin`) is refused; a batch is refused.
+* **One request, one turn of the rate limit.** A tool call is counted once, as the MCP request
+  carrying it: the in-process call to the route is marked in its ASGI scope — a key no HTTP client
+  can set — and not counted again (ADR #469).
+* **What an agent did is recorded, without its secrets.** Each tool call is a step of the agent's
+  run, its arguments shown with leases, tokens, keys and passwords removed, and how the route
+  answered; a device's output is marked as data, not instructions.
+* **Waking an agent never sends a credential.** A webhook wake-up carries why, the case and where
+  to work, signed with HMAC-SHA256 over the timestamp and the body (`X-NetCoreNOC-Signature`,
+  five-minute tolerance) with a key shown once; redirects are not followed. The `claude` adapter's
+  Anthropic API key is a vault credential a custodian let agents use, opened in process for each
+  call; each run is bounded in steps and time, and an agent is paused when its monthly budget is spent.
+* Audit: `noc.agent.create`, `.update`, `.invoke`, `.pause`, `.resume`, `.terminate`, `.rotate`,
+  `noc.run.finish`, `noc.case.assign` and `noc.case.escalate`; an agent's acts on cases and devices
+  are recorded under its name.
 
 ## The credential vault (NOC → Secrets)
 
@@ -254,8 +286,8 @@ in `tests/api/test_noc_vault.py` or `tests/security/test_secretbox.py`:
   switches it on. A service token an admin named an agent may then lease a credential: a signed
   (HS256), short-lived (15 min, at most 1 h) token bound to that agent and that credential, holding
   no secret. Changing the credential, switching agents off or withdrawing the agent ends its leases.
-  Nothing yet executes on a device with a lease; that is the next step, and the secret will stay on
-  the appliance's side when it does (`docs/plans/noc-phase2.md`).
+  A lease is spent through the executor (`POST /api/noc/exec`, above): the secret stays on the
+  appliance's side.
 * **Everything is in the audit log**: who stored, changed, deleted or read a credential, who switched
   agents on or off, who named whom, and which agent leased or used which credential — never a value.
 * **The status light describes the endpoint.** Green means the host answered the protocol (an SSH

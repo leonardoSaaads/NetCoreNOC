@@ -62,13 +62,21 @@ async def test_the_top_bar_switches_planes_and_the_sidebar_follows(store: Store)
     assert broker["navGroups"] == ["Operations", "Evidence", "Administer"]
     noc = _render(tables["admin"], "#/secrets")
     assert ".plane-noc.plane-on" in noc["dump"]
-    assert noc["navItems"] == ["Cases", "KPIs", "Playbooks", "Secrets"]
-    assert noc["navGroups"] == ["Cases", "Equipment access"]
+    # ADR #468: Paperclip's company sidebar — the work, the agents one by one, the NOC itself.
+    assert noc["navItems"] == [
+        "Cases",
+        "KPIs",
+        "Playbooks",
+        "All agents",
+        "Organization",
+        "Secrets",
+    ]
+    assert noc["navGroups"] == ["Work", "Agents", "NOC"]
     # A viewer reads cases (the customer's side), so the switch is there — and the NOC plane
     # offers them the cases and nothing of the vault: never a greyed half.
     viewer = _render(tables["viewer"], "#/cases")
     assert ".plane-noc.plane-on" in viewer["dump"]
-    assert viewer["navItems"] == ["Cases", "KPIs"] and viewer["navGroups"] == ["Cases"]
+    assert viewer["navItems"] == ["Cases", "KPIs"] and viewer["navGroups"] == ["Work"]
     refused = _render(tables["viewer"], "#/secrets")
     assert refused["refused"] is True
     assert not [p for p in refused["requestPaths"] if "/api/noc/" in p], "a refusal asks nothing"

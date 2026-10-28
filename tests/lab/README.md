@@ -112,3 +112,13 @@ Asserted by `test_lab.py`:
 * the lab never publishes port 162 or 8080, and publishes 8088 on loopback only;
 * the lab never mounts `netcorenoc-data`, the production volume;
 * a scenario never carries ground truth, and replays identically every time.
+
+## Two devices the NOC can log in to (ADR #469)
+
+`noc_devices.py` is the NOC plane's lab: a MikroTik CRS326 and a Ciena 3930, each at its own
+loopback address, answering SSH (exec and an interactive shell), SNMP v2c GET and sending the traps
+of a fibre cut between them and of its repair. `cut` and `repair` also change what the devices
+answer, so an agent that logs in after a cut sees the port down and the optical power gone. Usage
+is in [`docs/simulate.md`](../../docs/simulate.md#two-devices-the-noc-can-log-in-to-adr-469);
+`test_noc_devices.py` drives both devices with the appliance's own executor.
+

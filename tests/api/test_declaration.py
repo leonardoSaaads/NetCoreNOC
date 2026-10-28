@@ -702,7 +702,9 @@ async def test_f43_every_path_served_today_still_registers(store: Store) -> None
     # Unreleased: 275 -> 290 and 150 -> 165 — the agents and MCP (ADRs #465-#467): fifteen /api
     # pairs (the organization, an agent and its nine acts, a run and its report, routing and
     # escalating a case, the MCP endpoint).
-    assert len(served) == 290, f"the served surface moved: {len(served)} method/path pairs"
+    # Unreleased: 290 -> 302, /api unchanged — the NOC plane redrawn (ADR #468): twelve UI modules
+    # (the roster, Agents, Organization, an agent's parts, a case's milestones and assignment).
+    assert len(served) == 302, f"the served surface moved: {len(served)} method/path pairs"
     api_pairs = {(method, path) for method, path in served if path.startswith("/api")}
     # **v0.19.0: 53 -> 55.** `GET /api/models` and `POST /api/models/register`: what the
     # models are doing, and turning one of this appliance's own fits into an artefact.
@@ -883,7 +885,9 @@ async def test_f42_every_path_served_today_still_registers(store: Store) -> None
     # Unreleased: 275 -> 290 and 150 -> 165 — the agents and MCP (ADRs #465-#467): fifteen /api
     # pairs (the organization, an agent and its nine acts, a run and its report, routing and
     # escalating a case, the MCP endpoint).
-    assert len(served) == 290, f"the served surface moved: {len(served)} method/path pairs"
+    # Unreleased: 290 -> 302, /api unchanged — the NOC plane redrawn (ADR #468): twelve UI modules
+    # (the roster, Agents, Organization, an agent's parts, a case's milestones and assignment).
+    assert len(served) == 302, f"the served surface moved: {len(served)} method/path pairs"
     api_pairs = {(method, path) for method, path in served if path.startswith("/api")}
     # **v0.19.0: 53 -> 55.** `GET /api/models` and `POST /api/models/register`: what the
     # models are doing, and turning one of this appliance's own fits into an artefact.

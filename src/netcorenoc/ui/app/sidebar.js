@@ -11,7 +11,8 @@
  * Absent. A greyed-out *Troubleshooting* promising a feature nobody has built teaches an operator
  * that parts of the product do not work, which is the same error as v0.9.1's unused `close`
  * channel with worse ergonomics (draft §2). Phase 2's NOC arrives the way that rule said it would:
- * one group, one screen that works, and nothing announced beyond it (ADR #454).
+ * one group, one screen that works, and nothing announced beyond it (ADR #454). Its agents are
+ * listed one by one, as they are hired, never as places waiting for one (ADR #468).
  *
  * ## One plane at a time
  *
@@ -44,30 +45,63 @@ import { reachableViews } from "./router.js";
 import { Icon } from "./icons.js";
 import { DEFAULT_VIEW } from "./registry.js";
 
-/** Group id -> heading. Order here is order on screen. `null` group renders above the first. */
+/** Group id -> heading. Order here is order on screen. `null` group renders above the first.
+ *
+ * ADR #468: the NOC plane reads like Paperclip's company sidebar — the work (cases, their clocks,
+ * the playbooks), the agents one by one, and the NOC itself (its organization, its vault). */
 export const GROUPS = [
   { id: "operations", label: "Operations", plane: "broker" },
   { id: "evidence", label: "Evidence", plane: "broker" },
   { id: "administer", label: "Administer", plane: "broker" },
-  { id: "cases", label: "Cases", plane: "noc" },
-  { id: "access", label: "Equipment access", plane: "noc" },
+  { id: "work", label: "Work", plane: "noc" },
+  { id: "agents", label: "Agents", plane: "noc" },
+  { id: "noc", label: "NOC", plane: "noc" },
 ];
+
+/* An entry is one link of the roving set: a view, or an **extra** a group carries after its views
+ * (ADR #468: each of the NOC's agents, under *Agents*). Extras are data the shell hands in —
+ * `{ key, href, label, icon, state, live, badge, noun }` — so the sidebar stays a renderer of
+ * links and the one tab stop covers them as it covers the views. */
+function entriesOf({ capabilities, plane = "broker", extras = {} }) {
+  const views = reachableViews(capabilities, plane);
+  const out = [];
+  const push = (group, list) => {
+    for (const view of list) {
+      out.push({ key: view.id, href: `#/${view.id}`, label: view.navLabel || view.label,
+        icon: view.icon, view, group });
+    }
+    for (const extra of (group && extras[group.id]) || []) out.push({ ...extra, group, sub: true });
+  };
+  push(null, views.filter((v) => !v.group));
+  for (const group of GROUPS.filter((g) => g.plane === plane)) {
+    const inGroup = views.filter((v) => v.group === group.id);
+    // A group with nothing in it is not rendered at all, and its extras with it: a viewer sees no
+    // `Administer` heading standing over an empty space — absence is absence.
+    if (inGroup.length) push(group, inGroup);
+  }
+  return out;
+}
+
+/** Which entry is the page on screen: an extra naming the address exactly, else the view. */
+function activeIndex(entries, activeId, activeHref) {
+  const exact = entries.findIndex((e) => e.sub && e.href === activeHref);
+  return exact !== -1 ? exact : entries.findIndex((e) => e.view && e.view.id === activeId);
+}
 
 export class Sidebar extends Component {
   constructor(props) {
     super(props);
     // Seeded from the route so a deep link puts the tab stop on the item the operator is looking
     // at, rather than at the top of a list they did not ask for.
-    const initial = reachableViews(props.capabilities, props.plane)
-      .findIndex((v) => v.id === props.activeId);
+    const initial = activeIndex(entriesOf(props), props.activeId, props.activeHref);
     this.state = { focusIndex: initial === -1 ? 0 : initial };
     this.items = [];
     this.nodes = [];
     this.onKeyDown = this.onKeyDown.bind(this);
   }
 
-  activate(view) {
-    this.props.onNavigate(`#/${view.id}`);
+  activate(entry) {
+    this.props.onNavigate(entry.href);
   }
 
   onKeyDown(event) {
@@ -101,31 +135,29 @@ export class Sidebar extends Component {
    * assertion about rendered structure would have noticed.
    */
   componentDidUpdate(previous) {
-    if (previous.activeId === this.props.activeId && previous.plane === this.props.plane) return;
-    const index = reachableViews(this.props.capabilities, this.props.plane)
-      .findIndex((view) => view.id === this.props.activeId);
+    const { activeId, activeHref, plane } = this.props;
+    if (previous.activeId === activeId && previous.plane === plane
+      && previous.activeHref === activeHref) return;
+    const index = activeIndex(entriesOf(this.props), activeId, activeHref);
     if (index !== -1 && index !== this.state.focusIndex) this.setState({ focusIndex: index });
   }
 
-  render({ capabilities, activeId, plane = "broker", counts = {}, collapsed = false }) {
-    const views = reachableViews(capabilities, plane);
-    this.items = views;
-    const focusIndex = Math.min(Math.max(0, this.state.focusIndex), Math.max(0, views.length - 1));
+  render(props) {
+    const { activeId, activeHref, plane = "broker", counts = {}, collapsed = false } = props;
+    const entries = entriesOf(props);
+    this.items = entries;
+    const focusIndex = Math.min(Math.max(0, this.state.focusIndex), Math.max(0, entries.length - 1));
+    const active = activeIndex(entries, activeId, activeHref);
     this.nodes = [];
 
-    const ungrouped = views.filter((v) => !v.group);
-    const rendered = [];
-    if (ungrouped.length) {
-      rendered.push(this.renderGroup(null, ungrouped, activeId, focusIndex, counts, collapsed));
+    const groups = [];
+    for (const entry of entries) {
+      const last = groups[groups.length - 1];
+      if (last && last.group === entry.group) last.entries.push(entry);
+      else groups.push({ group: entry.group, entries: [entry] });
     }
-    for (const group of GROUPS.filter((g) => g.plane === plane)) {
-      const inGroup = views.filter((v) => v.group === group.id);
-      // A group with nothing in it is not rendered at all. A viewer sees no `Administer`
-      // heading standing over an empty space — absence is absence.
-      if (inGroup.length) {
-        rendered.push(this.renderGroup(group, inGroup, activeId, focusIndex, counts, collapsed));
-      }
-    }
+    const rendered = groups.map(({ group, entries: list }) =>
+      this.renderGroup(group, list, active, focusIndex, counts, collapsed));
 
     // The brand is OUTSIDE the <nav>, and that placement is load-bearing rather than tidy.
     // Inside it, the wordmark link joined `#nav a` — the roving-tabindex set — and the DOM
@@ -157,31 +189,30 @@ export class Sidebar extends Component {
    * The `title` is the sighted half of the same fact, and it is the reason a collapsed sidebar is
    * usable with a mouse at all.
    */
-  renderGroup(group, views, activeId, focusIndex, counts, collapsed) {
+  renderGroup(group, entries, active, focusIndex, counts, collapsed) {
     const headingId = group ? `nav-group-${group.id}` : "nav-group-top";
     return html`<div class="nav-group" key=${headingId}>
       ${group ? html`<h2 class="nav-heading" id=${headingId}>${group.label}</h2>` : null}
       <ul class="nav-list" aria-labelledby=${group ? headingId : null}>
-        ${views.map((view) => {
-          const index = this.items.indexOf(view);
-          const active = view.id === activeId;
-          const badge = counts[view.id];
-          const noun = view.countNoun ?? "items";
-          const said = badge != null && badge > 0
-            ? `${view.label} — ${badge} ${noun}`
-            : view.label;
-          return html`<li key=${view.id}>
+        ${entries.map((entry) => {
+          const index = this.items.indexOf(entry);
+          const on = index === active;
+          const badge = entry.view ? counts[entry.view.id] : entry.badge;
+          const noun = (entry.view && entry.view.countNoun) || entry.noun || "items";
+          const named = entry.state ? `${entry.label} — ${entry.state}` : entry.label;
+          const said = badge != null && badge > 0 ? `${named} — ${badge} ${noun}` : named;
+          return html`<li key=${entry.key}>
             <a
-              class=${cx("nav-item", active && "active")}
-              href=${`#/${view.id}`}
-              aria-current=${active ? "page" : null}
+              class=${cx("nav-item", on && "active", entry.sub && "nav-sub")}
+              href=${entry.href}
+              aria-current=${on ? "page" : null}
               aria-label=${collapsed ? said : null}
-              title=${collapsed ? said : null}
+              title=${collapsed ? said : entry.state ? named : null}
               tabindex=${index === focusIndex ? "0" : "-1"}
               ref=${(node) => { this.nodes[index] = node; }}
               onClick=${() => this.setState({ focusIndex: index })}
             >
-              <span class="nav-glyph"><${Icon} name=${view.icon} /></span>
+              <span class=${cx("nav-glyph", entry.tone)}><${Icon} name=${entry.icon} /></span>
               ${/* **`.visually-hidden`, the console's own class, not a second copy of its rules.**
                     A collapsed label must be hidden from the eye and kept in the accessible tree,
                     and this console already has exactly one implementation of that. Writing the
@@ -189,7 +220,10 @@ export class Sidebar extends Component {
                     — and a second one is how `display: none` gets in, which removes the label from
                     the tree and is invisible to every test in this repository that has no layout
                     engine. As a class it is visible in the DOM, so a guard can see it. */ null}
-              <span class=${cx("nav-label", collapsed && "visually-hidden")}>${view.label}</span>
+              <span class=${cx("nav-label", collapsed && "visually-hidden")}>${entry.label}${entry.state
+                ? html`<span class="visually-hidden">, ${entry.state}</span>` : null}</span>
+              ${entry.dot ? html`<span class=${cx("nav-dot", `dot-${entry.dot}`)} aria-hidden="true"></span>` : null}
+              ${entry.live && !collapsed ? html`<span class="nav-live" aria-hidden="true">live</span>` : null}
               ${badge != null && badge > 0
                 ? html`<span class="nav-count" title=${`${badge} ${noun}`}>${badge}</span>`
                 : null}

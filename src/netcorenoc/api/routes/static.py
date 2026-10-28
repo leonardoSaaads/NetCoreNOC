@@ -228,6 +228,20 @@ _UI_MODULES = (
     "app/views/parts/casefeed.js",
     "app/views/parts/casedetail.js",
     "app/views/playbooks.js",
+    # ADR #468: the NOC's agents and its organization (Paperclip's), the sidebar's roster, and a
+    # case's milestones and assignment (Salesforce's record).
+    "app/roster.js",
+    "app/views/agents.js",
+    "app/views/org.js",
+    "app/views/parts/nocui.js",
+    "app/views/parts/agentkey.js",
+    "app/views/parts/agentform.js",
+    "app/views/parts/agentdetail.js",
+    "app/views/parts/agentdash.js",
+    "app/views/parts/agentruns.js",
+    "app/views/parts/agentadmin.js",
+    "app/views/parts/casemilestones.js",
+    "app/views/parts/caseassign.js",
 )
 
 _VENDOR_ASSETS = (

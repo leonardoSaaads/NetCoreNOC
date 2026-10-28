@@ -53,11 +53,14 @@ import { Secrets } from "./views/secrets.js";
 import { Cases } from "./views/cases.js";
 import { NocKpis } from "./views/nockpis.js";
 import { Playbooks } from "./views/playbooks.js";
+import { Agents } from "./views/agents.js";
+import { Org } from "./views/org.js";
 
 /**
  * `id`         the URL fragment and the DOM's `data-view`
  * `capability` what the server requires for the route this view reads; a list when several
  * `group`      which sidebar group, or null for the item above the first heading
+ * `navLabel`   what the sidebar calls it, when not its `label` (the heading keeps `label`)
  * `hidden`     reachable by address but not offered in navigation (the account screen)
  * `plane`      "noc" for a phase 2 screen; absent is the Broker (see `PLANES`)
  * `icon`       the name of a mark in `icons.js`, drawn beside the label. Never the only signal:
@@ -152,32 +155,44 @@ export const VIEWS = [
     summary: "The hash-chained record of every change, and its verification state.",
   },
 
-  /* ---------- NOC (phase 2): working situations, and reaching equipment ---------- */
+  /* ---------- NOC (phase 2): the work, the agents, and the NOC itself (ADR #468) ---------- */
   {
     // ADRs #459-#461. Every principal who may read a situation may read its case and post on its
     // feed; taking and working one is `cases.work`, offered in the screen from the server's
     // `actions`. First in the NOC plane: it is where the switch lands.
-    id: "cases", label: "Cases", icon: "cases", group: "cases", plane: "noc",
+    id: "cases", label: "Cases", icon: "cases", group: "work", plane: "noc",
     capability: "cases.read", component: Cases,
     summary: "The NOC queue: situations to take, work, wait on, and resolve — with their clocks.",
   },
   {
-    id: "kpis", label: "KPIs", icon: "kpi", group: "cases", plane: "noc",
+    id: "kpis", label: "KPIs", icon: "kpi", group: "work", plane: "noc",
     capability: "cases.read", component: NocKpis,
-    summary: "How fast the NOC takes a case and documents it, against the targets.",
+    summary: "How fast the NOC takes a case, documents it and restores service, against targets.",
   },
   {
     // ADR #463: the trees agents write after resolving a case, run before the NOC is called.
-    // An admin's screen: a playbook acts on every matching case, across every scope.
-    id: "playbooks", label: "Playbooks", icon: "playbook", group: "cases", plane: "noc",
+    id: "playbooks", label: "Playbooks", icon: "playbook", group: "work", plane: "noc",
     capability: "playbooks.read", component: Playbooks,
     summary: "Troubleshooting trees agents wrote; each runs on matching cases before the queue.",
+  },
+  {
+    // ADRs #465, #468: Paperclip's agents page. The sidebar lists each agent below this entry;
+    // `#/agents/{id}` is one agent's page — its runs, cases, instructions and settings.
+    id: "agents", label: "Agents", icon: "bot", group: "agents", plane: "noc", navLabel: "All agents",
+    capability: "agents.read", component: Agents,
+    summary: "The NOC's AI agents: what each is doing, what it costs, and how it is set up.",
+  },
+  {
+    // ADRs #465, #468: Paperclip's company is the NOC — who reports to whom, under the people.
+    id: "org", label: "Organization", icon: "org", group: "noc", plane: "noc",
+    capability: "agents.read", component: Org,
+    summary: "Who reports to whom: the NOC team at the top, then each agent and its tier.",
   },
   {
     // ADRs #454-#458. `secrets.read` is editor, and the screen still opens the vault only for a
     // custodian — an admin, or an editor an admin named; anyone else is told why, and offered
     // nothing. Every write below it is gated in the screen on its own capability.
-    id: "secrets", label: "Secrets", icon: "vault", group: "access", plane: "noc",
+    id: "secrets", label: "Secrets", icon: "vault", group: "noc", plane: "noc",
     capability: "secrets.read", component: Secrets,
     summary: "Credentials for equipment, sealed twice. Agents get a lease, never the secret.",
   },

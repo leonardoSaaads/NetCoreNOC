@@ -22,9 +22,11 @@ nothing, and administrators reset passwords without ever reading one. Phase 2 be
 gains a **NOC** plane beside the Broker, and the NOC a credential vault for people and AI agents
 (#454-#458), a case for every situation it works, with a queue, a feed and its clocks
 (#459-#461), and the first automated response: read-only acts on a device for an agent's lease,
-and playbooks that check a new case before the NOC is called (#462, #463). The schema is
-PostgreSQL's baseline, **migration 0031**, which includes SQLite's 0030, **0032**, **0033**,
-**0034** and **0035** (schema 35). See
+and playbooks that check a new case before the NOC is called (#462, #463) — then the NOC's own
+**AI agents**: an organization of them, an **MCP server** they work through, routing and escalation
+through the tiers, and the NOC plane redrawn after Paperclip and Salesforce (#464-#469). The schema
+is PostgreSQL's baseline, **migration 0031**, which includes SQLite's 0030, **0032** to **0037**
+(schema 37). See
 [`MIGRATION.md`](MIGRATION.md): the SQLite file is **imported once**, before the first start; the
 appliance is three processes and a spool on disk, and a container needs two CPUs. No grouping
 decision changes (`make eval` is byte-identical).
@@ -98,8 +100,47 @@ stored device credential is unreadable (#455).
 - Four audit actions: `noc.exec` for every act on a device — by an agent or by a playbook —
   `noc.playbook.create`, `noc.playbook.update` and `noc.playbook.run`.
 
+### Added — the NOC's AI agents and the MCP server (#465-#469)
+
+- **NOC → Agents and Organization** (Paperclip's company is the NOC): agents with a role (NOC head,
+  supervisor, project manager, NOC engineer, specialist, analyst), a tier (1-4), a manager — or the
+  NOC team, the people, at the top — instructions, a mark, and how they run: **Claude** (the
+  appliance runs the agent through the Anthropic API — the optional `agents` extra — with
+  `claude-opus-5-5`, adaptive thinking, the API key from the vault and a monthly budget),
+  **Webhook** (an agent elsewhere, woken by an HMAC-signed POST that carries no credential) or
+  **External** (connects over MCP on its own). Each agent's identity is a key shown once — or kept
+  sealed for Claude agents; a paused agent's key opens nothing (#465). Migration **0037**.
+- **The MCP server**, `POST /api/mcp` (Streamable HTTP, JSON-RPC answered in JSON): 33 tools, each a
+  route called with the agent's own key — authorized, scoped and audited as the route is — with
+  input schemas from the API's own, tools listed by capability, a prompt (`noc_agent`) with the
+  agent's instructions and the NOC's rules, and every call a step of the agent's run. Tested with
+  the official MCP SDK (#466).
+- **Routing and the climb**: a queued case goes to the least-loaded entry agent at Tier 1, and
+  climbs to its manager at the next tier when not concluded in time (the handbook's escalation
+  reminders: every 30 minutes for critical), past the top to the NOC team; assign and escalate by
+  hand (`/api/noc/cases/{sid}/assign`, `/escalate`); heartbeats, invoked runs, run limits (#467).
+- **The NOC plane redrawn** (#468): a sidebar of **Work**, **Agents** (each by name, with its state)
+  and **NOC**; the agents' list, one agent's page (latest run, charts of its runs and cases,
+  instructions, each run's steps, configuration), the organization chart; a case as a **record**
+  — highlights, the handbook's status path with what each step asks, **milestones** (take,
+  customer update, restore service, next update, the next climb) and who holds it — and the queue as
+  a list view with who holds each case and the take clock drawn.
+- **Two lab devices to log in to** (#469): `tests/lab/noc_devices.py` — a MikroTik CRS326 and a
+  Ciena 3930 with SSH, SNMP GET and the traps of a fibre cut and its repair.
+
 ### Fixed
 
+- **A link-down the Broker shows as critical opened a minor case, and raising it kept the minor's
+  take target** (#464): a case opens at the worst severity the Broker shows for its situation, is
+  raised (never lowered) while the priority is still the appliance's, and the open cycle's take
+  target follows the priority. The handbook's **restore** clock (4 h / 24 h / 72 h) runs from the
+  event to validate or resolved. Migration **0036**.
+- **No command could reach a MikroTik**: RouterOS's `/interface print` has no read verb in front.
+  Read-only RouterOS lines are allowed — `print`, `monitor … once`, `ping` — and every write is still
+  refused (#469).
+- **An agent's tool calls counted twice against the rate limit**, so a burst ran dry mid-case; a
+  pending case showed a climb that never happens; on a phone the agents' hidden state text widened
+  the NOC pages (#469).
 - A hovered primary button lost its fill and read as an empty box, in both themes
   (`button:hover` outranked `button.primary`).
 

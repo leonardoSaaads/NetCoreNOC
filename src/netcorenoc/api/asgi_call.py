@@ -8,6 +8,11 @@ what its caller could do with `curl`, and is recorded exactly as that would be.
 
 No HTTP client is needed (the runtime has none): the request is an ASGI scope, its body one
 message, its answer collected from the messages the application sends.
+
+**One request, one turn of the rate limit.** A tool call is the MCP request that carries it, which
+the perimeter already counted; the scope is marked (`IN_PROCESS`, a key no HTTP client can set) so
+the route it reaches does not count it a second time. Counted twice, an agent making ten calls in a
+second ran out of a 30-request bucket mid-case (the owner's test round, ADR #469).
 """
 
 from __future__ import annotations
@@ -18,7 +23,10 @@ from dataclasses import dataclass
 from typing import Any
 from urllib.parse import quote, urlencode
 
-__all__ = ["Answer", "call", "path_for"]
+__all__ = ["IN_PROCESS", "Answer", "call", "path_for"]
+
+#: The scope key marking a request this appliance made to itself.
+IN_PROCESS = "netcorenoc.in_process"
 
 Scope = MutableMapping[str, Any]
 ASGIApp = Callable[
@@ -83,6 +91,7 @@ async def call(
         "headers": raw,
         "client": client,
         "server": ("netcorenoc.internal", 80),
+        IN_PROCESS: True,
     }
     sent = False
 

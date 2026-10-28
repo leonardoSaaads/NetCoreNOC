@@ -18,7 +18,7 @@ from typing import Any
 from fastapi import HTTPException, Request
 
 from netcorenoc.crosscutting import auth, shaping
-from netcorenoc.engine.noc import cases, feed, kpi
+from netcorenoc.engine.noc import agents, cases, feed, kpi
 from netcorenoc.engine.noc.case_ops import Actor
 from netcorenoc.engine.noc.cases import CaseError
 
@@ -96,6 +96,23 @@ def actions(case: Mapping[str, Any], reader: feed.Reader) -> list[str]:
     return out
 
 
+#: The statuses a routed case climbs from (`store.noc_cases_routed`): not while it waits on someone.
+CLIMBS = frozenset({"new", "auto", "queue", "working"})
+
+
+def _escalates_at(case: Mapping[str, Any]) -> float | None:
+    """When a routed case climbs to the next tier unless its agent concludes it first (ADR #467);
+    None while it waits on someone, once a person took it, or past the agents."""
+    if case.get("agent_id") is None or case.get("assigned_at") is None:
+        return None
+    if str(case["status"]) not in CLIMBS or str(case.get("owner_ref") or "").startswith("user:"):
+        return None
+    limit = agents.escalate_after(
+        {"escalate_after_s": case.get("agent_escalate_after_s")}, str(case["priority"])
+    )
+    return float(case["assigned_at"]) + limit
+
+
 def case_view(
     case: Mapping[str, Any],
     reader: feed.Reader,
@@ -137,6 +154,7 @@ def case_view(
         "tier": case.get("tier", 1),
         "with_people": bool(case.get("with_people")),
         "escalated_at": case.get("escalated_at"),
+        "escalates_at": _escalates_at(case),
         "level_label": "With the NOC team"
         if case.get("with_people")
         else f"With NOC Tier {case.get('tier') or 1}",

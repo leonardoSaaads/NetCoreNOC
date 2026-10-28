@@ -6599,3 +6599,55 @@ From this release an entry is about six lines: decision, reason, release.*
 - **Reason**: the owner's choices: both adapters, and routing with escalation through the hierarchy;
   the handbook's escalation reminders are what the hierarchy is for. A signed wake-up that carries
   no credential lets an agent anywhere be woken without the appliance ever sending a key.
+
+## 468. The NOC plane, redrawn: Paperclip's organization, Salesforce's case record (unreleased)
+
+- **Decision** (`ui/app/sidebar.js`, `ui/app/roster.js`, `ui/app/views/agents.js`,
+  `ui/app/views/org.js`, `ui/app/views/parts/agent*.js`, `ui/app/views/parts/case*.js`,
+  `ui/app/views/parts/nocui.js`): the NOC plane's sidebar reads like Paperclip's company — **Work**
+  (Cases, KPIs, Playbooks), **Agents** (All agents, then each agent by name, in the order of the
+  organization, with its state and its open cases) and **NOC** (Organization, Secrets). The agents
+  are extras the shell hands the sidebar from one roster read while the NOC plane is shown and the
+  principal holds `agents.read`; they join the same roving tab stop as the views. **Agents**: one
+  line per agent — its mark on its role's tile, name and title, role and tier, state, open cases,
+  last run, the month's spend against its budget — filtered by state; hiring (admin) is a form in
+  five parts, and an agent run elsewhere is shown its key once with the MCP client configuration
+  (the key read from the environment, never written in the file). **One agent's page**: a header
+  with its state and acts (assign a case, run now, pause/resume), then Overview (its latest run;
+  runs per day, how many succeeded, its cases by priority and status — the console's own charts —
+  its cases, its chain of command, its spend), Instructions (served as the MCP prompt; an admin
+  edits them there), Runs (each run's steps, as a transcript) and Configuration (an admin's: edit,
+  a new key, retire — each stating its consequence first). **Organization**: a tree of cards, the
+  NOC team on top; a card opens the agent's place beside the chart — manager, role, tier, entry,
+  instructions — which an admin changes without leaving it. **A case is a record**: a header with
+  what can be done now, a row of highlights, the handbook's status path as chevrons (pending
+  assignment → working → pending → validate resolution → resolved → closed) with what the current
+  step asks of the NOC, then the feed (each post with its author's mark and who can read it), the
+  customer update and the case's history in the queue beside its **milestones** — take, customer
+  update, restore service, next update, and when it climbs to the next tier — and who holds it
+  among the agents (assign, escalate). The queue is a list view: saved views with counts, a filter
+  over the rows on screen, who holds each case, and the take clock drawn as well as counted.
+- **Reason**: the owner asked for the NOC pages to be redone after Paperclip (the hierarchy, the
+  agents, following the cases, the icons) and Salesforce (the feed, the case's status path, the
+  milestones). Every mark is beside its word; every state is a dot and a word; every act is still
+  the server's to allow.
+
+## 469. The owner's test round: two devices to log in to, and what it found (unreleased)
+
+- **Decision**: `tests/lab/noc_devices.py` — a MikroTik CRS326 (RouterOS) and a Ciena 3930 (SAOS
+  10) on their own loopback addresses, each answering SSH (exec and shell), SNMP GET and sending
+  the traps a fibre cut between them raises; `cut` and `repair` change what they answer. The round —
+  traps, a case, an agent at Tier 1 working it over MCP with leases, an escalation to the optical
+  specialist, a pending on the carrier, a repair, a resolution after checking both ends — found
+  four defects, each fixed here: (1) **no command could reach a MikroTik**: RouterOS puts no read
+  verb in front, so the read-only rule (`engine/noc/commands.py`) now reads a line that starts
+  with `/` as RouterOS — a menu path, then `print`, `monitor … once` or (diagnostic) `ping`; no
+  write word anywhere, each part of a hyphenated word counted; no bracket or brace, which RouterOS
+  evaluates as a nested command; (2) **an agent's tool calls were rate-limited twice** — the MCP
+  request and the route it reached in process — so a burst ran out of the bucket mid-case: a request
+  the appliance makes to itself (`api/asgi_call.py`) is marked in its ASGI scope, which no client
+  can set, and is not counted again; (3) a case waiting on someone showed a **climb that never
+  happens** (the loop does not escalate a pending case): `escalates_at` is given only while it can;
+  (4) the agent's state, hidden text in the phone's scrolling nav strip, **widened the page**.
+- **Reason**: the owner asked for exactly this round — two devices like theirs, SSH open, traps
+  sent — to see the NOC from an agent's side and an operator's.

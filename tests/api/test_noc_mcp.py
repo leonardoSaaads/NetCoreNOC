@@ -171,3 +171,28 @@ async def test_the_transport_s_edges(store: Store) -> None:
     finally:
         await raw.aclose()
     assert isinstance(httpx.Response, type)
+
+
+async def test_a_tool_call_is_one_request_to_the_rate_limit(store: Store) -> None:
+    """The owner's test round (ADR #469): an agent working a case calls tools in bursts, and each
+    call was counted twice — the MCP request, then the route it reached in process — so a 30-request
+    bucket ran dry mid-case. Fifteen calls in a 24-request bucket: twice-counted they are 30 and the
+    last ones are refused; counted once, every one is answered."""
+    _engine, _queue, app = await authutil.make_env(store, rate_capacity=24.0, rate_refill=0.001)
+    _agent_id, token = await _agent(app)
+    raw = authutil.new_client(app)
+    raw.headers["Authorization"] = f"Bearer {token}"
+    try:
+        assert (await raw.post("/api/mcp", json=INIT)).status_code == 200
+        for n in range(15):
+            call = {
+                "jsonrpc": "2.0",
+                "id": n + 2,
+                "method": "tools/call",
+                "params": {"name": "noc_me", "arguments": {}},
+            }
+            answer = await raw.post("/api/mcp", json=call)
+            assert answer.status_code == 200, f"call {n + 1}: {answer.status_code}"
+            assert not answer.json()["result"].get("isError"), answer.json()
+    finally:
+        await raw.aclose()

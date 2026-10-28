@@ -49,48 +49,86 @@ disabled controls.
 | **Quarantine** | Datagrams the parser refused. **Reading this list is audited** |
 | **Audit log** | The hash-chained record of every change, and its verification state |
 
-## NOC — Cases
+## NOC — Work
+
+The NOC plane's sidebar reads like Paperclip's company (ADR #468): **Work** (Cases, KPIs,
+Playbooks), **Agents** (all of them, then each by name with its state and open cases) and **NOC**
+(Organization, Secrets).
 
 | View | The question it answers |
 |---|---|
-| **Cases** | What the NOC has to take, what it is working, what waits on someone else, and what is over. Tabs **Queue**, **Working**, **Pending**, **Resolved**, **All**, each with its count, and *Only mine*. Every row: priority, the case, its status, its owner, the **take** clock ("12m left", "late 15m"), the customer-update clock, the next update and when it opened. Read again every 15 s |
-| **KPIs** | How fast the NOC takes a case and documents it, over 24 hours, 7 or 30 days: taken within target, median time to take, the time past target summed over every late take, customer updates within 30 minutes, and the same per priority |
-| **Playbooks** | Which troubleshooting trees check a new case before the NOC is called, and how each has done. A list — the name, what it matches (vendors, trap OIDs, severities), on or off, its runs and how they ended — and one playbook opened below it as its tree: each step, what it does, where each answer leads, down to the leaves (resolve, wait, NOC queue), its JSON and its last runs. An admin's screen |
+| **Cases** | What the NOC has to take, what it is working, what waits on someone else, and what is over. A list view: **Queue**, **Working**, **Pending**, **Resolved**, **All**, each with its count, a filter over the rows on screen (number or words), and *Only mine*. Every row: priority (its colour on the row's edge too), the case, its status, **who holds it** — an agent at its tier, a person, the NOC team, or nobody — the **take** clock counted and drawn ("12m left", "late 15m"), the customer-update clock, the next update and when it opened. Read again every 15 s |
+| **KPIs** | How fast the NOC takes a case, documents it and restores service, over 24 hours, 7 or 30 days: taken within target, median time to take, the time past target summed over every late take, customer updates within 30 minutes; per priority, the take and restore targets, and the takes missed |
+| **Playbooks** | Which troubleshooting trees check a new case before the NOC is called, and how each has done. A list — the name, what it matches (vendors, trap OIDs, severities), on or off, its runs and how they ended — and one playbook opened below it as its tree: each step, what it does, where each answer leads, down to the leaves (resolve, wait, NOC queue), its JSON and its last runs |
 
-A situation the Broker opens becomes a case in the NOC queue (ADR #459). Opening one shows, top to
-bottom: the priority, title, status and owner; the **status path** (Queue → Working → Pending →
-Resolved → Closed, with *Automated* and *Validate* when they apply); the clocks; what you may do
-now; the **customer update**; and the **feed**.
+A situation the Broker opens becomes a case in the NOC queue (ADR #459). A case opens as a
+**record**, as a case management system draws one (ADR #468):
 
-* **Take** makes the case yours and *Working*; the take clock stops (critical 25 min, major 1 h,
-  minor 2 h — ADR #460). *Take it over* takes someone else's; *Back to the queue* gives yours back.
+* **The header** says what it is and holds what you may do now: *Take*, *Set pending…*,
+  *Resolve…*, *Back to the queue* — each offered only when the server says you may.
+* **The highlights**: priority (and whether it is still the Broker's — ADR #464), status, level
+  (*With NOC Tier N*, or *With the NOC team*), owner, opened, the take clock.
+* **The status path** — *Pending assignment → Working → Pending → Validate resolution → Resolved →
+  Closed*, the handbook's — with the step it is on, how long it has been there, and what that step
+  asks of the NOC.
+* **Milestones**, beside the work: the **take** (critical 25 min, major 1 h, minor 2 h, from
+  entering the queue), the **customer update** (30 min from the take), **restore service**
+  (critical 4 h, major 24 h, minor 72 h, from the event to *validate* or *resolved*), the **next
+  update** the NOC promised, and — while an agent holds the case and it can climb — when it
+  **escalates** to the next tier. Each a mark, a word and a time, with a bar of the same fraction.
+* **Assignment**: the agent that holds it, at which tier, since when; *Assign…* routes it to an
+  agent or to the NOC team, *Escalate…* sends it up the chain now with the reason in the feed.
+* **Feed**, **Customer update** and **In the queue** (each time it entered the queue, with its
+  clocks) are the record's three tabs.
+
+* **Take** makes the case yours and *Working*; the take clock stops. *Take it over* takes someone
+  else's — an agent's too; *Back to the queue* gives yours back.
 * **The customer update** — title, executive summary, description, current analysis, NOC next step,
   customer next step, next update and priority — is edited by the owner and read by everyone who
   can read the case. Each company whose equipment the situation touches may have its **own
   executive summary**; an empty one reads the case's. The update's clock (30 min) stops the first
-  time it is complete.
+  time it is complete. Setting the priority by hand makes it yours: the Broker no longer raises it.
 * **Set pending…** names who the NOC waits on (customer, carrier or fiber provider, scheduled
   maintenance, dispatch, device access, connectivity, vendor, site access, field technician, RCA)
   and when it looks again. It needs the complete customer update. When the next update comes, or a
-  person posts on the feed, the case returns to the queue.
+  person posts on the feed, the case returns to the queue. A pending case does not climb.
 * **Resolve…** records the cause and the solution and closes the situation on the Broker. Tick
   *I checked the device* only when the alarms are verifiably gone: then they are cleared too.
-* **The feed** is the conversation and the case's history. Each post says who reads it —
-  **Internal** (the NOC), **Specified** (the people you name) or **All with access** (the customer
-  too). A viewer posts to *All* only, sees networks rather than addresses, and no names.
+* **The feed** is the conversation and the case's history, each entry with its author's mark — an
+  agent's glyph, the appliance's, a person's initial. Each post says who reads it — **Internal**
+  (the NOC), **Specified** (the people you name) or **All with access** (the customer too). A viewer
+  posts to *All* only, sees networks rather than addresses, and no names.
 * **Automated** means a playbook is checking the case (ADR #463): each of its steps, and the
   device's answer, appears in the feed as an internal event under the playbook's name. Taking the
-  case stops it — the person wins. A run that resolves the case says what it found; one that
-  cannot decide, runs out of time or fails sends the case to the queue, and the take clock starts
-  there.
-* **Playbooks are written by agents**, through the API, after they resolve a case; one is active
-  as soon as it is stored, and acts only through read-only commands and credentials whose agent
-  access is on. *Switch off* stops it matching new cases.
+  case stops it — the person wins.
+* **Playbooks are written by agents** (or by a person the vault trusts), through the API, after
+  they resolve a case; one is active as soon as it is stored, and acts only through read-only
+  commands and credentials whose agent access is on. *Switch off* stops it matching new cases.
 
-## NOC — Equipment access
+## NOC — Agents
 
 | View | The question it answers |
 |---|---|
+| **All agents** | Who the NOC's AI agents are and what each is doing. One line per agent — its mark on its role's tile, name and title, role and tier, *Entry* when queued cases start with it, its state (idle, running, paused, error), open cases, last run, and this month's spend against its budget — filtered by state. An admin hires one here, and finds how an agent connects over MCP |
+| **An agent** (each in the sidebar) | What this agent is, what it did and what it costs. The header: its state, who it reports to, how it runs, its last run, and *Assign a case*, *Run now*, *Pause* / *Resume*. **Overview**: its latest run (what woke it, what it did, its tool calls, its cost), runs per day by how they ended, how many succeeded, its cases by priority and by status, its cases, its chain of command and its spend. **Instructions**: what its manager wrote — served to it as the MCP prompt `noc_agent`. **Runs**: each run, opened to its steps — every tool it called with what it asked (never a lease, token or key) and how the route answered. **Configuration**: how it runs and its limits |
+
+* **Hiring** (an admin's): who it is (name, title, mark), its place (role, tier, manager — or the
+  NOC team — and whether cases start with it), how it runs — **Claude** (the appliance runs it
+  through the Anthropic API, with an API key a custodian stored in Secrets for agents), **Webhook**
+  (an agent elsewhere, woken by a signed POST) or **External** (it connects over MCP on its own) —
+  what it is told, and when it wakes and its limits (heartbeat, escalation time, run time, monthly
+  budget).
+* **Its key is shown once**, when it runs elsewhere, with the MCP client configuration — the key
+  read from the environment, never written in the file. The appliance never shows a Claude agent's
+  key to anyone. *Issue a new key…* replaces it (the old one stops at once); *Retire…* revokes it
+  for good, moves its reports up and lets its cases climb.
+* **Pausing** an agent makes its key open nothing until it is resumed.
+
+## NOC — the NOC itself
+
+| View | The question it answers |
+|---|---|
+| **Organization** | Who reports to whom. A chart, the **NOC team** — the people — on top, then each agent as a card: its mark, name, role, tier, state and open cases. Choosing a card opens its place beside the chart: its manager, role, tier, whether cases start with it, and its instructions — which an admin changes there. A case climbs one level of this chart each time it is not concluded in time, and past the top comes to the NOC team |
 | **Secrets** | Which credentials reach which equipment, whether each endpoint answers, and who did what with them. A list a custodian scans in seconds — a status light (green answers, yellow intermittent or slow, red does not answer, grey not checked), the name, where it works, what it grants, whether agents may use it — and one credential opened below it: its facts, **Check now**, **Reveal…**, **Change…**, agent access, its leases and its own audit history. A second tab, **Custodians & agents**, is for admins |
 
 * **Only custodians see the vault**: every admin, and each editor an admin names under
@@ -106,7 +144,8 @@ now; the **customer update**; and the **feed**.
   **off** never asks for a password: the off switch must always be reachable.
 * **The light is about the endpoint**: green means the host answered (an SSH greeting, an SMTP
   banner, an open port), not that the password works — the panel says so beside it.
-* **Agents** are service tokens an admin named under *Custodians & agents*. They never see a secret:
+* **Agents** are the NOC's agents (*Agents* — each hired with a key of its own), and any service
+  token an admin named under *Custodians & agents*. They never see a secret:
   they lease a credential a custodian switched agents on for, and each lease, use and end is in the
   credential's history.
 * **SSH host key**: the first SSH connection to a device pins the key it presents, and the panel

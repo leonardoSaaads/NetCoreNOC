@@ -10,6 +10,12 @@ same rule answers the API, the playbook validator and the playbook runner: a pla
 a write is refused when it is stored, and a command that becomes one after a value is substituted
 into it is refused when it runs.
 
+**MikroTik RouterOS** (ADR #469) has no read verb in front: a command is a menu path and then the
+command, `/interface ethernet print detail`. A line that begins with `/` is read as RouterOS and
+may run when its command is `print`, `monitor … once` or (diagnostic) `ping`, with no write word
+anywhere on it — each part of a hyphenated word counted, so `reset-counters` is `reset` — and no
+bracket or brace, which RouterOS evaluates as a nested command (`[/system script run x]`).
+
 **Why a deny-list of words on top of an allow-list of verbs**: `show` on some CLIs takes
 sub-commands that act (`show tech-support | redirect`), and text a device returned can reach a
 playbook's next command through a substituted value. Refusing every write word anywhere on the
@@ -100,7 +106,32 @@ _WRITES = frozenset(
         "wget",
     }
 )
+#: RouterOS's own acts, beyond the words every CLI shares above.
+_ROS_WRITES = frozenset(
+    {
+        "add",
+        "remove",
+        "edit",
+        "comment",
+        "disable",
+        "export",
+        "import",
+        "run",
+        "execute",
+        "file",
+        "fetch",
+        "download",
+        "send",
+        "upload",
+        "password",
+        "bandwidth-test",
+        "flood-ping",
+        "make-supout",
+    }
+)
+_ROS_READS = {"print": "view_only", "monitor": "view_only", "ping": "diagnostic"}
 _FORBIDDEN_CHARS = re.compile(r"[;|&><`\\\x00-\x1f\x7f]|\$\(")
+_ROS_FORBIDDEN = re.compile(r"[\[\]{}]")
 _WORD = re.compile(r"[A-Za-z][A-Za-z0-9_-]*")
 
 
@@ -117,6 +148,8 @@ def check(command: str, access_level: str) -> str:
         raise CommandError(f"command: at most {MAX_COMMAND} characters")
     if _FORBIDDEN_CHARS.search(line):
         raise CommandError("command: one line, with no ; | & > < ` \\ $( or control character")
+    if line.startswith("/"):
+        return _routeros(line, access_level)
     words = [w.lower() for w in _WORD.findall(line)]
     verb = line.split()[0].lower()
     least = READ_VERBS.get(verb)
@@ -127,6 +160,27 @@ def check(command: str, access_level: str) -> str:
     writes = sorted(set(words[1:]) & _WRITES)
     if writes:
         raise CommandError(f"command: read-only — {writes[0]!r} writes or escalates")
+    if _RANK.get(access_level, -1) < _RANK[least]:
+        raise CommandError(f"command: {verb!r} needs the {least} access level or above")
+    return line
+
+
+def _routeros(line: str, access_level: str) -> str:
+    """A RouterOS line: a menu path, then `print`, `monitor … once` or `ping`, and nothing that
+    writes."""
+    if _ROS_FORBIDDEN.search(line):
+        raise CommandError("command: RouterOS — no [ ] { }: they run a nested command")
+    words = [w.lower() for w in _WORD.findall(line)]
+    parts = {p for w in words for p in (w, *w.split("-"))}
+    writes = sorted(parts & (_WRITES | _ROS_WRITES))
+    if writes:
+        raise CommandError(f"command: read-only — {writes[0]!r} writes or escalates")
+    verb = next((w for w in words if w in _ROS_READS), None)
+    if verb is None or (verb == "monitor" and "once" not in words):
+        raise CommandError(
+            "command: RouterOS, read-only — a menu path then print, monitor … once, or ping"
+        )
+    least = _ROS_READS[verb]
     if _RANK.get(access_level, -1) < _RANK[least]:
         raise CommandError(f"command: {verb!r} needs the {least} access level or above")
     return line

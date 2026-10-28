@@ -21,6 +21,8 @@ _CASE = (
     "c.updated_by, c.priority_by, c.restored_at, c.agent_id, c.assigned_at, c.tier, "
     "c.escalated_at, c.with_people, "
     "(SELECT g.name FROM noc_agent g WHERE g.id = c.agent_id) AS agent_name, "
+    "(SELECT g.escalate_after_s FROM noc_agent g WHERE g.id = c.agent_id) "
+    "AS agent_escalate_after_s, "
     "s.status AS situation_status, s.severity, "
     "s.resolution AS situation_resolution, "
     "COALESCE(s.operator_name, s.model_name, s.derived_name) AS situation_name, "

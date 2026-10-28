@@ -68,6 +68,13 @@ async def test_routing_and_the_climb(store: Store) -> None:
     async with store.reading():
         case = await store.noc_case(sid)
     assert case is not None and case["agent_name"] == "Vega" and case["tier"] == 1
+    editor = await authutil.client_as(app, "editor")
+    try:
+        shown = (await editor.get(f"/api/noc/cases/{sid}")).json()
+    finally:
+        await editor.aclose()
+    assert shown["escalates_at"] == shown["assigned_at"] + 60, "Vega's own escalation time"
+    assert shown["level_label"] == "With NOC Tier 1"
     async with store.lock:
         await store.conn.execute(
             "UPDATE noc_case SET assigned_at = assigned_at - interval '2 minutes' "

@@ -523,6 +523,18 @@ ROUTE_ORDER_BASELINE: list[tuple[str, str]] = [
     ("GET", "/app/views/parts/casefeed.js"),
     ("GET", "/app/views/parts/casedetail.js"),
     ("GET", "/app/views/playbooks.js"),
+    ("GET", "/app/roster.js"),
+    ("GET", "/app/views/agents.js"),
+    ("GET", "/app/views/org.js"),
+    ("GET", "/app/views/parts/nocui.js"),
+    ("GET", "/app/views/parts/agentkey.js"),
+    ("GET", "/app/views/parts/agentform.js"),
+    ("GET", "/app/views/parts/agentdetail.js"),
+    ("GET", "/app/views/parts/agentdash.js"),
+    ("GET", "/app/views/parts/agentruns.js"),
+    ("GET", "/app/views/parts/agentadmin.js"),
+    ("GET", "/app/views/parts/casemilestones.js"),
+    ("GET", "/app/views/parts/caseassign.js"),
     ("GET", "/vendor/preact-10.29.8.module.js"),
     ("GET", "/vendor/htm-3.1.1.module.js"),
     ("GET", "/style.css"),
@@ -1462,8 +1474,8 @@ def test_the_queue_put_on_the_hot_path_is_non_blocking() -> None:
 #: `engine/noc/` `commands`, `executor`, `playbook` and `runbook`, `store/noc_playbooks.py`,
 #: migration `0035_noc_automation.sql`, the `noc_exec` and `playbooks` routes, and the
 #: `views/playbooks` console module.
-SRC_TREE_DIGEST = "8b7f43388a2f4426e3d5325135245400db17d15fefdf820fe6020e8693410410"
-SRC_FILE_COUNT = 449
+SRC_TREE_DIGEST = "c5ec3e82a92b8435f22c3ca4183528dd165d0262c3262a9ad944aeb9fd8568b1"
+SRC_FILE_COUNT = 461
 SRC_VERSION_FILE = "src/netcorenoc/__init__.py"
 
 
