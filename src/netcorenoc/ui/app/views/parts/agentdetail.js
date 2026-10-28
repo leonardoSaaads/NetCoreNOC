@@ -94,10 +94,10 @@ export class AgentDetail extends Component {
     this.props.onChanged();
   }
 
-  async act(path, said) {
+  async act(url, said) {
     this.setState({ busy: true, note: null });
     try {
-      const answer = await post(`/api/noc/agents/${this.props.id}/${path}`, {});
+      const answer = await post(url, {});
       this.changed(typeof said === "function" ? said(answer) : said);
     } catch (error) {
       this.setState({ busy: false, note: error.message });
@@ -119,12 +119,12 @@ export class AgentDetail extends Component {
       ${can("cases.work") ? html`<button type="button" disabled=${busy}
         onClick=${() => this.setState({ assigning: true })}>Assign a case</button>` : null}
       ${run && a.status !== "paused" && a.adapter !== "external" ? html`<button type="button" class="primary" disabled=${busy}
-        onClick=${() => this.act("invoke", (x) => `Woken: run #${x.run.id} is ${x.run.status_label.toLowerCase()}.`)}>
+        onClick=${() => this.act(`/api/noc/agents/${a.id}/invoke`, (x) => `Woken: run #${x.run.id} is ${x.run.status_label.toLowerCase()}.`)}>
         <${Icon} name="play" /> Run now</button>` : null}
       ${run && a.status === "paused" ? html`<button type="button" class="primary" disabled=${busy}
-        onClick=${() => this.act("resume", `${a.name} is back at work.`)}><${Icon} name="play" /> Resume</button>` : null}
+        onClick=${() => this.act(`/api/noc/agents/${a.id}/resume`, `${a.name} is back at work.`)}><${Icon} name="play" /> Resume</button>` : null}
       ${run && a.status !== "paused" ? html`<button type="button" disabled=${busy}
-        onClick=${() => this.act("pause", `${a.name} is paused: its key opens nothing until it is resumed.`)}>
+        onClick=${() => this.act(`/api/noc/agents/${a.id}/pause`, `${a.name} is paused: its key opens nothing until it is resumed.`)}>
         <${Icon} name="pause" /> Pause</button>` : null}
     </div>`;
   }

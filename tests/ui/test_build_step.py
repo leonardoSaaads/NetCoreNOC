@@ -414,7 +414,7 @@ UI_HASHES: dict[str, str] = {
         "9e0de3a418800bc66c2173ecdb063fee64033d88fb56703dd94ab1e5be6d8ce1"
     ),
     "app/views/parts/agentdetail.js": (
-        "2c4acf4016541e9d1506bc7703ce2d21db7ab3642ef9b430022af317206652f8"
+        "9672d488e372f12c0f138e591f6cb2e6f8549d70aa366574e11ca669c184bcb4"
     ),
     "app/views/parts/agentform.js": (
         "9ec13ca3a6c3e7c5ba9bec105c57793755752af140efe206dfddaad446cb2a86"
@@ -660,7 +660,7 @@ UI_SIZES: dict[str, int] = {
     "app/views/overview.js": 11_191,
     "app/views/parts/agentadmin.js": 7_666,
     "app/views/parts/agentdash.js": 8_436,
-    "app/views/parts/agentdetail.js": 8_924,
+    "app/views/parts/agentdetail.js": 8_956,
     "app/views/parts/agentform.js": 14_043,
     "app/views/parts/agentkey.js": 4_339,
     "app/views/parts/agentruns.js": 4_073,
