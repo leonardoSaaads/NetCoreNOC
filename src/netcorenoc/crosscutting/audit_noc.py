@@ -40,5 +40,18 @@ NOC_ACTIONS: frozenset[str] = frozenset(
         "noc.playbook.create",
         "noc.playbook.update",
         "noc.playbook.run",
+        # The NOC's agents (ADRs #465-#467): who hired, changed, woke, paused, resumed or
+        # terminated an agent, who gave it a new key, how each of its runs was reported ended, and
+        # who routed or escalated a case — never an instruction's text, a key or a token.
+        "noc.agent.create",
+        "noc.agent.update",
+        "noc.agent.invoke",
+        "noc.agent.pause",
+        "noc.agent.resume",
+        "noc.agent.terminate",
+        "noc.agent.rotate",
+        "noc.run.finish",
+        "noc.case.assign",
+        "noc.case.escalate",
     }
 )

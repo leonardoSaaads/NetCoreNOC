@@ -11,6 +11,7 @@ import { get, post } from "../api.js";
 import { Loader, Empty } from "../widgets.js";
 import { can } from "../session.js";
 import { relative, timeTitle } from "../format.js";
+import { Icon } from "../icons.js";
 
 const END = { resolve: "Resolve", pending: "Wait", queue: "NOC queue" };
 
@@ -121,13 +122,14 @@ export class Playbooks extends Loader {
         will="An agent writes one after it resolves a case; the next matching case runs it before the NOC is called." />`;
     }
     return html`<div class="playbooks">
-      <div class="table-scroll"><table class="data"><thead><tr>
+      <div class="table-scroll list-view"><table class="data"><thead><tr>
         <th scope="col">Playbook</th><th scope="col">Matches</th><th scope="col">State</th>
         <th scope="col">Runs</th><th scope="col" class="wide-only">Last run</th></tr></thead>
         <tbody>${data.playbooks.map((p) => html`<tr key=${p.id} class=${cx(selected === p.id && "row-selected")}>
-          <td><button type="button" class="linkish" onClick=${() => this.open(p.id)}>${p.name}</button></td>
+          <td><button type="button" class="linkish pb-open" onClick=${() => this.open(p.id)}>
+            <span class="pb-glyph"><${Icon} name="playbook" /></span>${p.name}</button></td>
           <td>${[...(p.match.vendors || []), ...(p.match.trap_oids || []), ...(p.match.severities || [])].join(", ")}</td>
-          <td>${p.enabled ? html`<span class="badge badge-warn">on</span>` : html`<span class="muted">off</span>`}</td>
+          <td>${p.enabled ? html`<span class="run-state run-ok">On</span>` : html`<span class="run-state run-off">Off</span>`}</td>
           <td>${p.runs}</td>
           <td class="wide-only" title=${timeTitle(p.last_run_at)}>${p.last_run_at ? relative(p.last_run_at) : "—"}</td>
         </tr>`)}</tbody></table></div>

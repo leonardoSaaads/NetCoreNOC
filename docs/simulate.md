@@ -271,6 +271,23 @@ make lab-demo       # unattended: three cut/repair cycles, then exit
 
 Details, including what to watch for: [`tests/lab/README.md`](../tests/lab/README.md).
 
+### Two devices the NOC can log in to (ADR #469)
+
+A MikroTik CRS326 (RouterOS) at `127.0.10.1` and a Ciena 3930 (SAOS 10) at `127.0.10.2`, each
+answering SSH (user `noc`) and SNMP v2c GET (community `nocLab`), and sending the traps of a fibre
+cut between them — MikroTik `ether5` to Ciena port 3 — and of its repair:
+
+```sh
+python tests/lab/noc_devices.py serve --password 'choose-a-password'   # terminal 1, stays running
+python tests/lab/noc_devices.py cut --target 127.0.0.1:1162            # the trunk goes down
+python tests/lab/noc_devices.py repair --target 127.0.0.1:1162         # the splice is done
+```
+
+Store each device in *NOC → Secrets* — an SSH password credential (port 2222) and an SNMP v1/v2c
+community (port 1161), agent access on — and the cut's situation becomes a case an agent can work:
+`/interface ethernet monitor ether5 once` on the MikroTik, `show alarm list` and
+`show xcvr status port 3` on the Ciena, read only. What each answers follows the cut and the repair.
+
 ## Limits
 
 * **Same machine.** `trap_replay.py` and `trap_sim.py` simulate devices by sending from loopback

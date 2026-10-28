@@ -1410,6 +1410,10 @@ def test_f34_every_mutating_route_below_admin_resolves_scope() -> None:
         for route in rbac.ROUTE_PERMISSIONS
         if route[1].startswith("/api/noc/") and not route[1].startswith("/api/noc/cases")
     }
+    # ADR #466: the MCP endpoint is a door, not an act: every tool behind it is a route called in
+    # process with the caller's own credentials, which resolves its own scope (the case routes
+    # above, among them). The door itself names no network element.
+    session_only |= {("POST", "/api/mcp")}
     # The four spellings of *"this handler resolved the caller's visibility"*. The first is the
     # literal every route wrote until v0.21.0; the other three are `WindowAccess`'s, and
     # `test_every_indirect_scope_call_really_resolves_the_scope` reads their source so that
@@ -1472,6 +1476,9 @@ def test_f34_every_mutating_route_below_admin_resolves_scope() -> None:
         ("POST", "/api/noc/cases/{sid}/status"): "async def set_status(",
         ("POST", "/api/noc/cases/{sid}/resolve"): "async def resolve_case(",
         ("POST", "/api/noc/cases/{sid}/feed"): "async def post_to_case(",
+        # ADR #467: routing and escalating a case, scoped as every case act is.
+        ("POST", "/api/noc/cases/{sid}/assign"): "async def assign_case(",
+        ("POST", "/api/noc/cases/{sid}/escalate"): "async def escalate_case(",
     }
     unprotected: list[str] = []
     for (method, path), capability in sorted(rbac.ROUTE_PERMISSIONS.items()):

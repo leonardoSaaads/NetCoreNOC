@@ -103,6 +103,7 @@ CYCLE_REASONS: dict[str, str] = {
     "customer_post": "A person posted on the feed while it was pending",
     "next_update": "Its next update came",
     "released": "Its owner put it back",
+    "escalated": "Escalated past the agents to the NOC team",
 }
 
 #: How a case came to be resolved.

@@ -10,9 +10,9 @@ import pytest
 from netcorenoc.engine.noc import cases, feed, kpi
 from netcorenoc.engine.noc.cases import CaseError
 
-MIGRATION = (
-    Path(__file__).resolve().parents[2] / "src/netcorenoc/migrations/0034_noc_cases.sql"
-).read_text()
+MIGRATIONS = Path(__file__).resolve().parents[2] / "src/netcorenoc/migrations"
+MIGRATION = (MIGRATIONS / "0034_noc_cases.sql").read_text()
+AGENTS_MIGRATION = (MIGRATIONS / "0037_noc_agents.sql").read_text()
 
 
 def _check(column: str) -> set[str]:
@@ -25,7 +25,9 @@ def test_the_vocabularies_are_the_databases() -> None:
     assert _check("status") == set(cases.STATUSES)
     assert _check("priority") == set(cases.PRIORITIES)
     assert _check("resolution") == set(cases.RESOLUTIONS)
-    assert _check("reason") == set(cases.CYCLE_REASONS)
+    # ADR #467 widened the cycle reasons (0037 replaces the CHECK; the last word is its).
+    assert _check("reason") | {"escalated"} == set(cases.CYCLE_REASONS)
+    assert "'escalated'));" in AGENTS_MIGRATION
     assert _check("visibility") == set(feed.VISIBILITIES)
     for name, (_label, cap) in cases.FIELD_LIMITS.items():
         assert f"length({name}) <= {cap}" in MIGRATION, name

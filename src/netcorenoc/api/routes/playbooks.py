@@ -1,9 +1,12 @@
 """NOC → Playbooks: the troubleshooting trees agents write, and how each has run (ADR #463).
 
-Writing one is `cases.work` — an agent that resolved a case, or a person. **It is active as soon as
-it is stored** (the owner's choice), and that is safe because of what a playbook can say: read-only
+Reading them is the NOC's (`playbooks.read`, editor). **Writing one — or switching one on — is the
+agents' and the admins'** (ADR #465): `playbooks.write` and, on top, the agent grant (the one that
+lets a token use credentials, which is what a playbook does) or `secrets.grants`. Switching one
+off is a kill switch, so anyone with `playbooks.write` may. **It is active as soon as it is
+stored** (the owner's choice), and that is safe because of what a playbook can say: read-only
 commands only, checked when it is stored and again when it runs (`engine/noc/commands.py`), four
-fixed tests on what came back, and three ways to end. A person may switch any of them off.
+fixed tests on what came back, and three ways to end.
 
 Every write is a `noc.playbook.*` audit row; every run is a `noc.playbook.run` row and a trace.
 """
@@ -19,11 +22,16 @@ from fastapi import Depends, FastAPI, HTTPException, Request
 from netcorenoc.api.context import AppContext
 from netcorenoc.api.declare import DeclaredRoutes
 from netcorenoc.api.models_cases import PlaybookEnabledIn, PlaybookIn
+from netcorenoc.api.noc_gate import is_agent
 from netcorenoc.crosscutting import auth
 from netcorenoc.engine.noc import cases, executor, playbook
 from netcorenoc.engine.noc.playbook import PlaybookError
 
 NO_SUCH = "no such playbook"
+NOT_AUTHOR = (
+    "a playbook acts with the credentials agents may use: it is written, or switched on, by an "
+    "agent the NOC hired or by an admin"
+)
 
 
 def _view(row: dict[str, Any], *, runs: list[dict[str, Any]] | None = None) -> dict[str, Any]:
@@ -65,6 +73,11 @@ def register(app: FastAPI, ctx: AppContext) -> None:
     audit_row, write_txn = ctx.perimeter.audit_row, ctx.write_txn
     route = DeclaredRoutes(app)
 
+    async def require_author(request: Request, principal: auth.Principal) -> None:
+        if "secrets.grants" in request.state.capabilities or await is_agent(ctx, principal):
+            return
+        raise HTTPException(status_code=403, detail=NOT_AUTHOR)
+
     def checked(document: Any) -> dict[str, Any]:
         try:
             return playbook.validate(document)
@@ -93,6 +106,7 @@ def register(app: FastAPI, ctx: AppContext) -> None:
     ) -> dict[str, Any]:
         """Store a playbook — active at once. Read-only commands only; refused with the path to
         the first thing wrong."""
+        await require_author(request, principal)
         document = checked(body.document)
         text = playbook.canonical(document)
         async with write_txn():
@@ -134,6 +148,7 @@ def register(app: FastAPI, ctx: AppContext) -> None:
         principal: auth.Principal = Depends(security),
     ) -> dict[str, Any]:
         """Replace a playbook's tree: a new version, validated as a new one is."""
+        await require_author(request, principal)
         document = checked(body.document)
         async with write_txn():
             if await store.noc_playbook(playbook_id) is None:
@@ -165,6 +180,8 @@ def register(app: FastAPI, ctx: AppContext) -> None:
         principal: auth.Principal = Depends(security),
     ) -> dict[str, Any]:
         """Switch a playbook on or off. Off takes effect for every case not already running it."""
+        if body.enabled:
+            await require_author(request, principal)
         async with write_txn():
             if await store.noc_playbook(playbook_id) is None:
                 raise HTTPException(status_code=404, detail=NO_SUCH)

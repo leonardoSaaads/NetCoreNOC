@@ -232,6 +232,15 @@ optional `asyncssh` package: `pip install "netcorenoc[noc]"`. The Docker image a
 include it; without it an SSH act answers "unavailable", and SNMP GET and reachability still
 work (ADR #462).
 
+The NOC's **AI agents** (ADRs #465-#467) need nothing to configure in the environment: an admin
+hires them in *NOC → Agents*. An agent the appliance runs itself (**Claude**) needs the optional
+`anthropic` package — `pip install "netcorenoc[agents]"`; the Docker image includes it, and with
+the Nix package add `anthropic` to the environment — and an Anthropic API key stored in *Secrets*
+as an API token with agent access on. An agent run elsewhere connects to the **MCP endpoint**,
+`<console URL>/api/mcp` (Streamable HTTP), with its own key as a Bearer token; put TLS in front of
+the console (`NETCORENOC_TLS_CERT` / `NETCORENOC_TLS_KEY`, or a reverse proxy) before an agent
+reaches it across a network.
+
 ## Outgoing email (v0.30.0)
 
 **Settings → Email** configures the SMTP server password-recovery links are sent through. Pick a

@@ -127,6 +127,8 @@ CLIENT_GETS: list[tuple[str, str]] = [
     ("cases.read", "/api/noc/cases?view=queue"),
     ("cases.read", "/api/noc/cases/kpis?days=7"),
     ("playbooks.read", "/api/noc/playbooks"),
+    # ADRs #465, #468: the organization — the sidebar's roster, Agents and Organization.
+    ("agents.read", "/api/noc/agents"),
 ]
 
 #: Writes the harness answers without applying. The value is what the real route returns on success.

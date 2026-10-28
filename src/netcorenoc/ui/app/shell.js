@@ -46,6 +46,8 @@ import { Bell } from "./notices.js";
 import { Health } from "./health.js";
 import { StopButton } from "./views/parts/autonomy.js";
 import * as store from "./store.js";
+import { onRoster, roster, watchRoster } from "./roster.js";
+import { navEntries } from "./views/parts/nocui.js";
 import { plural, utcOffset, TIMEZONE } from "./format.js";
 
 export class Shell extends Component {
@@ -54,7 +56,8 @@ export class Shell extends Component {
     // The sidebar's state is held here rather than read from the cookie at each render, for F87's
     // reason one control over: a preference the framework cannot observe is a control that does
     // not repaint. The cookie is where it PERSISTS; this is where it lives (DECISIONS #290).
-    this.state = { fragment: currentFragment(), live: store.get(), nav: navState() };
+    this.state = { fragment: currentFragment(), live: store.get(), nav: navState(),
+      agents: roster() };
     // ADR #454: the last screen seen in each plane, so the top bar's switch goes back to it.
     // Memory only — this console keeps nothing in browser storage (F2).
     this.lastByPlane = {};
@@ -74,15 +77,21 @@ export class Shell extends Component {
     this.unsubscribe = store.subscribe((live) => this.setState({ live: { ...live } }));
     // v0.25.0: a name or photo changed on the account page reaches the top bar at once.
     this.stopSession = onSessionChange(() => this.setState({ person: Date.now() }));
+    // ADR #468: the NOC's agents, listed in the sidebar while the NOC plane is shown.
+    this.stopRoster = onRoster((agents) => this.setState({ agents }));
+    watchRoster(this.plane === "noc");
   }
 
   componentWillUnmount() {
+    watchRoster(false);
+    if (this.stopRoster) this.stopRoster();
     if (this.stopSession) this.stopSession();
     if (this.stopRouting) this.stopRouting();
     if (this.unsubscribe) this.unsubscribe();
   }
 
   componentDidUpdate() {
+    watchRoster(this.plane === "noc");
     const decision = this.decision();
     const viewId = decision.kind === "view" ? decision.view.id : `!${decision.kind}`;
     if (viewId !== this.lastViewId) {
@@ -113,10 +122,13 @@ export class Shell extends Component {
       situations: (live.situations || []).filter((s) => s.status !== "resolved").length,
     };
 
+    const extras = this.plane === "noc" ? { agents: navEntries(this.state.agents) } : {};
+    const activeHref = (this.state.fragment || "").split("?")[0];
+
     return html`<div id="app" class=${cx("shell", `nav-${this.state.nav}`)}>
       <${Sidebar} capabilities=${active.capabilities} activeId=${activeId} plane=${this.plane}
                   counts=${counts} collapsed=${this.state.nav === "collapsed"}
-                  onNavigate=${navigate} />
+                  extras=${extras} activeHref=${activeHref} onNavigate=${navigate} />
       <div class="main">
         <${TopBar} live=${live} onSignOut=${this.props.onSignOut}
                    nav=${this.state.nav} onNav=${() => this.toggleNav()}

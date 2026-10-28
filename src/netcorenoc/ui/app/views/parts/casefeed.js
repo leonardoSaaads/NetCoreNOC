@@ -11,8 +11,23 @@ import { html, Component, cx } from "../../dom.js";
 import { get, post } from "../../api.js";
 import { can } from "../../session.js";
 import { relative, timeTitle } from "../../format.js";
+import { Icon } from "../../icons.js";
+import { roster } from "../../roster.js";
+import { AgentGlyph } from "./nocui.js";
 
 const SHORT = { internal: "Internal", specified: "Specified", all: "All with access" };
+
+/** Who wrote it, as a mark: an agent's glyph, the appliance's, or a person's initial. */
+function Author({ author }) {
+  if (author && author.kind === "agent") {
+    const known = (roster() || []).find((a) => a.name === author.name);
+    return html`<${AgentGlyph} agent=${known || { role: "engineer", icon: "bot" }} size="sm" />`;
+  }
+  if (author && author.kind === "system") {
+    return html`<span class="feed-avatar feed-avatar-system"><${Icon} name="pulse" /></span>`;
+  }
+  return html`<span class="feed-avatar" aria-hidden="true">${((author && author.name) || "?").slice(0, 1).toUpperCase()}</span>`;
+}
 
 export class CaseFeed extends Component {
   constructor(props) {
@@ -102,13 +117,16 @@ export class CaseFeed extends Component {
         onChange=${(e) => this.setState({ events: e.currentTarget.checked })} /> Show the case's history</label>
       <ol class="feed-list">${posts.map((p) => html`<li key=${p.id}
           class=${cx("feed-item", p.kind === "event" ? "feed-event" : `feed-${p.visibility}`)}>
-        <div class="feed-head">
-          <b>${p.author ? p.author.name : "—"}</b>
-          ${p.kind === "post" ? html`<span class=${cx("feed-badge", `feed-badge-${p.visibility}`)}>
-            ${SHORT[p.visibility]}</span>` : null}
-          <span class="muted" title=${timeTitle(p.created_at)}>${relative(p.created_at)}</span>
+        <${Author} author=${p.author} />
+        <div class="feed-main">
+          <div class="feed-head">
+            <b>${p.author ? p.author.name : "—"}</b>
+            ${p.kind === "post" ? html`<span class=${cx("feed-badge", `feed-badge-${p.visibility}`)}>
+              ${SHORT[p.visibility]}</span>` : null}
+            <span class="muted" title=${timeTitle(p.created_at)}>${relative(p.created_at)}</span>
+          </div>
+          <p class="feed-body">${p.body}</p>
         </div>
-        <p class="feed-body">${p.body}</p>
       </li>`)}</ol>
       ${st.feed.more ? html`<p class="muted">Older posts are not shown.</p>` : null}
     </section>`;

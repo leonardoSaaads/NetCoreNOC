@@ -1,4 +1,4 @@
-"""The NOC plane's routes: the capability each requires and its scope posture (ADRs #454-#463).
+"""The NOC plane's routes: the capability each requires and its scope posture (ADRs #454-#467).
 
 Split from `route_map.py` at the 400-line guard, on the seam the product now has: the broker's
 routes there, the NOC's here. `route_map.py` folds both tables into `ROUTE_PERMISSIONS` and
@@ -57,6 +57,25 @@ NOC_ROUTE_PERMISSIONS: dict[tuple[str, str], str] = {
     ("GET", "/api/noc/playbooks/{playbook_id}"): "playbooks.read",
     ("POST", "/api/noc/playbooks/{playbook_id}"): "playbooks.write",
     ("POST", "/api/noc/playbooks/{playbook_id}/enabled"): "playbooks.write",
+    # -- the NOC's agents and their runs (ADRs #465-#467) --
+    ("GET", "/api/noc/agents"): "agents.read",
+    ("POST", "/api/noc/agents"): "agents.manage",
+    ("GET", "/api/noc/agents/me"): "agents.read",
+    ("GET", "/api/noc/agents/{agent_id}"): "agents.read",
+    ("POST", "/api/noc/agents/{agent_id}"): "agents.manage",
+    ("POST", "/api/noc/agents/{agent_id}/invoke"): "agents.run",
+    ("POST", "/api/noc/agents/{agent_id}/pause"): "agents.run",
+    ("POST", "/api/noc/agents/{agent_id}/resume"): "agents.run",
+    ("POST", "/api/noc/agents/{agent_id}/terminate"): "agents.manage",
+    ("POST", "/api/noc/agents/{agent_id}/key"): "agents.manage",
+    ("GET", "/api/noc/runs/{run_id}"): "agents.read",
+    # An agent reports its own run; a person with the capability ends anyone's. The handler
+    # decides which.
+    ("POST", "/api/noc/runs/{run_id}/finish"): "agents.run",
+    ("POST", "/api/noc/cases/{sid}/assign"): "cases.work",
+    ("POST", "/api/noc/cases/{sid}/escalate"): "cases.work",
+    # The MCP endpoint (ADR #466): every tool behind it is checked as its own route.
+    ("POST", "/api/mcp"): "mcp.use",
 }
 
 NOC_ROUTE_SCOPE: dict[tuple[str, str], Literal["scoped", "unscoped", "admin_only"]] = {
@@ -105,11 +124,43 @@ NOC_ROUTE_SCOPE: dict[tuple[str, str], Literal["scoped", "unscoped", "admin_only
     ("POST", "/api/noc/exec"): "unscoped",
     # Forgetting a pinned host key: custodian-gated and stepped up; scope does not reach the vault.
     ("POST", "/api/noc/secrets/{secret_id}/hostkey"): "unscoped",
-    ("GET", "/api/noc/playbooks"): "admin_only",
-    ("POST", "/api/noc/playbooks"): "admin_only",
-    ("GET", "/api/noc/playbooks/{playbook_id}"): "admin_only",
-    ("POST", "/api/noc/playbooks/{playbook_id}"): "admin_only",
-    ("POST", "/api/noc/playbooks/{playbook_id}/enabled"): "admin_only",
+    # Playbooks (ADR #465): a playbook names no element — it matches by vendor, trap and severity
+    # and acts with the credentials agents may use — so every scope reads the same list.
+    ("GET", "/api/noc/playbooks"): "unscoped",
+    # Writing one: the agent grant or `secrets.grants` on top of the capability; scope does not
+    # reach a tree that names no element.
+    ("POST", "/api/noc/playbooks"): "unscoped",
+    # One playbook and its runs: the runs name cases, each a number the reader may not open.
+    ("GET", "/api/noc/playbooks/{playbook_id}"): "unscoped",
+    # Replacing one: the same gate as writing it.
+    ("POST", "/api/noc/playbooks/{playbook_id}"): "unscoped",
+    # Switching one off is a kill switch; on, the same gate as writing it.
+    ("POST", "/api/noc/playbooks/{playbook_id}/enabled"): "unscoped",
+    # The agents (ADRs #465-#467): an agent is a member of the NOC's staff, not an element; every
+    # scope reads the same organization. The cases each one has are listed by number.
+    ("GET", "/api/noc/agents"): "unscoped",
+    ("POST", "/api/noc/agents"): "admin_only",
+    # An agent's own record: its identity, decided by its token, never by scope.
+    ("GET", "/api/noc/agents/me"): "unscoped",
+    # One agent's page: the organization's, the same for every scope.
+    ("GET", "/api/noc/agents/{agent_id}"): "unscoped",
+    ("POST", "/api/noc/agents/{agent_id}"): "admin_only",
+    # Waking one: an agent is staff, not an element; an agent caller only below itself.
+    ("POST", "/api/noc/agents/{agent_id}/invoke"): "unscoped",
+    # Pausing one is a kill switch: reachable from any scope.
+    ("POST", "/api/noc/agents/{agent_id}/pause"): "unscoped",
+    # Resuming one: the same switch, the other way.
+    ("POST", "/api/noc/agents/{agent_id}/resume"): "unscoped",
+    ("POST", "/api/noc/agents/{agent_id}/terminate"): "admin_only",
+    ("POST", "/api/noc/agents/{agent_id}/key"): "admin_only",
+    # A run's steps: what an agent did, naming cases by number, each opened under its own scope.
+    ("GET", "/api/noc/runs/{run_id}"): "unscoped",
+    # Reporting a run: the agent's own, decided by its token.
+    ("POST", "/api/noc/runs/{run_id}/finish"): "unscoped",
+    ("POST", "/api/noc/cases/{sid}/assign"): "scoped",
+    ("POST", "/api/noc/cases/{sid}/escalate"): "scoped",
+    # The MCP door: each tool behind it is a route answered under the caller's own scope.
+    ("POST", "/api/mcp"): "unscoped",
 }
 
 assert set(NOC_ROUTE_SCOPE) == set(NOC_ROUTE_PERMISSIONS), "the two NOC tables must agree"

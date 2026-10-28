@@ -80,6 +80,30 @@ Two rules that have held since v0.1.0 and are not going to change:
 
 *(This table has no rows for v0.17.0 or v0.18.0: neither release wrote one, and inventing upgrade notes for a release somebody else built would be describing an upgrade nobody tested.)*
 
+## Unreleased — the NOC's agents and the MCP server (#464-#469)
+
+Nothing to do to upgrade the database: migrations **0036** (a case's priority and restore clock)
+and **0037** (the agents, their runs, and routing on cases) apply at start; existing cases keep
+their priority, and their restore clock is filled from their history. Then:
+
+* **Claude agents need the `agents` extra** when you install from the wheel:
+  `pip install "netcorenoc[agents]"` (`anthropic`). The image installs it. Webhook and external
+  agents need nothing. Store the Anthropic API key in *Secrets* as an API token and switch its agent
+  access on; the hiring form lists it.
+* **Playbooks are an editor's now** (`playbooks.read`, `playbooks.write`), and writing one is
+  further gated on being one of the NOC's agents or a person who may name the vault's custodians.
+  A service token that wrote playbooks keeps writing them only if an admin named it an agent
+  (*Secrets → Custodians & agents*) — or hire it as an agent instead.
+* **No agent exists until an admin hires one**, so every case still waits in the NOC queue for a
+  person. Hire at least one *entry* agent for queued cases to be routed.
+* **An agent run elsewhere is shown its key once.** Configure its MCP client with the endpoint
+  (`/api/mcp`) and the key from the environment — *All agents → Connect an agent over MCP* shows
+  the configuration. A paused agent's key is refused until it is resumed.
+* **A case's priority follows the Broker** while nobody set it by hand: a case may be raised after
+  the upgrade when its situation is worse than it read.
+* **MikroTik RouterOS commands** (`/… print`) are now accepted by the executor and playbooks, read
+  only.
+
 ## Unreleased — the executor and playbooks (#462, #463)
 
 Nothing to do to upgrade the database: migration **0035** adds the playbook tables and the SSH

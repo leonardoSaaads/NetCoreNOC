@@ -168,9 +168,12 @@ class AuthMixin(StoreBase):
         return int(row[0])
 
     async def get_token(self, token_hash: str) -> dict[str, Any] | None:
+        # ADR #465: a paused NOC agent's key opens nothing until a person resumes it — pausing
+        # is a kill switch, and one that left the agent free to act would not be one.
         cur = await self.conn.execute(
             "SELECT id, token_hash, name, role, revoked, last_used_at FROM api_token "
-            "WHERE token_hash=?",
+            "WHERE token_hash=? AND NOT EXISTS (SELECT 1 FROM noc_agent g "
+            "WHERE g.token_id = api_token.id AND g.status = 'paused')",
             (token_hash,),
         )
         row = await cur.fetchone()

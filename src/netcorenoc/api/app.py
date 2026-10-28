@@ -177,6 +177,10 @@ def create_app(
     routes.case_feed.register(app, ctx)
     routes.noc_exec.register(app, ctx)  # ADR #462: the executor
     routes.playbooks.register(app, ctx)  # ADR #463
+    # ADRs #465-#467: the agents (`/me` before `/{agent_id}`, in the module), case routing.
+    routes.agents.register(app, ctx)
+    routes.case_agents.register(app, ctx)
+    routes.mcp.register(app, ctx)  # ADR #466: the MCP endpoint, last — it calls the others
 
     # F40: the gate's completeness half. `DeclaredRoutes` refuses at registration and gives the
     # better error; this re-checks the *result*, so a route registered by any other path — an

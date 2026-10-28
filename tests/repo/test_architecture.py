@@ -523,6 +523,18 @@ ROUTE_ORDER_BASELINE: list[tuple[str, str]] = [
     ("GET", "/app/views/parts/casefeed.js"),
     ("GET", "/app/views/parts/casedetail.js"),
     ("GET", "/app/views/playbooks.js"),
+    ("GET", "/app/roster.js"),
+    ("GET", "/app/views/agents.js"),
+    ("GET", "/app/views/org.js"),
+    ("GET", "/app/views/parts/nocui.js"),
+    ("GET", "/app/views/parts/agentkey.js"),
+    ("GET", "/app/views/parts/agentform.js"),
+    ("GET", "/app/views/parts/agentdetail.js"),
+    ("GET", "/app/views/parts/agentdash.js"),
+    ("GET", "/app/views/parts/agentruns.js"),
+    ("GET", "/app/views/parts/agentadmin.js"),
+    ("GET", "/app/views/parts/casemilestones.js"),
+    ("GET", "/app/views/parts/caseassign.js"),
     ("GET", "/vendor/preact-10.29.8.module.js"),
     ("GET", "/vendor/htm-3.1.1.module.js"),
     ("GET", "/style.css"),
@@ -683,6 +695,21 @@ ROUTE_ORDER_BASELINE: list[tuple[str, str]] = [
     ("GET", "/api/noc/playbooks/{playbook_id}"),
     ("POST", "/api/noc/playbooks/{playbook_id}"),
     ("POST", "/api/noc/playbooks/{playbook_id}/enabled"),
+    ("GET", "/api/noc/agents"),
+    ("POST", "/api/noc/agents"),
+    ("GET", "/api/noc/agents/me"),
+    ("GET", "/api/noc/agents/{agent_id}"),
+    ("POST", "/api/noc/agents/{agent_id}"),
+    ("POST", "/api/noc/agents/{agent_id}/invoke"),
+    ("POST", "/api/noc/agents/{agent_id}/pause"),
+    ("POST", "/api/noc/agents/{agent_id}/resume"),
+    ("POST", "/api/noc/agents/{agent_id}/terminate"),
+    ("POST", "/api/noc/agents/{agent_id}/key"),
+    ("GET", "/api/noc/runs/{run_id}"),
+    ("POST", "/api/noc/runs/{run_id}/finish"),
+    ("POST", "/api/noc/cases/{sid}/assign"),
+    ("POST", "/api/noc/cases/{sid}/escalate"),
+    ("POST", "/api/mcp"),
 ]
 
 
@@ -795,7 +822,11 @@ async def test_the_api_route_order_is_unchanged_by_the_ui_rewrite(store: Store) 
     # **Unreleased: 143 -> 150.** The executor and playbooks (ADRs #462, #463): `/api/noc/exec` and
     # `/api/noc/playbooks` are new segments, `…/{playbook_id}/enabled` is concrete below its id,
     # and `…/secrets/{secret_id}/hostkey` is a concrete segment beside `…/check` and `…/lease`.
-    assert len(live) == 150, (
+    # **Unreleased: 150 -> 165.** The agents, their runs, case routing and MCP (ADRs #465-#467):
+    # `/api/noc/agents/me` is registered before `/api/noc/agents/{agent_id}`, which would otherwise
+    # read it as an id; every act on an agent and a run is a concrete segment below its id;
+    # `…/cases/{sid}/assign` and `…/escalate` are concrete below a case; `/api/mcp` is new.
+    assert len(live) == 165, (
         f"the /api surface is {len(live)} pairs; v0.16.0 adds exactly five, v0.16.2 exactly one, "
         f"v0.16.3 exactly one, v0.16.5 exactly one — `POST /api/alarms/clear` — v0.18.0 exactly "
         f"one, `GET /api/correlation`, and v0.21.0 exactly thirteen for maintenance windows, "
@@ -1443,8 +1474,8 @@ def test_the_queue_put_on_the_hot_path_is_non_blocking() -> None:
 #: `engine/noc/` `commands`, `executor`, `playbook` and `runbook`, `store/noc_playbooks.py`,
 #: migration `0035_noc_automation.sql`, the `noc_exec` and `playbooks` routes, and the
 #: `views/playbooks` console module.
-SRC_TREE_DIGEST = "8146ef1ee0d229590ed3d8aacb018f34f4178163862df9deca7aa937b4f63851"
-SRC_FILE_COUNT = 431
+SRC_TREE_DIGEST = "9834143a68be692ab12c35d1a7462b0ffe3b4b29e22a3d8ab73202a826f90f45"
+SRC_FILE_COUNT = 461
 SRC_VERSION_FILE = "src/netcorenoc/__init__.py"
 
 

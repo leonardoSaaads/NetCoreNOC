@@ -4,9 +4,8 @@ Everything here decides *whether a request may proceed*; nothing here decides *w
 That is the whole criterion (DECISIONS #76), and it is why the write-side scope check lives beside
 the read-side one even though the two sat four hundred lines apart in v0.7.1's `api.py`.
 
-The order the steps run, and what the perimeter does and does not own, are described once in
-`docs/architecture/DESIGN.md` § "v0.7.2 — the perimeter as a named component". They are not
-restated here, so there is one description to keep true.
+The order the steps run, and what the perimeter does and does not own, are described once — not
+restated here — in `docs/architecture/DESIGN.md` § "v0.7.2 — the perimeter as a named component".
 
 The perimeter owns no domain rule and makes no authorization decision of its own: capability
 resolution is `rbac.resolve_capabilities` and scope resolution is `shaping.visible_nes`, both
@@ -64,8 +63,7 @@ DENIED_ACTION = {
     "users.manage": "user.update",
     "tokens.manage": "token.create",
     "config.read": "config.change",  # a denied config *access* is logged under the config action
-    "config.write": "config.change",
-    # v0.6.0 (F21): an attempted system-wide logic change, under the action it tried to perform.
+    "config.write": "config.change",  # (F21, v0.6.0) below: a logic change, under its own action
     "scorer.preview": "scorer.preview",
     "scorer.write": "scorer.config.update",
     # v0.7.0 (F27): an attempted privilege change, under the policy action it tried to perform.
@@ -77,6 +75,7 @@ DENIED_ACTION = {
     "secrets.write": "noc.secret.update",
     "secrets.reveal": "noc.secret.reveal",
     "secrets.grants": "noc.grant.change",
+    "agents.manage": "noc.agent.update",
 }
 # Fail fast at import if the presentation mapping drifts from the authorization source of truth.
 assert set(DENIED_ACTION) == set(rbac.AUDITED_DENIED_PERMISSIONS), (
@@ -297,8 +296,9 @@ class Perimeter:
         if principal.must_change_password and (method, path) not in BOOTSTRAP_ALLOWED:
             raise HTTPException(status_code=403, detail="password change required")
         # (4) rate limit — before RBAC, so a flood of refused requests is refused cheaply too
-        # instead of writing an audit row each (ADR #453).
-        if not self._limiter.allow(_client_ip(request), time.monotonic()):
+        # (ADR #453). A request the appliance made to itself (`asgi_call`) was paid for once.
+        paid = request.scope.get("netcorenoc.in_process") is True
+        if not (paid or self._limiter.allow(_client_ip(request), time.monotonic())):
             raise HTTPException(status_code=429, detail="rate limit exceeded")
         # (5) RBAC (single source of truth). v0.7.0: the capability set is resolved per request as
         # `ceiling(role) ∩ stored policy` — the compiled map is the first operand, so no stored

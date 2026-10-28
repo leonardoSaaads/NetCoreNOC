@@ -1,4 +1,4 @@
-/* NOC → KPIs: how fast the NOC takes and documents what reaches it (ADR #460).
+/* NOC → KPIs: how fast the NOC takes and documents what reaches it (ADRs #460, #464, #468).
  *
  * Two clocks over a window, from every time a case entered the NOC queue: the take (critical 25
  * minutes, major one hour, minor two hours) and the customer update (30 minutes from the take).
@@ -10,7 +10,10 @@
 import { html, cx } from "../dom.js";
 import { get } from "../api.js";
 import { Loader, Stat, SectionHeading } from "../widgets.js";
+import { Bars } from "../compare.js";
 import { span } from "./parts/caseclock.js";
+
+const TONE = { critical: "alarm", major: "warn", minor: null };
 
 const WINDOWS = [[1, "24 hours"], [7, "7 days"], [30, "30 days"]];
 const pct = (v) => (v == null ? "—" : `${v}%`);
@@ -35,12 +38,12 @@ export class NocKpis extends Loader {
     const days = this.days();
     const open = ["new", "auto", "queue"].reduce((n, s) => n + (k.counts[s] || 0), 0);
     return html`<div class="noc-kpis">
-      <div class="access-tabs" role="tablist" aria-label="Window">
+      <div class="noc-toolbar"><div class="seg" role="tablist" aria-label="Window">
         ${WINDOWS.map(([d, label]) => html`<button type="button" role="tab" key=${d}
-          aria-selected=${d === days} class=${cx("access-tab", d === days && "on")}
+          aria-selected=${d === days} class=${cx("seg-btn", d === days && "on")}
           onClick=${() => this.props.navigate(`#/kpis?days=${d}`)}>${label}</button>`)}
-      </div>
-      <div class="stat-row">
+      </div></div>
+      <div class="stat-row noc-stats">
         <${Stat} label="Waiting in the queue" value=${open} note="now" />
         <${Stat} label="Taken within target" value=${pct(k.take.met_pct)}
           note=${`${k.take.met} met · ${k.take.missed + k.take.late} late`}
@@ -51,12 +54,23 @@ export class NocKpis extends Loader {
         <${Stat} label="Customer update within 30 min" value=${pct(k.document.met_pct)}
           note=${`${k.document.met} met · ${k.document.missed + k.document.late} late`} />
       </div>
-      <${SectionHeading} title="By priority" hint="Targets: critical 25 min, major 1 h, minor 2 h to take." />
-      <table class="data"><thead><tr><th scope="col">Priority</th><th scope="col">Target</th>
-        <th scope="col">Met</th><th scope="col">Missed</th><th scope="col">Waiting</th></tr></thead>
-        <tbody>${Object.entries(k.by_priority).map(([p, row]) => html`<tr key=${p}>
-          <td>${k.priorities ? k.priorities[p] : p}</td><td>${span(k.targets.take_s[p])}</td><td>${row.met}</td>
-          <td>${row.missed}</td><td>${row.open}</td></tr>`)}</tbody></table>
+      <${SectionHeading} title="By priority"
+        hint="Targets: take — critical 25 min, major 1 h, minor 2 h; restore service — 4 h, 24 h, 72 h." />
+      <div class="kpi-split">
+        <table class="data"><thead><tr><th scope="col">Priority</th><th scope="col">Take target</th>
+          <th scope="col">Restore target</th><th scope="col">Met</th><th scope="col">Missed</th>
+          <th scope="col">Waiting</th></tr></thead>
+          <tbody>${Object.entries(k.by_priority).map(([p, row]) => html`<tr key=${p}>
+            <td>${k.priorities ? k.priorities[p] : p}</td><td>${span(k.targets.take_s[p])}</td>
+            <td>${span(k.targets.restore_s[p])}</td><td>${row.met}</td>
+            <td>${row.missed}</td><td>${row.open}</td></tr>`)}</tbody></table>
+        <${Bars} title="Takes missed, by priority" source="the NOC queue's entries"
+          span=${WINDOWS.find(([d]) => d === days)[1]} note="nothing taken yet"
+          rows=${Object.values(k.by_priority).some((r) => r.met + r.missed)
+            ? Object.entries(k.by_priority).map(([p, row]) => ({ key: p,
+              label: k.priorities ? k.priorities[p] : p, value: row.missed, tone: TONE[p] }))
+            : []} />
+      </div>
       <p class="hint">${`${k.cycles} entr${k.cycles === 1 ? "y" : "ies"} into the queue in the last ${
         WINDOWS.find(([d]) => d === days)[1]}; ${k.take.withdrawn} ended before anyone took them.`}</p>
     </div>`;

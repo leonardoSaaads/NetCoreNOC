@@ -54,12 +54,12 @@ export class Secrets extends Loader {
     }
     const tab = this.tab();
     return html`<div class="secrets">
-      <div class="access-tabs" role="tablist" aria-label="Secrets">
+      <div class="seg" role="tablist" aria-label="Secrets">
         <button type="button" role="tab" aria-selected=${tab === "credentials"}
-          class=${cx("access-tab", tab === "credentials" && "on")}
+          class=${cx("seg-btn", tab === "credentials" && "on")}
           onClick=${() => this.props.navigate("#/secrets")}>Credentials</button>
         ${can("secrets.grants") ? html`<button type="button" role="tab"
-          aria-selected=${tab === "grants"} class=${cx("access-tab", tab === "grants" && "on")}
+          aria-selected=${tab === "grants"} class=${cx("seg-btn", tab === "grants" && "on")}
           onClick=${() => this.props.navigate("#/secrets?tab=grants")}>Custodians & agents</button>`
           : null}
       </div>
@@ -87,7 +87,7 @@ export class Secrets extends Loader {
       ${this.state.creating ? html`<${SecretForm} catalogue=${data.catalogue} secondFactor=${data.second_factor}
         onSaved=${(saved) => { this.setState({ creating: false }); this.open(saved.id); this.refresh(); }}
         onCancel=${() => this.setState({ creating: false })} />` : null}
-      ${rows.length ? html`<div class="table-scroll"><table class="data secrets-table">
+      ${rows.length ? html`<div class="table-scroll list-view"><table class="data secrets-table">
         <thead><tr>
           <th scope="col">Status</th><th scope="col">Name</th><th scope="col" class="wide-only">Type</th>
           <th scope="col">Where</th><th scope="col">Grants</th><th scope="col">Agents</th>

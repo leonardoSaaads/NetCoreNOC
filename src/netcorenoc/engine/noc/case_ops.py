@@ -34,6 +34,7 @@ __all__ = [
     "event",
     "pend",
     "release",
+    "reprioritize",
     "requeue",
     "resolve",
     "take",
@@ -81,6 +82,7 @@ async def take(store: Store, case: Mapping[str, Any], actor: Actor, now: float) 
     cases.transition("take", status)
     if status in ("new", "auto"):
         # Taken before it reached the queue: the cycle it would have opened, taken at once.
+        await reprioritize(store, sid, now)
         await store.noc_case_enqueue(sid, "opened" if status == "new" else "automation", now)
     await store.noc_case_move(
         sid, "working", now, actor.ref, owner=(actor.ref, actor.name, actor.kind)
@@ -145,7 +147,10 @@ async def update(
     merged = {**case, **fields}
     if case["status"] == "working" and cases.documented(merged, now=now):
         await store.noc_cycle_documented(sid, now)
-    named = {"next_update_at": "next update", "priority": "priority"}
+    named = {
+        "next_update_at": "next update",
+        "priority": f"priority to {cases.PRIORITIES.get(str(fields.get('priority')), '')}",
+    }
     changed = [
         cases.FIELD_LIMITS[f][0].lower() if f in cases.FIELD_LIMITS else named.get(f, f)
         for f in sorted(fields)
@@ -261,8 +266,36 @@ async def auto_pend(
     return True
 
 
+#: Worst first: a lower number is a higher priority.
+_RANK = {"critical": 0, "major": 1, "minor": 2}
+
+
+async def reprioritize(store: Store, sid: int, now: float) -> str | None:
+    """While the priority is still the appliance's (`priority_by` NULL), the worst effective
+    severity among the situation's alarms decides it — raised, never lowered: lowering is a
+    person's call, and a clock relaxed after the fact is a clock gamed (ADR #464). Returns the
+    new priority, or None when it stays."""
+    case = await store.noc_case(sid)
+    if case is None or case.get("priority_by") is not None:
+        return None
+    worst = await store.noc_case_severity(sid)
+    derived = cases.priority_of(worst)
+    if _RANK[derived] >= _RANK[str(case["priority"])]:
+        return None
+    await store.noc_case_raise_priority(sid, derived, now)
+    await event(
+        store,
+        sid,
+        f"Priority raised to {cases.PRIORITIES[derived]}: the situation is {worst} on the Broker.",
+        now,
+    )
+    return derived
+
+
 async def dispatch(store: Store, sid: int, now: float, *, automate: bool = False) -> None:
-    """A `new` case goes to automation or to the NOC queue, its take clock counted from opening."""
+    """A `new` case goes to automation or to the NOC queue, its take clock counted from opening —
+    at the priority its alarms give it (`reprioritize`)."""
+    await reprioritize(store, sid, now)
     if automate:
         await store.noc_case_move(sid, "auto", now, "system")
         await event(store, sid, "Automated checks started.", now)
@@ -274,6 +307,7 @@ async def dispatch(store: Store, sid: int, now: float, *, automate: bool = False
 async def requeue(store: Store, sid: int, reason: str, now: float, *, note: str = "") -> None:
     """Back to the NOC queue — a pending case's next update came, a person posted on it, or
     automation did not conclude."""
+    await reprioritize(store, sid, now)
     await store.noc_case_enqueue(sid, reason, now)
     await event(
         store, sid, f"Back in the NOC queue: {cases.CYCLE_REASONS[reason]}. {note}".strip(), now

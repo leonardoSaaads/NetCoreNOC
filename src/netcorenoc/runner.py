@@ -26,8 +26,7 @@ from typing import Any
 
 import uvicorn
 
-from netcorenoc.api import QuietServer, create_app
-from netcorenoc.api.case_close import automation_broker
+from netcorenoc.api import QuietServer, agent_runtime, create_app
 from netcorenoc.crosscutting import administration, posture, secretbox, shaping, vault
 from netcorenoc.crosscutting.runtime import RuntimeConfig
 from netcorenoc.crosscutting.settings import (
@@ -394,10 +393,10 @@ async def _serve(settings: Settings, store: Store) -> None:
             await feed.rewind(supervisor.last_error.get("engine", ""))
         await engine.run()
 
-    noc = {  # ADRs #457, #459, #463: the vault's checks, cases, playbooks; off the ingest path.
+    noc = {  # ADRs #457, #459, #463, #467: checks, cases, playbooks, agents; off the ingest path.
         "noc-checks": lambda: probe.check_loop(store, settings.noc_check_s),
         "noc-cases": lambda: case_loop.case_loop(store, runbook.automation),
-        "noc-playbooks": lambda: runbook.run_loop(store, automation_broker(store, engine)),
+        **agent_runtime.loops(store, engine, app),
     }
     tasks = [
         asyncio.create_task(supervisor.run("engine", run_engine)),

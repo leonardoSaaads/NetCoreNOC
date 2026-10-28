@@ -54,9 +54,11 @@ from netcorenoc.store.mw_compile import MaintenanceCompileMixin
 from netcorenoc.store.mw_ledger import MaintenanceLedgerMixin
 from netcorenoc.store.mw_reads import MaintenanceReadMixin
 from netcorenoc.store.noc_access import NocAccessMixin
+from netcorenoc.store.noc_agents import NocAgentMixin
 from netcorenoc.store.noc_cases import NocCaseMixin
 from netcorenoc.store.noc_feed import NocFeedMixin
 from netcorenoc.store.noc_playbooks import NocPlaybookMixin
+from netcorenoc.store.noc_routing import NocRoutingMixin
 from netcorenoc.store.noc_vault import NocVaultMixin
 from netcorenoc.store.occurrences import OccurrenceMixin
 from netcorenoc.store.organizations import OrganizationMixin
@@ -109,6 +111,8 @@ class Store(
     NocCaseMixin,
     NocFeedMixin,
     NocPlaybookMixin,
+    NocAgentMixin,
+    NocRoutingMixin,
     AutonomyMixin,
     # v0.27.0: the league's decisions and pin, and pending proposals (ADRs #425, #428). Plain
     # `StoreBase` mixins that override nothing.

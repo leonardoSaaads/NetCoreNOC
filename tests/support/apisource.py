@@ -41,6 +41,7 @@ MODULE_ORDER: tuple[str, ...] = (
     "models_settings.py",  # v0.30.0: the SNMP receiver, outgoing email, recovery by email
     "models_noc.py",  # the NOC plane: the vault, custodians and agents, leases (ADR #454)
     "models_cases.py",  # NOC cases and their feed (ADRs #459-#461)
+    "models_agents.py",  # the NOC's agents and case routing (ADRs #465-#467)
     "public_paths.py",  # v0.26.0: the unauthenticated-path allowlist, off `declare.py`
     "reference.py",  # v0.30.0: one sentence per route, for the API reference
     "shipped_view.py",  # v0.26.0: the shipped model as the console sees it, off `routes/decider.py`
@@ -59,6 +60,14 @@ MODULE_ORDER: tuple[str, ...] = (
     "noc_gate.py",  # the vault's custody and step-up gates, which both NOC route modules import
     "case_view.py",  # how a case and its feed read, shared by both case route modules
     "case_close.py",  # the broker's half of resolving a case
+    # ADRs #465-#467: an agent's identity and views, the in-process call, the MCP protocol and
+    # tools, and the `claude` adapter — helpers the route modules and the runner import.
+    "agent_hire.py",
+    "agent_view.py",
+    "asgi_call.py",
+    "mcp_tools.py",
+    "mcp.py",
+    "agent_runtime.py",
     "app.py",
     "routes/__init__.py",
     "routes/static.py",
@@ -105,6 +114,9 @@ MODULE_ORDER: tuple[str, ...] = (
     "routes/case_feed.py",
     "routes/noc_exec.py",
     "routes/playbooks.py",
+    "routes/agents.py",
+    "routes/case_agents.py",
+    "routes/mcp.py",
 )
 
 #: **The floor a subset must not be able to clear** (F98).

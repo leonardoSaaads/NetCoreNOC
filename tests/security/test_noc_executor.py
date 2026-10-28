@@ -123,3 +123,37 @@ def test_the_read_only_rule() -> None:
         commands.check("set system host-name x", "root")
     with pytest.raises(commands.CommandError, match="writes or escalates"):
         commands.check("show configuration commit", "root")
+
+
+def test_the_read_only_rule_on_routeros() -> None:
+    """MikroTik RouterOS (ADR #469): a menu path then `print`, `monitor … once` or `ping`.
+
+    The owner's lab switch is a MikroTik: before this, no command could reach it, because RouterOS
+    puts no read verb in front. What reads may run; every way to act is refused before connecting —
+    a write command, a hyphenated one (`reset-counters`), a `print` that writes a file, and a
+    bracket, which RouterOS evaluates as a nested command.
+    """
+    for line in (
+        "/interface print",
+        "/interface ethernet print detail without-paging",
+        "/system resource print",
+        '/log print where topics~"interface"',
+        "/interface ethernet monitor ether1 once",
+    ):
+        assert commands.check(line, "view_only") == line
+    assert commands.check("/ping 10.0.0.2 count=3", "diagnostic")
+    for line, why in (
+        ("/interface set ether1 disabled=yes", "'set' writes"),
+        ("/interface ethernet reset-counters ether1", "'reset' writes"),
+        ("/interface print file=dump", "'file' writes"),
+        ("/interface print where name=[/system script run x]", "nested command"),
+        ("/system script run cleanup", "'run' writes"),
+        ("/user add name=x password=y", "writes"),
+        ("/export", "'export' writes"),
+        ("/interface ethernet monitor ether1", "monitor … once"),
+        ("/system reboot", "'reboot' writes"),
+    ):
+        with pytest.raises(commands.CommandError, match=why):
+            commands.check(line, "root")
+    with pytest.raises(commands.CommandError, match="diagnostic access level"):
+        commands.check("/ping 10.0.0.2 count=3", "view_only")
