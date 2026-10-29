@@ -45,7 +45,7 @@ function Path({ circuit }) {
       <h4><${Icon} name="building" /> ${s.site || "Site"}</h4>
       <ul>${s.hops.map((h, j) => html`<li key=${j} class="ckt-hop">
         <span class="ckt-seg">${h.segment || "—"}</span>
-        <span class="ckt-coord">${Object.entries(h.fields).map(([k, v]) => html`<span key=${k}><i>${k}</i> ${v}</span>`)}</span>
+        <span class="ckt-coord">${Object.entries(h.fields).map(([k, v]) => html`<span key=${k}><i>${k}</i> <b>${v}</b></span>`)}</span>
       </li>`)}</ul>
     </li>`)}
     <li class="ckt-end"><span class="ckt-end-mark">Z</span><b>${circuit.z_end || "Z end"}</b></li>

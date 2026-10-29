@@ -69,11 +69,13 @@ async def test_the_top_bar_switches_planes_and_the_sidebar_follows(store: Store)
         "Cases",
         "KPIs",
         "Playbooks",
+        "All customers",
         "All agents",
         "Organization",
         "Secrets",
     ]
-    assert noc["navGroups"] == ["Work", "Agents", "NOC"]
+    # ADR #473: the customers the NOC serves, between the work and the agents.
+    assert noc["navGroups"] == ["Work", "Customers", "Agents", "NOC"]
     assert "GET /api/noc/access" in noc["requestPaths"]
     # ADR #470: the KPIs and the playbooks are a lead's — an editor nobody named is not offered
     # them (and each route refuses them on its own).
@@ -81,10 +83,12 @@ async def test_the_top_bar_switches_planes_and_the_sidebar_follows(store: Store)
     assert "KPIs" not in editor["navItems"] and "Playbooks" not in editor["navItems"]
     assert editor["navItems"][:2] == ["Overview", "Cases"]
     # A viewer reads cases (the customer's side), so the switch is there — and the NOC plane
-    # offers them the overview and the cases and nothing of the vault: never a greyed half.
+    # offers them the overview, the cases and the customers' books (ADR #473) and nothing of the
+    # vault: never a greyed half.
     viewer = _render(tables["viewer"], "#/cases")
     assert ".plane-noc.plane-on" in viewer["dump"]
-    assert viewer["navItems"] == ["Overview", "Cases"] and viewer["navGroups"] == ["Work"]
+    assert viewer["navItems"] == ["Overview", "Cases", "All customers"]
+    assert viewer["navGroups"] == ["Work", "Customers"]
     refused = _render(tables["viewer"], "#/secrets")
     assert refused["refused"] is True
     assert not [p for p in refused["requestPaths"] if "/api/noc/" in p], "a refusal asks nothing"

@@ -85,10 +85,17 @@ function entriesOf({ capabilities, plane = "broker", extras = {} }) {
   return out;
 }
 
-/** Which entry is the page on screen: an extra naming the address exactly, else the view. */
+/** Which entry is the page on screen: an extra naming the address exactly, else the deepest extra
+ * the address lies under (a circuit under its customer's *Circuits*, ADR #473), else the view. */
 function activeIndex(entries, activeId, activeHref) {
   const exact = entries.findIndex((e) => e.sub && e.href === activeHref);
-  return exact !== -1 ? exact : entries.findIndex((e) => e.view && e.view.id === activeId);
+  if (exact !== -1) return exact;
+  let under = -1;
+  entries.forEach((e, i) => {
+    if (e.sub && String(activeHref || "").startsWith(`${e.href}/`)
+      && (under === -1 || e.href.length > entries[under].href.length)) under = i;
+  });
+  return under !== -1 ? under : entries.findIndex((e) => e.view && e.view.id === activeId);
 }
 
 export class Sidebar extends Component {

@@ -169,17 +169,17 @@ export class CaseDetail extends Component {
     return html`<aside class="record-side">
       <${Milestones} c=${c} now=${now} />
       <${Assignment} c=${c} onMode=${(mode) => this.setState({ mode })} />
+      ${(c.organizations || []).some((o) => o.customer) ? html`<section class="panel-block" aria-label="Its customers">
+        <h3>Its customers</h3>
+        ${c.organizations.filter((o) => o.customer).map((o) => html`<p key=${o.id}><a class="tap"
+          href=${`#/customers/${o.id}`}>${o.name}: instructions, workbook, circuits →</a></p>`)}
+      </section>` : null}
       <section class="panel-block" aria-label="The situation">
         <h3>The situation</h3>
         <p>${s.name || `Situation #${c.id}`}</p>
         <p class="muted">${`${s.members} alarm${s.members === 1 ? "" : "s"}${s.severity ? ` · ${s.severity} on the Broker` : ""} · ${s.status}`}</p>
         <a class="tap" href=${`#/situations/${c.id}`}>Its traps and elements on the Broker →</a>
       </section>
-      ${(c.organizations || []).some((o) => o.customer) ? html`<section class="panel-block" aria-label="Its customers">
-        <h3>Its customers</h3>
-        ${c.organizations.filter((o) => o.customer).map((o) => html`<p key=${o.id}><a class="tap"
-          href=${`#/customers/${o.id}`}>${o.name}: instructions, workbook, circuits →</a></p>`)}
-      </section>` : null}
       ${c.resolution ? html`<section class="panel-block case-resolution">
         <h3>${c.resolution.how_label}</h3>
         <p><b>${c.resolution.cause_label}.</b> ${c.resolution.solution}</p>

@@ -17,6 +17,7 @@ Pure: bytes in, words out, every read bounded (`office.py`).
 
 from __future__ import annotations
 
+import base64
 import re
 import zlib
 from dataclasses import dataclass
@@ -122,7 +123,8 @@ def classify(name: str, data: bytes) -> Kind:
     return kind
 
 
-_PDF_STREAM = re.compile(rb"<<(.{0,2000}?)>>\s*stream\r?\n", re.S)
+_PDF_STREAM = re.compile(rb"\bstream\r?\n")
+_PDF_FILTER = re.compile(rb"/Filter\s*(\[[^\]]{0,200}\]|/[A-Za-z0-9]+)")
 _PDF_STRING = re.compile(rb"\((?:\\.|[^\\()])*\)", re.S)
 _PDF_OP = re.compile(
     rb"(\[(?:[^\]\\]|\\.)*\]\s*TJ|\((?:\\.|[^\\()])*\)\s*(?:Tj|'|\")|T\*|ET)", re.S
@@ -166,6 +168,29 @@ def _inflate(data: bytes) -> bytes | None:
     return out
 
 
+def _decoded(header: bytes, body: bytes) -> bytes | None:
+    """A stream's bytes through its filters, in order — the three a text stream uses; any other
+    (an image's) is not read."""
+    found = _PDF_FILTER.search(header)
+    for name in re.findall(rb"/([A-Za-z0-9]+)", found.group(1)) if found else []:
+        try:
+            if name == b"ASCII85Decode":
+                framed = body.strip().removeprefix(b"<~").removesuffix(b"~>")
+                body = base64.a85decode(framed)
+            elif name == b"ASCIIHexDecode":
+                body = bytes.fromhex(re.sub(rb"\s|>", b"", body).decode("ascii"))
+            elif name == b"FlateDecode":
+                inflated = _inflate(body)
+                if inflated is None:
+                    return None
+                body = inflated
+            else:
+                return None
+        except ValueError:
+            return None
+    return body
+
+
 def pdf_text(data: bytes) -> str:
     """The text a PDF's content streams draw with plain strings, in drawing order."""
     lines: list[str] = []
@@ -178,14 +203,11 @@ def pdf_text(data: bytes) -> str:
         end = data.find(b"endstream", start)
         if end == -1:
             break
-        body = data[start:end]
-        if b"FlateDecode" in match.group(1):
-            inflated = _inflate(body)
-            if inflated is None:
-                continue
-            body = inflated
-        elif match.group(1).count(b"/Filter"):
-            continue  # another filter: not read
+        # The stream's dictionary: what lies between its object's header and the keyword.
+        head = data[max(0, match.start() - 2000) : match.start()]
+        body = _decoded(head[head.rfind(b" obj") + 1 :], data[start:end])
+        if body is None:
+            continue
         for op in _PDF_OP.finditer(body):
             token = op.group(1)
             if token in (b"T*", b"ET"):

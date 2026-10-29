@@ -120,17 +120,19 @@ export class Workbook extends Component {
     return html`<li class="wb-row" key=${contact.id}>
       <span class="wb-level" title=${`Called ${ORDINAL[contact.escalation_level]}`}>${ORDINAL[contact.escalation_level]}</span>
       <div class="wb-who">
-        <b>${contact.name}</b>${contact.role ? html`<span class="muted"> · ${contact.role}</span>` : null}
+        <div class="wb-name">
+          <span><b>${contact.name}</b>${contact.role ? html`<span class="muted"> · ${contact.role}</span>` : null}</span>
+          ${this.may() ? html`<span class="wb-acts">
+            ${removing === contact.id ? html`<span class="wb-confirm">Remove ${contact.name}?${" "}
+                <button type="button" class="danger" disabled=${busy} onClick=${() => this.remove(contact)}>Remove</button>
+                <button type="button" onClick=${() => this.setState({ removing: null })}>Keep</button></span>`
+              : html`<button type="button" class="linkish" onClick=${() => this.setState({ editing: contact })}>Change</button>
+                <button type="button" class="linkish danger-link" onClick=${() => this.setState({ removing: contact.id })}>Remove</button>`}
+          </span>` : null}
+        </div>
         <${Reach} contact=${contact} />
         ${contact.hours || contact.notes ? html`<span class="wb-note muted">${[contact.hours, contact.notes].filter(Boolean).join(" — ")}</span>` : null}
       </div>
-      ${this.may() ? html`<span class="wb-acts">
-        ${removing === contact.id ? html`<span class="wb-confirm">Remove ${contact.name}?${" "}
-            <button type="button" class="danger" disabled=${busy} onClick=${() => this.remove(contact)}>Remove</button>
-            <button type="button" onClick=${() => this.setState({ removing: null })}>Keep</button></span>`
-          : html`<button type="button" class="linkish" onClick=${() => this.setState({ editing: contact })}>Change</button>
-            <button type="button" class="linkish danger-link" onClick=${() => this.setState({ removing: contact.id })}>Remove</button>`}
-      </span>` : null}
     </li>`;
   }
 

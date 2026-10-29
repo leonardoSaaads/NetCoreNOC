@@ -15,6 +15,7 @@
 
 from __future__ import annotations
 
+import base64
 import io
 import json
 import zipfile
@@ -71,12 +72,19 @@ def _xlsx(rows: list[list[str]], *, doctype: bool = False) -> bytes:
     return buffer.getvalue()
 
 
-def _pdf(text: str) -> bytes:
+def _pdf(text: str, *, a85: bool = False) -> bytes:
+    """A one-page PDF drawing ``text``: its stream deflated, and (as ReportLab writes it) then
+    ASCII85-encoded."""
     stream = zlib.compress(f"BT /F1 12 Tf 72 720 Td ({text}) Tj ET".encode())
+    filters = b"/FlateDecode"
+    if a85:
+        stream, filters = base64.a85encode(stream) + b"~>", b"[ /ASCII85Decode /FlateDecode ]"
     return (
-        b"%PDF-1.4\n1 0 obj << /Length "
+        b"%PDF-1.4\n1 0 obj\n<< /Length "
         + str(len(stream)).encode()
-        + b" /Filter /FlateDecode >>\nstream\n"
+        + b" /Filter "
+        + filters
+        + b" >>\nstream\n"
         + stream
         + b"\nendstream\nendobj\n%%EOF\n"
     )
@@ -135,6 +143,8 @@ def test_a_document_is_what_its_first_bytes_say() -> None:
     kind = doctext.classify("topology.pdf", _pdf("Shelf 1 at SILA PoP, row 8 cab 6"))
     text, _note = doctext.extract(kind, _pdf("Shelf 1 at SILA PoP, row 8 cab 6"))
     assert "Shelf 1 at SILA PoP, row 8 cab 6" in text
+    encoded = _pdf("ODF 2 at RJO PoP Barra", a85=True)
+    assert "ODF 2 at RJO PoP Barra" in doctext.pdf_text(encoded)
 
 
 async def _estate(store: Store) -> dict[str, int]:
