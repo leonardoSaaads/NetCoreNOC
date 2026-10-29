@@ -1,15 +1,19 @@
-/* Hiring an agent, and changing one (ADRs #465, #468) — an admin's (`agents.manage`).
+/* Hiring an agent, and changing one (ADRs #465, #468, #471) — an admin's (`agents.manage`).
  *
  * Paperclip's agent configuration, in five parts: who it is (name, title, mark), its place in the
- * NOC (role, tier, manager, whether cases start with it), how it runs (the adapter and its
- * settings), what it is told (instructions — served to it as the MCP prompt `noc_agent`), and its
- * limits. The catalogue (roles, marks, adapters, models) is the server's, read with the list, and
+ * NOC (role, tier, manager, whether cases start with it), how it runs (an AI provider's card, or
+ * elsewhere — `agentrun.js`), what it is told (instructions — served to it as the MCP prompt
+ * `noc_agent`), and its limits. The catalogue (roles, marks, adapters, models) is the server's, read with the list, and
  * the server checks every value again. A change sends only what changed, with the version read.
  */
 
 import { html, Component, cx } from "../../dom.js";
-import { get, post } from "../../api.js";
+import { post } from "../../api.js";
 import { AgentGlyph } from "./nocui.js";
+import { RunSettings } from "./agentrun.js";
+
+/** The adapters the appliance runs itself: moving to or from one is a new key. */
+const HERE = ["claude", "openai"];
 
 const HEARTBEATS = [[0, "Off — woken by cases only"], [300, "Every 5 minutes"],
   [900, "Every 15 minutes"], [1800, "Every 30 minutes"], [3600, "Every hour"],
@@ -26,10 +30,12 @@ function initial(agent) {
     name: a.name || "", title: a.title || "", role: a.role || "engineer", icon: a.icon || "bot",
     tier: a.tier || 1, reports_to: a.reports_to || 0, entry: Boolean(a.entry),
     adapter: a.adapter || "claude", instructions: a.instructions || "",
+    provider: config.provider || (a.adapter === "openai" ? "" : "anthropic"),
     capabilities: a.capabilities || "", wake_on_assignment: a.wake_on_assignment !== false,
     heartbeat_s: a.heartbeat_s || 0, escalate_after_s: a.escalate_after_s || 0,
     run_timeout_s: a.run_timeout_s || 900, budget: a.budget_month_cents ? a.budget_month_cents / 100 : 0,
-    model: config.model || "claude-opus-5-5", effort: config.effort || "high",
+    model: config.model || (a.adapter && a.adapter !== "claude" ? "" : "claude-opus-5-5"),
+    effort: config.effort || "high",
     secret_id: config.secret_id || "", max_turns: config.max_turns || 20,
     url: config.url || "", timeout_s: config.timeout_s || 10,
   };
@@ -38,6 +44,10 @@ function initial(agent) {
 function adapterConfig(st) {
   if (st.adapter === "claude") {
     return { model: st.model, effort: st.effort, secret_id: Number(st.secret_id) || null,
+      max_turns: Number(st.max_turns) || 20 };
+  }
+  if (st.adapter === "openai") {
+    return { provider: st.provider, model: st.model.trim(), secret_id: Number(st.secret_id) || null,
       max_turns: Number(st.max_turns) || 20 };
   }
   if (st.adapter === "webhook") return { url: st.url.trim(), timeout_s: Number(st.timeout_s) || 10 };
@@ -73,27 +83,13 @@ function choices(pairs, value) {
 export class AgentForm extends Component {
   constructor(props) {
     super(props);
-    this.state = { ...initial(props.agent), busy: false, error: null, keys: null };
-  }
-
-  componentDidMount() { if (this.state.adapter === "claude") this.readKeys(); }
-
-  /** The API tokens agents may use, for the `claude` adapter's key — a custodian's list. */
-  async readKeys() {
-    if (this.state.keys) return;
-    try {
-      const vault = await get("/api/noc/secrets");
-      this.setState({ keys: vault.secrets.filter((s) => s.kind === "api_token" && s.agent_access) });
-    } catch {
-      this.setState({ keys: [] });
-    }
+    this.state = { ...initial(props.agent), busy: false, error: null };
   }
 
   set(key) {
     return (e) => {
       const target = e.currentTarget;
       this.setState({ [key]: target.type === "checkbox" ? target.checked : target.value });
-      if (key === "adapter" && target.value === "claude") this.readKeys();
     };
   }
 
@@ -117,40 +113,6 @@ export class AgentForm extends Component {
     return html`<div class=${cx("pe-field", wide && "case-wide")}>
       <label for=${id}>${label}</label>${control}${hint ? html`<p class="hint">${hint}</p>` : null}
     </div>`;
-  }
-
-  adapterSettings(st, catalogue) {
-    const p = "agent-form";
-    if (st.adapter === "claude") {
-      const keys = st.keys;
-      return html`<div class="pe-fields">
-        ${this.field(`${p}-model`, "Model", html`<select id=${`${p}-model`} value=${st.model}
-          onChange=${this.set("model")}>${catalogue.models.map((m) => html`<option key=${m} value=${m}>${m}</option>`)}</select>`)}
-        ${this.field(`${p}-effort`, "Effort", html`<select id=${`${p}-effort`} value=${st.effort}
-          onChange=${this.set("effort")}>${catalogue.efforts.map((m) => html`<option key=${m} value=${m}>${m}</option>`)}</select>`,
-          "How hard it thinks before acting: higher is slower and costs more.")}
-        ${this.field(`${p}-key`, "Anthropic API key", keys === null
-          ? html`<p class="muted" id=${`${p}-key`}>Reading the vault…</p>`
-          : html`<select id=${`${p}-key`} required value=${st.secret_id} onChange=${this.set("secret_id")}>
-              <option value="">Choose a credential…</option>
-              ${keys.map((k) => html`<option key=${k.id} value=${k.id}>${k.name}</option>`)}
-            </select>`,
-          "An API token in Secrets with agent use on. The appliance unseals it for each run; the agent never sees it.")}
-        ${this.field(`${p}-turns`, "Most steps per run", html`<input id=${`${p}-turns`} type="number"
-          min="1" max="60" value=${st.max_turns} onInput=${this.set("max_turns")} />`)}
-      </div>`;
-    }
-    if (st.adapter === "webhook") {
-      return html`<div class="pe-fields">
-        ${this.field(`${p}-url`, "Wake-up URL", html`<input id=${`${p}-url`} type="url" required
-          placeholder="https://agents.example.net/netcorenoc" value=${st.url} onInput=${this.set("url")} />`,
-          "A signed POST says why it is woken — the case, the run — and never carries a credential.", true)}
-        ${this.field(`${p}-timeout`, "Wait for an answer (s)", html`<input id=${`${p}-timeout`}
-          type="number" min="1" max="30" value=${st.timeout_s} onInput=${this.set("timeout_s")} />`)}
-      </div>`;
-    }
-    return html`<p class="hint">It connects over MCP with its key when it decides to; the appliance
-      never calls it. Each visit is recorded as a run.</p>`;
   }
 
   render({ agent, catalogue, agents, onCancel }, st) {
@@ -197,17 +159,10 @@ export class AgentForm extends Component {
       </fieldset>
 
       <fieldset class="form-section"><legend>How it runs</legend>
-        <div class="adapter-pick" role="radiogroup" aria-label="How it runs">
-          ${Object.entries(catalogue.adapters).map(([k, v]) => html`<label key=${k}
-            class=${cx("adapter-opt", st.adapter === k && "on")}>
-            <input type="radio" name=${`${p}-adapter`} value=${k} checked=${st.adapter === k}
-              onChange=${this.set("adapter")} />
-            <span><b>${v.split(" — ")[0]}</b><span class="muted">${v.split(" — ")[1] || ""}</span></span>
-          </label>`)}
-        </div>
-        ${agent && (st.adapter === "claude") !== (agent.adapter === "claude") ? html`<p class="warnbox">
+        ${agent && HERE.includes(st.adapter) !== HERE.includes(agent.adapter) ? html`<p class="warnbox">
           Moving between the appliance and elsewhere gives ${agent.name} a new key; the old one stops working.</p>` : null}
-        ${this.adapterSettings(st, catalogue)}
+        <${RunSettings} st=${st} catalogue=${catalogue} set=${(key) => this.set(key)}
+          field=${(...args) => this.field(...args)} onChange=${(patch) => this.setState(patch)} />
       </fieldset>
 
       <fieldset class="form-section"><legend>What it is told</legend>

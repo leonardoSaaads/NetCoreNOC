@@ -1,15 +1,19 @@
-/* NOC → KPIs: how fast the NOC takes and documents what reaches it (ADRs #460, #464, #468).
+/* NOC → KPIs: how fast the NOC takes and documents what reaches it (ADRs #460, #464, #468, #470).
  *
  * Two clocks over a window, from every time a case entered the NOC queue: the take (critical 25
  * minutes, major one hour, minor two hours) and the customer update (30 minutes from the take).
  * A miss is reported with its overrun, because "missed" alone hides the difference between a
  * minute and a shift. Cases that ended before anyone took them (the situation cleared) are
  * withdrawn, and are not charged.
+ *
+ * **A lead's screen** (ADR #470): an admin's, an editor's an admin named a NOC lead, or an agent's.
+ * Anyone else is told so, and who to ask, before anything is read.
  */
 
 import { html, cx } from "../dom.js";
 import { get } from "../api.js";
-import { Loader, Stat, SectionHeading } from "../widgets.js";
+import { Loader, Stat, SectionHeading, Empty } from "../widgets.js";
+import { readNocAccess } from "../roster.js";
 import { Bars } from "../compare.js";
 import { span } from "./parts/caseclock.js";
 
@@ -32,9 +36,14 @@ export class NocKpis extends Loader {
 
   routeKey(props) { return String(props.query && props.query.get("days")); }
 
-  async load() { return get(`/api/noc/cases/kpis?days=${this.days()}`); }
+  async load() {
+    const access = await readNocAccess();
+    if (access && !access.lead) return { closed: access.explanations.lead };
+    return get(`/api/noc/cases/kpis?days=${this.days()}`);
+  }
 
   view(k) {
+    if (k.closed) return html`<${Empty} title="The NOC's KPIs are for its leads" will=${k.closed} />`;
     const days = this.days();
     const open = ["new", "auto", "queue"].reduce((n, s) => n + (k.counts[s] || 0), 0);
     return html`<div class="noc-kpis">

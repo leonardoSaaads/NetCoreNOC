@@ -1,9 +1,9 @@
 """NOC → Playbooks: the troubleshooting trees agents write, and how each has run (ADR #463).
 
-Reading them is the NOC's (`playbooks.read`, editor). **Writing one — or switching one on — is the
-agents' and the admins'** (ADR #465): `playbooks.write` and, on top, the agent grant (the one that
-lets a token use credentials, which is what a playbook does) or `secrets.grants`. Switching one
-off is a kill switch, so anyone with `playbooks.write` may. **It is active as soon as it is
+**Reading, writing and switching one on are a lead's** (ADRs #465, #470): `playbooks.read` or
+`playbooks.write` and, on top, `noc_gate.is_lead` — an admin, an editor an admin named a lead, or
+an agent (the grant that lets a token use credentials, which is what a playbook does). Switching
+one off is a kill switch, so anyone with `playbooks.write` may. **It is active as soon as it is
 stored** (the owner's choice), and that is safe because of what a playbook can say: read-only
 commands only, checked when it is stored and again when it runs (`engine/noc/commands.py`), four
 fixed tests on what came back, and three ways to end.
@@ -22,7 +22,7 @@ from fastapi import Depends, FastAPI, HTTPException, Request
 from netcorenoc.api.context import AppContext
 from netcorenoc.api.declare import DeclaredRoutes
 from netcorenoc.api.models_cases import PlaybookEnabledIn, PlaybookIn
-from netcorenoc.api.noc_gate import is_agent
+from netcorenoc.api.noc_gate import is_lead, require_lead
 from netcorenoc.crosscutting import auth
 from netcorenoc.engine.noc import cases, executor, playbook
 from netcorenoc.engine.noc.playbook import PlaybookError
@@ -30,7 +30,7 @@ from netcorenoc.engine.noc.playbook import PlaybookError
 NO_SUCH = "no such playbook"
 NOT_AUTHOR = (
     "a playbook acts with the credentials agents may use: it is written, or switched on, by an "
-    "agent the NOC hired or by an admin"
+    "agent the NOC hired, an admin, or an editor an admin named a NOC lead"
 )
 
 
@@ -74,9 +74,8 @@ def register(app: FastAPI, ctx: AppContext) -> None:
     route = DeclaredRoutes(app)
 
     async def require_author(request: Request, principal: auth.Principal) -> None:
-        if "secrets.grants" in request.state.capabilities or await is_agent(ctx, principal):
-            return
-        raise HTTPException(status_code=403, detail=NOT_AUTHOR)
+        if not await is_lead(ctx, request, principal):
+            raise HTTPException(status_code=403, detail=NOT_AUTHOR)
 
     def checked(document: Any) -> dict[str, Any]:
         try:
@@ -85,8 +84,11 @@ def register(app: FastAPI, ctx: AppContext) -> None:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     @route.get("/api/noc/playbooks", operation_id="noc_list_playbooks")
-    async def list_playbooks(principal: auth.Principal = Depends(security)) -> dict[str, Any]:
+    async def list_playbooks(
+        request: Request, principal: auth.Principal = Depends(security)
+    ) -> dict[str, Any]:
         """Every playbook: what it matches, whether it is on, how often it ran."""
+        await require_lead(ctx, request, principal)
         async with store.reading():
             rows = await store.noc_playbooks()
         return {
@@ -130,9 +132,10 @@ def register(app: FastAPI, ctx: AppContext) -> None:
 
     @route.get("/api/noc/playbooks/{playbook_id}", operation_id="noc_get_playbook")
     async def get_playbook(
-        playbook_id: int, principal: auth.Principal = Depends(security)
+        playbook_id: int, request: Request, principal: auth.Principal = Depends(security)
     ) -> dict[str, Any]:
         """One playbook, its whole tree, and its last twenty runs with their traces."""
+        await require_lead(ctx, request, principal)
         async with store.reading():
             row = await store.noc_playbook(playbook_id)
             runs = await store.noc_runs(playbook_id=playbook_id) if row else []

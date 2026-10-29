@@ -1426,8 +1426,15 @@ async def test_scoped_collection_routes_answer_differently_under_a_policy(
     engine, queue, app = await authutil.make_env(store)
     await _out_of_scope_ids(store, engine, queue)
     method, path = route
-    if path.startswith("/api/noc/cases"):
+    if path.startswith(("/api/noc/cases", "/api/noc/overview")):
         await _open_every_situation(store)
+    if path == "/api/noc/cases/kpis":
+        # ADR #470: the KPIs are a lead's; the editor is named one, so the scope is what differs.
+        async with store.lock:
+            editor = await store.get_user_by_name(authutil.ROLE_USER["editor"])
+            assert editor is not None
+            await store.noc_set_grant(f"user:{editor['id']}", "lead", True, 0.0, "test")
+            await store.commit()
     if path.startswith("/api/activity/"):
         # v0.22.0: these read a window ending NOW, and the fixture's traffic is from 2023 — so
         # both answers were empty and differed only in their `from`/`to`, which moved between the
@@ -1468,6 +1475,9 @@ def _without_clock(body: bytes) -> bytes:
             "cycles": parsed.get("cycles"),
         }
         return json.dumps(kept, sort_keys=True).encode()
+    if isinstance(parsed, dict) and "states" in parsed and "takes" in parsed:
+        # The NOC overview (ADR #470) reduced to what it counts: its `now` moves between reads.
+        return json.dumps({k: v for k, v in parsed.items() if k != "now"}, sort_keys=True).encode()
     if isinstance(parsed, dict) and {"from", "to"} <= set(parsed):
         parsed = {k: v for k, v in parsed.items() if k not in ("from", "to")}
         return json.dumps(parsed, sort_keys=True).encode()

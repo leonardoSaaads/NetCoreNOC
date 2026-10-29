@@ -1,7 +1,8 @@
-"""What a device credential is: its kinds, fields, access levels and binding (ADR #455).
+"""What a credential is: its kinds, fields, access levels and binding (ADRs #455, #471).
 
 A credential is a **kind** (SSH with a password, SSH with a key, SFTP, SNMP v1/v2c or v3, an API
-token, SMTP, or something else), a set of **fields** — all sealed, some masked even after a step-up
+token, SMTP, or something else — or, in the ``ai`` group, one AI provider's API key,
+`providers.py`), a set of **fields** — all sealed, some masked even after a step-up
 because they are the secret itself — a **host and port**, a **protocol version**, and the **access
 level** it grants on the device. The catalogue is served to the console and to agents
 (:func:`describe`) rather than restated in either, so the form and the validation cannot disagree.
@@ -18,6 +19,8 @@ import ipaddress
 import json
 import re
 from dataclasses import dataclass
+
+from netcorenoc.engine.noc import providers
 
 __all__ = [
     "ACCESS_LEVELS",
@@ -61,6 +64,8 @@ class Kind:
     versions: tuple[str, ...] = ()
     #: At least one of these fields must be given (SFTP: a password or a key).
     one_of: tuple[str, ...] = ()
+    #: ``device`` — what reaches equipment; ``ai`` — an AI provider's key (ADR #471).
+    group: str = "device"
 
 
 _USER = Field("username", "Username", max_len=128)
@@ -164,6 +169,21 @@ KINDS: dict[str, Kind] = {
                 Field("notes", "Notes", required=False, multiline=True, max_len=2000),
             ),
         ),
+        # ADR #471: one kind per AI provider, its one field the API key. Checked by connecting to
+        # its API's port, which says the endpoint answers, not that the key works.
+        *(
+            Kind(
+                p.kind,
+                f"{p.label} — {p.product}",
+                p.port,
+                "tcp",
+                "tcp",
+                (Field("api_key", "API key", secret=True, required=p.key_required, max_len=4096),),
+                ("HTTP", "HTTPS") if p.own_host else (p.scheme,),
+                group="ai",
+            )
+            for p in providers.PROVIDERS.values()
+        ),
     )
 }
 
@@ -264,6 +284,7 @@ def describe() -> dict[str, object]:
                 "checkable": k.check is not None,
                 "versions": list(k.versions),
                 "one_of": list(k.one_of),
+                "group": k.group,
                 "fields": [
                     {
                         "name": f.name,
@@ -280,4 +301,5 @@ def describe() -> dict[str, object]:
             for k in KINDS.values()
         ],
         "access_levels": [{"id": key, "label": label} for key, label in ACCESS_LEVELS.items()],
+        "providers": providers.describe(),
     }

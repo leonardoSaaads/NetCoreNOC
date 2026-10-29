@@ -173,7 +173,9 @@ def create_app(
     # it, then cases (`/kpis` before `/{sid}`, which would read it as a case id) and their feed.
     routes.secrets.register(app, ctx)
     routes.noc_access.register(app, ctx)
+    routes.providers.register(app, ctx)  # ADR #471
     routes.cases.register(app, ctx)
+    routes.noc_overview.register(app, ctx)  # ADR #470
     routes.case_feed.register(app, ctx)
     routes.noc_exec.register(app, ctx)  # ADR #462: the executor
     routes.playbooks.register(app, ctx)  # ADR #463

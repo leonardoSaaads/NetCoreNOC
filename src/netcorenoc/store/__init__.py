@@ -57,7 +57,9 @@ from netcorenoc.store.noc_access import NocAccessMixin
 from netcorenoc.store.noc_agents import NocAgentMixin
 from netcorenoc.store.noc_cases import NocCaseMixin
 from netcorenoc.store.noc_feed import NocFeedMixin
+from netcorenoc.store.noc_overview import NocOverviewMixin
 from netcorenoc.store.noc_playbooks import NocPlaybookMixin
+from netcorenoc.store.noc_priority import NocPriorityMixin
 from netcorenoc.store.noc_routing import NocRoutingMixin
 from netcorenoc.store.noc_vault import NocVaultMixin
 from netcorenoc.store.occurrences import OccurrenceMixin
@@ -109,6 +111,8 @@ class Store(
     NocVaultMixin,
     NocAccessMixin,
     NocCaseMixin,
+    NocPriorityMixin,
+    NocOverviewMixin,
     NocFeedMixin,
     NocPlaybookMixin,
     NocAgentMixin,

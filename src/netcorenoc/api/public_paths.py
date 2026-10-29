@@ -201,6 +201,12 @@ UNAUTHENTICATED_PATHS: frozenset[str] = frozenset(
         "/app/views/parts/agentadmin.js",
         "/app/views/parts/casemilestones.js",
         "/app/views/parts/caseassign.js",
+        # ADR #470: the NOC's overview, the caller's NOC grants, the AI providers' marks.
+        "/app/views/nocoverview.js",
+        "/app/brands.js",
+        "/app/views/parts/vaultui.js",
+        "/app/views/parts/aiproviders.js",
+        "/app/views/parts/agentrun.js",
         "/login-bg.svg",
         # Vendored third-party assets, pinned by CHECKSUMS.txt.
         "/vendor/htm-3.1.1.module.js",

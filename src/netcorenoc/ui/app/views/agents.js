@@ -15,6 +15,7 @@ import { can } from "../session.js";
 import { relative, timeTitle } from "../format.js";
 import { orgOrder, refreshRoster } from "../roster.js";
 import { AgentGlyph, AgentState, Tier, money } from "./parts/nocui.js";
+import { BrandMark } from "../brands.js";
 import { AgentDetail } from "./parts/agentdetail.js";
 import { AgentForm } from "./parts/agentform.js";
 import { KeyOnce, McpConnect } from "./parts/agentkey.js";
@@ -110,7 +111,7 @@ export class Agents extends Loader {
       <${AgentGlyph} agent=${a} size="md" />
       <span class="agent-row-name">
         <b>${a.name}</b>
-        <span class="muted">${a.title || a.role_label}</span>
+        <span class="muted">${a.provider ? html`<${BrandMark} brand=${a.provider} size=${14} />${" "}` : null}${a.title || a.role_label}</span>
       </span>
       <span class="agent-row-role">
         <span class=${cx("role-chip", `role-${a.role}`)}>${a.role_label}</span>

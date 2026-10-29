@@ -63,7 +63,8 @@ export const GROUPS = [
  * `{ key, href, label, icon, state, live, badge, noun }` — so the sidebar stays a renderer of
  * links and the one tab stop covers them as it covers the views. */
 function entriesOf({ capabilities, plane = "broker", extras = {} }) {
-  const views = reachableViews(capabilities, plane);
+  // ADR #470: `extras.hide` names views a NOC grant opens that the caller does not hold.
+  const views = reachableViews(capabilities, plane).filter((v) => !(extras.hide || []).includes(v.id));
   const out = [];
   const push = (group, list) => {
     for (const view of list) {

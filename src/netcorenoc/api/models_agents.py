@@ -36,7 +36,7 @@ class AgentIn(BaseModel):
     reports_to: int | None = Field(default=None, ge=1)
     capabilities: str = Field(default="", max_length=2000)
     instructions: str = Field(default="", max_length=65536)
-    adapter: Literal["webhook", "claude", "external"]
+    adapter: Literal["webhook", "claude", "openai", "external"]
     adapter_config: dict[str, Any] = Field(default_factory=dict)
     entry: bool = False
     wake_on_assignment: bool = True
@@ -60,7 +60,7 @@ class AgentPatchIn(BaseModel):
     reports_to: int | None = Field(default=None, ge=0)
     capabilities: str | None = Field(default=None, max_length=2000)
     instructions: str | None = Field(default=None, max_length=65536)
-    adapter: Literal["webhook", "claude", "external"] | None = None
+    adapter: Literal["webhook", "claude", "openai", "external"] | None = None
     adapter_config: dict[str, Any] | None = None
     entry: bool | None = None
     wake_on_assignment: bool | None = None

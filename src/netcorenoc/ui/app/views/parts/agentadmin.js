@@ -79,6 +79,10 @@ function facts(a) {
     rows.push(["Model", c.model], ["Effort", c.effort], ["Most steps per run", c.max_turns],
       ["API key", `vault credential #${c.secret_id}`]);
   }
+  if (a.adapter === "openai") {
+    rows.push(["Provider", c.provider], ["Model", c.model], ["Most steps per run", c.max_turns],
+      ["API key", `vault credential #${c.secret_id}`]);
+  }
   if (a.adapter === "webhook") rows.push(["Wake-up URL", c.url], ["Waits for", `${c.timeout_s} s`]);
   rows.push(
     ["Wakes on a routed case", a.wake_on_assignment ? "yes" : "no"],
@@ -135,7 +139,7 @@ export class AgentConfig extends Component {
           ${admin ? html`<button type="button" onClick=${() => this.mode("edit")}>Edit the configuration</button>` : null}</div>
         <dl class="fact-grid">${facts(agent).map(([k, v]) => html`<div key=${k}><dt>${k}</dt><dd>${v}</dd></div>`)}</dl>
       </section>
-      ${admin && agent.adapter !== "claude" ? html`<section class="panel-block">
+      ${admin && !["claude", "openai"].includes(agent.adapter) ? html`<section class="panel-block">
         <h3>Its key</h3>
         <p class="consequence" role="note">A new key replaces the one ${agent.name} holds: the old one
           stops working at once, and its credential leases end.</p>

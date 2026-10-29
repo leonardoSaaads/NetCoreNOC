@@ -29,7 +29,11 @@ NOC_ROUTE_PERMISSIONS: dict[tuple[str, str], str] = {
     ("POST", "/api/noc/secrets/{secret_id}/agents"): "secrets.write",
     # A check reads no secret: it connects to the host and port the list already shows.
     ("POST", "/api/noc/secrets/{secret_id}/check"): "secrets.read",
+    # The models an AI provider key may use: custodian-gated; the handler opens the key.
+    ("POST", "/api/noc/secrets/{secret_id}/models"): "secrets.read",
     ("GET", "/api/noc/grants"): "secrets.grants",
+    # What the caller holds in the NOC: every principal who reads cases may ask about themselves.
+    ("GET", "/api/noc/access"): "cases.read",
     ("POST", "/api/noc/grants"): "secrets.grants",
     ("GET", "/api/noc/agent"): "secrets.lease",
     ("POST", "/api/noc/secrets/{secret_id}/lease"): "secrets.lease",
@@ -39,6 +43,7 @@ NOC_ROUTE_PERMISSIONS: dict[tuple[str, str], str] = {
     # -- cases (ADRs #459-#461) --
     ("GET", "/api/noc/cases"): "cases.read",
     ("GET", "/api/noc/cases/kpis"): "cases.read",
+    ("GET", "/api/noc/overview"): "cases.read",
     ("GET", "/api/noc/cases/{sid}"): "cases.read",
     ("POST", "/api/noc/cases/{sid}"): "cases.work",
     ("POST", "/api/noc/cases/{sid}/take"): "cases.work",
@@ -96,7 +101,12 @@ NOC_ROUTE_SCOPE: dict[tuple[str, str], Literal["scoped", "unscoped", "admin_only
     ("POST", "/api/noc/secrets/{secret_id}/agents"): "unscoped",
     # A reachability check: custodian-gated; it reveals what the list already shows.
     ("POST", "/api/noc/secrets/{secret_id}/check"): "unscoped",
+    # An AI provider's model list: custodian-gated, asked of the provider; scope does not reach
+    # the vault.
+    ("POST", "/api/noc/secrets/{secret_id}/models"): "unscoped",
     ("GET", "/api/noc/grants"): "admin_only",
+    # The caller's own grants: a statement about them, naming no element.
+    ("GET", "/api/noc/access"): "unscoped",
     ("POST", "/api/noc/grants"): "admin_only",
     # An agent's own view: the credentials it may lease and its leases, decided by its grant and
     # each credential's switch; a caller who is not an agent gets the same empty answer anywhere.
@@ -109,6 +119,7 @@ NOC_ROUTE_SCOPE: dict[tuple[str, str], Literal["scoped", "unscoped", "admin_only
     ("POST", "/api/noc/leases/{lease_id}/revoke"): "unscoped",
     ("GET", "/api/noc/cases"): "scoped",
     ("GET", "/api/noc/cases/kpis"): "scoped",
+    ("GET", "/api/noc/overview"): "scoped",
     ("GET", "/api/noc/cases/{sid}"): "scoped",
     ("POST", "/api/noc/cases/{sid}"): "scoped",
     ("POST", "/api/noc/cases/{sid}/take"): "scoped",

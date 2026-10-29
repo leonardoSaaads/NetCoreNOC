@@ -8,8 +8,9 @@ module decides only what is the NOC's own:
 * **the organization is a forest, never a loop** — `cycle` refuses a manager that is already below;
 * **how an agent is woken** (`ADAPTERS`): a signed `webhook` to an agent running elsewhere (Claude
   Code, Codex, OpenClaw, a service of one's own), the appliance's own `claude` loop through the
-  Anthropic API, or `external` — an agent that comes over MCP on its own schedule and is never
-  called;
+  Anthropic API or `openai` loop through any OpenAI-compatible API (OpenAI, Google AI Studio, xAI,
+  Meta, a local Ollama — ADR #471), or `external` — an agent that comes over MCP on its own
+  schedule and is never called;
 * **the chain a case climbs** (the handbook's escalation reminders, Table 4.1): a case starts with
   an entry agent at Tier 1; when it is not concluded within the agent's escalation time it goes
   to that agent's manager, and from the top of the chain to the NOC team. Critical cases climb
@@ -23,6 +24,7 @@ from __future__ import annotations
 
 import ipaddress
 import json
+import re
 from collections.abc import Mapping
 from typing import Any
 from urllib.parse import urlsplit
@@ -32,7 +34,9 @@ __all__ = [
     "EFFORTS",
     "ESCALATE_EVERY_S",
     "ICONS",
+    "IN_PROCESS",
     "MODELS",
+    "OPENAI_PROVIDERS",
     "ROLES",
     "RUN_STATUSES",
     "STATUSES",
@@ -83,8 +87,16 @@ ICONS: tuple[str, ...] = (
 ADAPTERS: dict[str, str] = {
     "webhook": "Webhook — an agent running elsewhere, woken by a signed POST",
     "claude": "Claude — the appliance runs the agent through the Anthropic API",
+    "openai": "OpenAI-compatible — the appliance runs it on OpenAI, Gemini, Grok, Llama or Ollama",
     "external": "External — connects over MCP on its own; never woken",
 }
+#: The adapters the appliance runs itself: their token is kept sealed, never shown.
+IN_PROCESS = frozenset({"claude", "openai"})
+#: An OpenAI-compatible model's name: what the provider's own model list says.
+_MODEL = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:/|@+-]{0,199}$")
+#: The providers the `openai` adapter drives (`providers.py`; kept here as names, not imported,
+#: since `providers.py` reads this module's model prices).
+OPENAI_PROVIDERS: tuple[str, ...] = ("openai", "google", "xai", "meta", "ollama")
 STATUSES: dict[str, str] = {
     "idle": "Idle",
     "running": "Running",
@@ -160,12 +172,32 @@ def _claude(config: Mapping[str, Any]) -> dict[str, Any]:
     secret = config.get("secret_id")
     if not isinstance(secret, int) or isinstance(secret, bool) or secret < 1:
         raise AgentError(
-            "adapter_config.secret_id: the vault credential (an API token) holding the Anthropic "
-            "API key"
+            "adapter_config.secret_id: the vault credential holding the Anthropic API key"
         )
     return {
         "model": model,
         "effort": effort,
+        "secret_id": secret,
+        "max_turns": _int("adapter_config.max_turns", config.get("max_turns", 20), 1, 60),
+        "max_tokens": _int(
+            "adapter_config.max_tokens", config.get("max_tokens", 16000), 1024, 64000
+        ),
+    }
+
+
+def _openai(config: Mapping[str, Any]) -> dict[str, Any]:
+    provider = config.get("provider")
+    if provider not in OPENAI_PROVIDERS:
+        raise AgentError(f"adapter_config.provider: one of {', '.join(OPENAI_PROVIDERS)}")
+    model = config.get("model")
+    if not isinstance(model, str) or not _MODEL.fullmatch(model):
+        raise AgentError("adapter_config.model: the model's name, as the provider lists it")
+    secret = config.get("secret_id")
+    if not isinstance(secret, int) or isinstance(secret, bool) or secret < 1:
+        raise AgentError("adapter_config.secret_id: the vault credential with the provider's key")
+    return {
+        "provider": provider,
+        "model": model,
         "secret_id": secret,
         "max_turns": _int("adapter_config.max_turns", config.get("max_turns", 20), 1, 60),
         "max_tokens": _int(
@@ -186,6 +218,8 @@ def validate_config(adapter: str, config: Any) -> dict[str, Any]:
         return _webhook(config)
     if adapter == "claude":
         return _claude(config)
+    if adapter == "openai":
+        return _openai(config)
     if config:
         raise AgentError("adapter_config: an external agent has no configuration here")
     return {}

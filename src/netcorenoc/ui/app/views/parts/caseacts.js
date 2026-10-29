@@ -1,7 +1,9 @@
-/* The two acts that take a form: setting a case pending, and resolving it (ADR #459).
+/* The two acts that take a form: setting a case pending, and resolving it (ADRs #459, #470).
  *
- * * **Pending** names who the NOC waits on and when it looks again. The server refuses it until
- *   the customer update is complete; the form says what is still missing before it is sent.
+ * * **Pending** names who the NOC waits on and when it looks again. The time is already there:
+ *   the next update the case has, when it is ahead, else the handbook's cadence for a pending case
+ *   of its priority — one click changes it. The server refuses it until the customer update is
+ *   complete; the form says what is still missing before it is sent.
  * * **Resolving** records the cause and the solution, and closes the situation. Its alarms are
  *   cleared only when the box is ticked — the person checked the device and nothing is active
  *   any more — because a clear is a fact about the alarm, not a convenience.
@@ -9,14 +11,23 @@
 
 import { html, Component } from "../../dom.js";
 import { post } from "../../api.js";
-import { fromLocalInput, toLocalInput } from "./caseform.js";
+import { NextPicker, fromLocalInput, toLocalInput } from "./caseform.js";
+
+/** The pending cadence for this case's priority, in seconds, from the catalogue's targets. */
+function pendingCadence(c, targets) {
+  const cadence = targets && targets.update_cadence_s && targets.update_cadence_s.pending;
+  return cadence ? cadence[c.priority] : null;
+}
 
 export class PendForm extends Component {
   constructor(props) {
     super(props);
     const first = props.pending[0];
-    this.state = { status: first, next: toLocalInput(props.c.next_update_at), note: "", busy: false,
-      error: null };
+    const now = Date.now() / 1000;
+    const ahead = props.c.next_update_at && props.c.next_update_at > now ? props.c.next_update_at : null;
+    const cadence = pendingCadence(props.c, props.targets);
+    const next = ahead || (cadence ? now + cadence : null);
+    this.state = { status: first, next: toLocalInput(next), note: "", busy: false, error: null };
   }
 
   async submit(event) {
@@ -34,7 +45,7 @@ export class PendForm extends Component {
     }
   }
 
-  render({ c, pending, statuses, fields, onCancel }, st) {
+  render({ c, pending, statuses, fields, targets, onCancel }, st) {
     const p = `pend-${c.id}`;
     const missing = c.missing.filter((m) => m !== "next_update_at");
     return html`<form class="case-act panel-block" onSubmit=${(e) => this.submit(e)}>
@@ -49,9 +60,9 @@ export class PendForm extends Component {
             onChange=${(e) => this.setState({ status: e.currentTarget.value })}>
             ${pending.map((s) => html`<option key=${s} value=${s}>${statuses[s]}</option>`)}
           </select></div>
-        <div class="pe-field"><label for=${`${p}-next`}>Next update</label>
-          <input id=${`${p}-next`} type="datetime-local" required value=${st.next}
-            onInput=${(e) => this.setState({ next: e.currentTarget.value })} /></div>
+        <div class="pe-field case-wide"><label for=${`${p}-next`}>Next update — when the NOC looks again</label>
+          <${NextPicker} id=${`${p}-next`} value=${st.next} required
+            cadenceS=${pendingCadence(c, targets)} onChange=${(next) => this.setState({ next })} /></div>
         <div class="pe-field case-wide"><label for=${`${p}-note`}>Note for the feed (optional)</label>
           <input id=${`${p}-note`} maxlength="2000" value=${st.note}
             onInput=${(e) => this.setState({ note: e.currentTarget.value })} /></div>
@@ -102,10 +113,10 @@ export class ResolveForm extends Component {
           <textarea id=${`${p}-solution`} rows="4" required maxlength="8000" value=${st.solution}
             onInput=${(e) => this.setState({ solution: e.currentTarget.value })}></textarea></div>
       </div>
-      <label class="check-row"><input type="checkbox" checked=${st.verified}
+      <label class="check-row resolve-verify"><input type="checkbox" checked=${st.verified}
         onChange=${(e) => this.setState({ verified: e.currentTarget.checked })} />
-        I checked the device: these alarms are no longer active. Clear them (the clear trap never
-        arrived).</label>
+        <span>I checked the device: these alarms are no longer active. Clear them (the clear trap
+          never arrived).</span></label>
       ${st.error ? html`<p class="err" role="alert">${st.error}</p>` : null}
       <div class="stepup-acts">
         <button type="submit" class="primary" disabled=${st.busy || !st.cause || !st.solution.trim()}>

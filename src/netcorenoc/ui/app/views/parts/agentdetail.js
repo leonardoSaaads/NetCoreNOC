@@ -14,6 +14,7 @@ import { relative, timeTitle } from "../../format.js";
 import { Icon } from "../../icons.js";
 import { refreshRoster } from "../../roster.js";
 import { AgentGlyph, AgentState, Tier } from "./nocui.js";
+import { BrandMark } from "../../brands.js";
 import { AgentOverview } from "./agentdash.js";
 import { AgentRuns } from "./agentruns.js";
 import { AgentConfig, Instructions } from "./agentadmin.js";
@@ -21,6 +22,12 @@ import { AgentConfig, Instructions } from "./agentadmin.js";
 const TABS = [["overview", "Overview"], ["instructions", "Instructions"], ["runs", "Runs"],
   ["configuration", "Configuration"]];
 const REFRESH_MS = 10000;
+
+/** The AI provider an agent the appliance runs thinks with (ADR #471), or null. */
+function brandOf(a) {
+  if (a.adapter === "claude") return "anthropic";
+  return a.adapter === "openai" && a.adapter_config ? a.adapter_config.provider : null;
+}
 
 class AssignPanel extends Component {
   constructor(props) {
@@ -144,7 +151,8 @@ export class AgentDetail extends Component {
         <p class="muted agent-head-line">
           ${a.reports_to ? html`Reports to <a href=${`#/agents/${a.reports_to}`}>${a.reports_to_name}</a>`
             : "Reports to the NOC team"}
-          <span aria-hidden="true">·</span> ${a.adapter_label.split(" — ")[0]}
+          <span aria-hidden="true">·</span> ${brandOf(a) ? html`<${BrandMark} brand=${brandOf(a)} size=${18} />${" "}` : null}${a.adapter_label.split(" — ")[0]}${
+            a.adapter_config && a.adapter_config.model ? ` · ${a.adapter_config.model}` : ""}
           <span aria-hidden="true">·</span> <span title=${a.last_run_at ? timeTitle(a.last_run_at) : ""}>
             last run ${a.last_run_at ? relative(a.last_run_at) : "never"}</span>
         </p>

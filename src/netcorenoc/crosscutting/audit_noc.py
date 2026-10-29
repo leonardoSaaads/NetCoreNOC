@@ -53,5 +53,9 @@ NOC_ACTIONS: frozenset[str] = frozenset(
         "noc.run.finish",
         "noc.case.assign",
         "noc.case.escalate",
+        # ADR #471: the appliance opened a credential to act for someone — an agent's AI
+        # provider key for one of its runs (under the agent's token), or a custodian's model list
+        # (under the custodian). Never the key itself.
+        "noc.secret.use",
     }
 )

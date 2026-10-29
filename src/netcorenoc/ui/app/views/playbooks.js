@@ -4,6 +4,9 @@
  * opened below it as the tree it is: each step, what it does, and where each answer leads, down to
  * the leaves (resolve, wait, or the NOC queue). Switching one off is a person's; writing one is
  * the agents' (and anyone's, through the API — the tree is shown here as JSON too).
+ *
+ * **A lead's screen** (ADR #470): an admin's, an editor's an admin named a NOC lead, or an agent's.
+ * Anyone else is told so, and who to ask, before anything is read.
  */
 
 import { html, Component, cx } from "../dom.js";
@@ -12,6 +15,7 @@ import { Loader, Empty } from "../widgets.js";
 import { can } from "../session.js";
 import { relative, timeTitle } from "../format.js";
 import { Icon } from "../icons.js";
+import { readNocAccess } from "../roster.js";
 
 const END = { resolve: "Resolve", pending: "Wait", queue: "NOC queue" };
 
@@ -109,13 +113,18 @@ export class Playbooks extends Loader {
     this.loadingLabel = "Reading the playbooks";
   }
 
-  async load() { return get("/api/noc/playbooks"); }
+  async load() {
+    const access = await readNocAccess();
+    if (access && !access.lead) return { closed: access.explanations.lead };
+    return get("/api/noc/playbooks");
+  }
 
   routeKey() { return "playbooks"; }
 
   open(id) { this.props.navigate(id == null ? "#/playbooks" : `#/playbooks/${id}`); }
 
   view(data) {
+    if (data.closed) return html`<${Empty} title="The playbooks are for the NOC's leads" will=${data.closed} />`;
     const selected = Number((this.props.params || [])[0]) || null;
     if (!data.playbooks.length) {
       return html`<${Empty} title="No playbooks yet"

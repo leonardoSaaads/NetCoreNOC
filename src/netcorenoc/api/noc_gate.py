@@ -1,4 +1,4 @@
-"""The vault's two gates, shared by its route modules: custody and step-up (ADR #456).
+"""The NOC's gates, shared by its route modules: custody, leads and step-up (ADRs #456, #470).
 
 Route modules never import one another (`routes/__init__.py`), so what `routes/secrets.py` and
 `routes/noc_access.py` both need lives here, beside the rest of the machinery:
@@ -6,6 +6,8 @@ Route modules never import one another (`routes/__init__.py`), so what `routes/s
 * **Custody.** A capability is necessary and never sufficient: the caller must also be a person
   (a session, never a token) who is an admin or an editor an admin named a custodian. An admin is
   one by role — the admin role is never narrowed (#443), so holding `secrets.grants` says so.
+* **Leads** (ADR #470). The NOC's measures and its playbooks are read by an admin, an editor an
+  admin named a lead, or an agent (a token holding the agent grant) — not by every editor.
 * **Step-up.** `crosscutting/stepup.py` decides whether the person just proved who they are; this
   writes the refusal to the audit log **before** refusing — a failed confirmation is an attempt on a
   credential, and the log must have it even though the request fails.
@@ -38,6 +40,10 @@ NOT_AGENT = (
     "Only a service token an admin has named an agent may lease a credential, and only one a "
     "custodian has switched agent access on for."
 )
+NOT_LEAD = (
+    "Only an admin, an editor an admin has named a NOC lead, or an agent may open the NOC's "
+    "measures and its playbooks. Ask an admin (NOC → Secrets → People & agents)."
+)
 STEP_UP_REQUIRED = "stepup: confirm your username and password to do this"
 
 
@@ -60,6 +66,23 @@ async def is_agent(ctx: AppContext, principal: auth.Principal) -> bool:
         return False
     async with ctx.store.reading():
         return await ctx.store.noc_has_grant(principal.ref, "agent")
+
+
+async def is_lead(ctx: AppContext, request: Request, principal: auth.Principal) -> bool:
+    """ADR #470: the KPIs and the playbooks are an admin's, a named lead's and an agent's."""
+    if principal.ref is None:
+        return False
+    if principal.is_token:
+        return await is_agent(ctx, principal)
+    if "secrets.grants" in request.state.capabilities:
+        return True
+    async with ctx.store.reading():
+        return await ctx.store.noc_has_grant(principal.ref, "lead")
+
+
+async def require_lead(ctx: AppContext, request: Request, principal: auth.Principal) -> None:
+    if not await is_lead(ctx, request, principal):
+        raise HTTPException(status_code=403, detail=NOT_LEAD)
 
 
 async def confirm(

@@ -15,7 +15,7 @@ from collections.abc import Mapping
 from datetime import UTC, datetime
 from typing import Any
 
-from netcorenoc.engine.noc import agents
+from netcorenoc.engine.noc import agents, providers
 
 __all__ = ["agent_view", "catalogue", "org_tree", "run_view"]
 
@@ -36,6 +36,8 @@ def catalogue() -> dict[str, Any]:
         "triggers": agents.TRIGGERS,
         "run_statuses": agents.RUN_STATUSES,
         "escalate_every_s": agents.ESCALATE_EVERY_S,
+        # ADR #471: the AI providers an agent the appliance runs may think with.
+        "providers": providers.describe(),
     }
 
 
@@ -114,8 +116,12 @@ def agent_view(
             int(other["id"]) for other in everyone.values() if other["reports_to"] == aid
         ),
     }
+    config = json.loads(agent["adapter_config"])
+    # ADR #471: the AI provider an agent the appliance runs thinks with, for its logo.
+    out["provider"] = (
+        "anthropic" if agent["adapter"] == "claude" else config.get("provider")
+    )
     if whole:
-        config = json.loads(agent["adapter_config"])
         out["instructions"] = agent["instructions"]
         out["adapter_config"] = config
     return out

@@ -75,12 +75,13 @@ class AgentAccessIn(BaseModel):
 
 
 class GrantIn(BaseModel):
-    """Name a custodian (``user:<id>``, an editor) or an agent (``token:<id>``), or withdraw one."""
+    """Name a custodian or a lead (``user:<id>``, an editor) or an agent (``token:<id>``), or
+    withdraw one."""
 
     model_config = ConfigDict(extra="forbid")
 
     subject: str = Field(pattern=r"^(user|token):[0-9]{1,12}$")
-    role: Literal["custodian", "agent"]
+    role: Literal["custodian", "lead", "agent"]
     enabled: bool
     stepup: StepUpIn | None = None
 

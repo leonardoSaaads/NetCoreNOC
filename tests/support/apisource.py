@@ -67,6 +67,9 @@ MODULE_ORDER: tuple[str, ...] = (
     "asgi_call.py",
     "mcp_tools.py",
     "mcp.py",
+    # ADR #471: what both in-process adapters share, and the OpenAI-compatible one.
+    "agent_tools.py",
+    "agent_openai.py",
     "agent_runtime.py",
     "app.py",
     "routes/__init__.py",
@@ -110,7 +113,9 @@ MODULE_ORDER: tuple[str, ...] = (
     # The NOC plane (ADRs #454-#458), in the order `create_app` registers them.
     "routes/secrets.py",
     "routes/noc_access.py",
+    "routes/providers.py",
     "routes/cases.py",
+    "routes/noc_overview.py",
     "routes/case_feed.py",
     "routes/noc_exec.py",
     "routes/playbooks.py",

@@ -98,6 +98,7 @@ TOOLS: tuple[Tool, ...] = (
     _t("noc_list_cases", "GET", "/api/noc/cases", "List cases", **_READ),
     _t("noc_get_case", "GET", "/api/noc/cases/{sid}", "Get a case", **_READ),
     _t("noc_case_feed", "GET", "/api/noc/cases/{sid}/feed", "Read a case's feed", **_READ),
+    _t("noc_overview", "GET", "/api/noc/overview", "The NOC at a glance", **_READ),
     _t("noc_case_kpis", "GET", "/api/noc/cases/kpis", "The NOC's clocks", **_READ),
     _t("noc_take_case", "POST", "/api/noc/cases/{sid}/take", "Take a case", idempotent=True),
     _t("noc_update_case", "POST", "/api/noc/cases/{sid}", "Update the customer update"),

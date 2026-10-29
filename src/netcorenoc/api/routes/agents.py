@@ -113,23 +113,14 @@ def register(app: FastAPI, ctx: AppContext) -> None:
         return out
 
     async def check_links(fields: dict[str, Any], agent_id: int | None) -> None:
-        """A manager that exists and works, no loop; for `claude`, a usable API key."""
+        """A manager that exists and works, no loop; run here, a usable provider key."""
         boss = fields.get("reports_to")
         if boss:
             if (await store.noc_agent(boss) or {}).get("status") in (None, "terminated"):
                 raise HTTPException(400, "reports_to: no such agent")
             if agent_id is not None and agents.cycle(await everyone(), agent_id, boss):
                 raise HTTPException(400, "reports_to: that agent is below this one — a loop")
-        config = json.loads(fields.get("adapter_config") or "{}")
-        if "secret_id" in config:
-            secret = await store.noc_get_secret(int(config["secret_id"]))
-            if secret is None or secret["kind"] != "api_token":
-                raise HTTPException(400, "adapter_config.secret_id: no such API token credential")
-            if not secret["agent_access"]:
-                raise HTTPException(
-                    400,
-                    "adapter_config.secret_id: a custodian has not let agents use that credential",
-                )
+        await agent_hire.check_key(store, json.loads(fields.get("adapter_config") or "{}"))
 
     @route.get("/api/noc/agents", operation_id="noc_list_agents")
     async def list_agents(principal: auth.Principal = Depends(security)) -> dict[str, Any]:
@@ -148,7 +139,7 @@ def register(app: FastAPI, ctx: AppContext) -> None:
     async def hire_agent(
         body: AgentIn, request: Request, principal: auth.Principal = Depends(security)
     ) -> dict[str, Any]:
-        """Hire an agent. Its key is in the answer once — or kept sealed, for `claude`."""
+        """Hire an agent. Its key is in the answer once — or kept sealed, when it runs here."""
         fields = settings(body.model_dump(), None)
         now = time.time()
         async with write_txn():
@@ -235,8 +226,8 @@ def register(app: FastAPI, ctx: AppContext) -> None:
                 raise HTTPException(
                     409, f"the agent changed since you read it (now {agent['version']})"
                 )
-            moved = "adapter" in fields and (fields["adapter"] == "claude") != (
-                agent["adapter"] == "claude"
+            moved = "adapter" in fields and (fields["adapter"] in agents.IN_PROCESS) != (
+                agent["adapter"] in agents.IN_PROCESS
             )
             name = fields.get("name", agent["name"])
             if moved:

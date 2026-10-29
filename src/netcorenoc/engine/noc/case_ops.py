@@ -121,9 +121,13 @@ async def update(
     admin: bool,
 ) -> dict[str, Any]:
     """The customer update: any subset of the fields, and per-organization summaries. Returns the
-    case as it now reads (fields merged), for the caller's documentation check."""
+    case as it now reads (fields merged), for the caller's documentation check.
+
+    Not only the owner's (ADR #470): the update follows the facts, so whoever works cases — the
+    agent it is routed to, the one it climbed to, a person helping — keeps it current, each edit
+    in the feed under their name. ``admin`` is kept for the callers; it no longer decides."""
+    del admin
     sid = int(case["situation_id"])
-    _owns(case, actor, admin=admin)
     if str(case["status"]) in ("resolved", "closed"):
         raise CaseError("a resolved case is not edited; its feed still takes posts")
     for name, value in fields.items():

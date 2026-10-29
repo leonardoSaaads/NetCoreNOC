@@ -97,13 +97,14 @@ def test_every_view_in_the_registry_names_an_icon() -> None:
     # as hidden aliases that open it, so they reuse its icon family (users, tokens, governance).
     # ADR #454: 19 -> 20, the NOC's Secrets screen (`vault`). ADRs #459, #460: 20 -> 22, the
     # NOC's Cases (`cases`) and KPIs (`kpi`). ADR #463: 22 -> 23, Playbooks (`playbook`). ADR #468:
-    # 23 -> 25, the NOC's Agents (`bot`) and Organization (`org`).
-    assert len(ids) == 25, f"expected 25 views with icons, parsed {len(ids)}: {ids}"
+    # 23 -> 25, the NOC's Agents (`bot`) and Organization (`org`). ADR #470: 25 -> 26, the NOC's
+    # Overview (`dashboard`).
+    assert len(ids) == 26, f"expected 26 views with icons, parsed {len(ids)}: {ids}"
     known = defined()
     for view_id, icon in ids:
         assert icon in known, f"view {view_id!r} names icon {icon!r}, which is not in the set"
     # `access` and its `users` alias draw one icon: they are the same screen.
-    assert len({icon for _v, icon in ids}) == 24, (
+    assert len({icon for _v, icon in ids}) == 25, (
         "two views share an icon; they are not the same screen"
     )
 

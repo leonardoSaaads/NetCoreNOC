@@ -51,6 +51,7 @@ import { Audit } from "./views/audit.js";
 import { Account } from "./views/account.js";
 import { Secrets } from "./views/secrets.js";
 import { Cases } from "./views/cases.js";
+import { NocOverview } from "./views/nocoverview.js";
 import { NocKpis } from "./views/nockpis.js";
 import { Playbooks } from "./views/playbooks.js";
 import { Agents } from "./views/agents.js";
@@ -157,9 +158,16 @@ export const VIEWS = [
 
   /* ---------- NOC (phase 2): the work, the agents, and the NOC itself (ADR #468) ---------- */
   {
+    // ADR #470: the NOC at a glance — queue, working and pending, by tier and priority. First in
+    // the NOC plane: it is where the switch lands, as the Broker's Overview is the Broker's.
+    id: "noc", label: "Overview", icon: "dashboard", group: "work", plane: "noc",
+    capability: "cases.read", component: NocOverview,
+    summary: "The NOC now: what waits, what is worked and what is pending — by tier and priority.",
+  },
+  {
     // ADRs #459-#461. Every principal who may read a situation may read its case and post on its
     // feed; taking and working one is `cases.work`, offered in the screen from the server's
-    // `actions`. First in the NOC plane: it is where the switch lands.
+    // `actions`.
     id: "cases", label: "Cases", icon: "cases", group: "work", plane: "noc",
     capability: "cases.read", component: Cases,
     summary: "The NOC queue: situations to take, work, wait on, and resolve — with their clocks.",
@@ -194,7 +202,7 @@ export const VIEWS = [
     // nothing. Every write below it is gated in the screen on its own capability.
     id: "secrets", label: "Secrets", icon: "vault", group: "noc", plane: "noc",
     capability: "secrets.read", component: Secrets,
-    summary: "Credentials for equipment, sealed twice. Agents get a lease, never the secret.",
+    summary: "Credentials for equipment and AI providers' keys, sealed twice. Agents never get the secret.",
   },
 
   /* ---------- reachable by address, not offered in navigation ---------- */
