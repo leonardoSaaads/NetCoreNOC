@@ -11,7 +11,8 @@ person who is not a custodian is answered the same — empty, or refused — wha
 Each entry still carries its own line, because `tests/api/test_declaration.py` reads them.
 
 **Every case route is `scoped`**: a case is its situation, worked, and is visible exactly when the
-situation is — the same predicate (`perimeter.situation_in_scope`), the same 404.
+situation is — the same predicate (`perimeter.situation_in_scope`), the same 404. **So is every
+customer route** (ADR #473): a customer is visible when one of its elements is.
 """
 
 from __future__ import annotations
@@ -29,7 +30,11 @@ NOC_ROUTE_PERMISSIONS: dict[tuple[str, str], str] = {
     ("POST", "/api/noc/secrets/{secret_id}/agents"): "secrets.write",
     # A check reads no secret: it connects to the host and port the list already shows.
     ("POST", "/api/noc/secrets/{secret_id}/check"): "secrets.read",
+    # The models an AI provider key may use: custodian-gated; the handler opens the key.
+    ("POST", "/api/noc/secrets/{secret_id}/models"): "secrets.read",
     ("GET", "/api/noc/grants"): "secrets.grants",
+    # What the caller holds in the NOC: every principal who reads cases may ask about themselves.
+    ("GET", "/api/noc/access"): "cases.read",
     ("POST", "/api/noc/grants"): "secrets.grants",
     ("GET", "/api/noc/agent"): "secrets.lease",
     ("POST", "/api/noc/secrets/{secret_id}/lease"): "secrets.lease",
@@ -39,6 +44,7 @@ NOC_ROUTE_PERMISSIONS: dict[tuple[str, str], str] = {
     # -- cases (ADRs #459-#461) --
     ("GET", "/api/noc/cases"): "cases.read",
     ("GET", "/api/noc/cases/kpis"): "cases.read",
+    ("GET", "/api/noc/overview"): "cases.read",
     ("GET", "/api/noc/cases/{sid}"): "cases.read",
     ("POST", "/api/noc/cases/{sid}"): "cases.work",
     ("POST", "/api/noc/cases/{sid}/take"): "cases.work",
@@ -74,6 +80,27 @@ NOC_ROUTE_PERMISSIONS: dict[tuple[str, str], str] = {
     ("POST", "/api/noc/runs/{run_id}/finish"): "agents.run",
     ("POST", "/api/noc/cases/{sid}/assign"): "cases.work",
     ("POST", "/api/noc/cases/{sid}/escalate"): "cases.work",
+    # -- the customers' books (ADR #473): read by whoever reads cases, kept by who works them;
+    # the handlers decide what is a person's and what an agent's (`api/customer_view.py`). --
+    ("GET", "/api/noc/customers"): "cases.read",
+    ("GET", "/api/noc/customers/{customer_id}"): "cases.read",
+    ("POST", "/api/noc/customers/{customer_id}"): "cases.work",
+    ("POST", "/api/noc/customers/{customer_id}/memory"): "cases.work",
+    ("POST", "/api/noc/customers/{customer_id}/contacts"): "cases.work",
+    ("POST", "/api/noc/customers/{customer_id}/contacts/{contact_id}"): "cases.work",
+    ("POST", "/api/noc/customers/{customer_id}/contacts/{contact_id}/delete"): "cases.work",
+    ("POST", "/api/noc/customers/{customer_id}/docs"): "cases.work",
+    ("GET", "/api/noc/customers/{customer_id}/docs/{doc_id}"): "cases.read",
+    ("GET", "/api/noc/customers/{customer_id}/docs/{doc_id}/file"): "cases.read",
+    ("POST", "/api/noc/customers/{customer_id}/docs/{doc_id}/delete"): "cases.work",
+    ("GET", "/api/noc/circuits"): "cases.read",
+    ("GET", "/api/noc/customers/{customer_id}/circuits"): "cases.read",
+    ("POST", "/api/noc/customers/{customer_id}/circuits/import"): "cases.work",
+    ("POST", "/api/noc/customers/{customer_id}/circuits"): "cases.work",
+    ("GET", "/api/noc/customers/{customer_id}/circuits/{circuit_id}"): "cases.read",
+    ("POST", "/api/noc/customers/{customer_id}/circuits/{circuit_id}"): "cases.work",
+    ("POST", "/api/noc/customers/{customer_id}/circuits/{circuit_id}/notes"): "cases.work",
+    ("POST", "/api/noc/customers/{customer_id}/circuits/{circuit_id}/delete"): "cases.work",
     # The MCP endpoint (ADR #466): every tool behind it is checked as its own route.
     ("POST", "/api/mcp"): "mcp.use",
 }
@@ -96,7 +123,12 @@ NOC_ROUTE_SCOPE: dict[tuple[str, str], Literal["scoped", "unscoped", "admin_only
     ("POST", "/api/noc/secrets/{secret_id}/agents"): "unscoped",
     # A reachability check: custodian-gated; it reveals what the list already shows.
     ("POST", "/api/noc/secrets/{secret_id}/check"): "unscoped",
+    # An AI provider's model list: custodian-gated, asked of the provider; scope does not reach
+    # the vault.
+    ("POST", "/api/noc/secrets/{secret_id}/models"): "unscoped",
     ("GET", "/api/noc/grants"): "admin_only",
+    # The caller's own grants: a statement about them, naming no element.
+    ("GET", "/api/noc/access"): "unscoped",
     ("POST", "/api/noc/grants"): "admin_only",
     # An agent's own view: the credentials it may lease and its leases, decided by its grant and
     # each credential's switch; a caller who is not an agent gets the same empty answer anywhere.
@@ -109,6 +141,7 @@ NOC_ROUTE_SCOPE: dict[tuple[str, str], Literal["scoped", "unscoped", "admin_only
     ("POST", "/api/noc/leases/{lease_id}/revoke"): "unscoped",
     ("GET", "/api/noc/cases"): "scoped",
     ("GET", "/api/noc/cases/kpis"): "scoped",
+    ("GET", "/api/noc/overview"): "scoped",
     ("GET", "/api/noc/cases/{sid}"): "scoped",
     ("POST", "/api/noc/cases/{sid}"): "scoped",
     ("POST", "/api/noc/cases/{sid}/take"): "scoped",
@@ -159,6 +192,28 @@ NOC_ROUTE_SCOPE: dict[tuple[str, str], Literal["scoped", "unscoped", "admin_only
     ("POST", "/api/noc/runs/{run_id}/finish"): "unscoped",
     ("POST", "/api/noc/cases/{sid}/assign"): "scoped",
     ("POST", "/api/noc/cases/{sid}/escalate"): "scoped",
+    # The customers' books (ADR #473): a customer is visible when one of its elements is in the
+    # caller's scope; one that is not is the same 404 as one that does not exist, and the lists
+    # (customers, circuits found across them) narrow to the customers the caller may see.
+    ("GET", "/api/noc/customers"): "scoped",
+    ("GET", "/api/noc/customers/{customer_id}"): "scoped",
+    ("POST", "/api/noc/customers/{customer_id}"): "scoped",
+    ("POST", "/api/noc/customers/{customer_id}/memory"): "scoped",
+    ("POST", "/api/noc/customers/{customer_id}/contacts"): "scoped",
+    ("POST", "/api/noc/customers/{customer_id}/contacts/{contact_id}"): "scoped",
+    ("POST", "/api/noc/customers/{customer_id}/contacts/{contact_id}/delete"): "scoped",
+    ("POST", "/api/noc/customers/{customer_id}/docs"): "scoped",
+    ("GET", "/api/noc/customers/{customer_id}/docs/{doc_id}"): "scoped",
+    ("GET", "/api/noc/customers/{customer_id}/docs/{doc_id}/file"): "scoped",
+    ("POST", "/api/noc/customers/{customer_id}/docs/{doc_id}/delete"): "scoped",
+    ("GET", "/api/noc/circuits"): "scoped",
+    ("GET", "/api/noc/customers/{customer_id}/circuits"): "scoped",
+    ("POST", "/api/noc/customers/{customer_id}/circuits/import"): "scoped",
+    ("POST", "/api/noc/customers/{customer_id}/circuits"): "scoped",
+    ("GET", "/api/noc/customers/{customer_id}/circuits/{circuit_id}"): "scoped",
+    ("POST", "/api/noc/customers/{customer_id}/circuits/{circuit_id}"): "scoped",
+    ("POST", "/api/noc/customers/{customer_id}/circuits/{circuit_id}/notes"): "scoped",
+    ("POST", "/api/noc/customers/{customer_id}/circuits/{circuit_id}/delete"): "scoped",
     # The MCP door: each tool behind it is a route answered under the caller's own scope.
     ("POST", "/api/mcp"): "unscoped",
 }

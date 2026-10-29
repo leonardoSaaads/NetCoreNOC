@@ -58,12 +58,27 @@ def _text(reader: feed.Reader) -> Any:
 
 
 def _who(
-    ref: str | None, name: str | None, kind: str | None, role: str | None, reader: feed.Reader
+    ref: str | None,
+    name: str | None,
+    kind: str | None,
+    role: str | None,
+    reader: feed.Reader,
+    avatar: str | None = None,
 ) -> dict[str, Any] | None:
+    """Who holds or wrote something. A person's id and photo digest come with their name (ADR
+    #470), so the console draws their face as the Broker's screens do; withheld with the name."""
     if ref is None or kind is None:
         return None
     if shaping.sees_people(reader.role) or ref == reader.ref:
-        return {"ref": ref, "name": name, "kind": kind, "you": ref == reader.ref}
+        person = ref.startswith("user:") and ref[5:].isdigit()
+        return {
+            "ref": ref,
+            "name": name,
+            "kind": kind,
+            "you": ref == reader.ref,
+            "user_id": int(ref[5:]) if person else None,
+            "avatar": avatar if person else None,
+        }
     return {"ref": None, "name": feed.author_label(kind, role), "kind": kind, "you": False}
 
 
@@ -85,7 +100,9 @@ def actions(case: Mapping[str, Any], reader: feed.Reader) -> list[str]:
         if act != "take" and not (yours or reader.admin):
             continue
         out.append(act)
-    if status not in ("resolved", "closed") and (yours or reader.admin):
+    # ADR #470: the customer update is the NOC's, not its owner's — whoever works cases keeps it
+    # current as facts arrive (an agent above all); the version stops two writers colliding.
+    if status not in ("resolved", "closed"):
         out.append("edit")
     # ADR #467: routing to an agent and climbing the chain. The handler decides who may: an
     # agent only within its own reports, a person on a case they own or that nobody has.
@@ -164,6 +181,7 @@ def case_view(
             case.get("owner_kind"),
             owner_role,
             reader,
+            case.get("owner_avatar"),
         ),
         "opened_at": case["opened_at"],
         "status_at": case["status_at"],
@@ -220,6 +238,8 @@ def case_view(
                 "name": o["name"],
                 "summary": text(o["summary"]) if o["summary"] else None,
                 "reads": text(o["summary"]) if o["summary"] else default,
+                # ADR #473: a customer's book opens from the case (the default is no customer).
+                "customer": not o.get("is_default", False),
             }
             for o in organizations
         ]

@@ -3,9 +3,11 @@
 A case is visible to whoever may read its situation: `cases.read`, and the same scope predicate
 the situation's own routes use (`perimeter.situation_in_scope`), so a case outside the caller's
 scope is the same 404 as one that does not exist. Working one — taking, editing the customer
-update, setting it pending, resolving, releasing — is `cases.work`, and every act but taking
-belongs to the case's owner (`cases.manage`, an admin's, acts on any). Every act is one write
-transaction with one audit row under the actor's name, and an `internal` event in the case feed.
+update, setting it pending, resolving, releasing — is `cases.work`; setting it pending, resolving
+and releasing belong to the case's owner (`cases.manage`, an admin's, acts on any), while the
+customer update is anyone's who works cases, kept current as facts arrive (ADR #470). Every act
+is one write transaction with one audit row under the actor's name, and an `internal` event in
+the case feed.
 
 **Built for agents as much as for people** (`docs/plans/noc-phase2.md`): every route has an
 explicit operation id (the MCP tool name it will become), the list answers with the catalogue
@@ -27,6 +29,7 @@ from netcorenoc.api.case_view import actor_of, case_view, fail, manages, reader_
 from netcorenoc.api.context import AppContext
 from netcorenoc.api.declare import DeclaredRoutes
 from netcorenoc.api.models_cases import CaseFieldsIn, ReleaseIn, ResolveIn, StatusIn
+from netcorenoc.api.noc_gate import require_lead
 from netcorenoc.crosscutting import auth, shaping
 from netcorenoc.engine.noc import case_ops, cases, feed, kpi
 from netcorenoc.engine.noc.cases import CaseError
@@ -128,12 +131,23 @@ def register(app: FastAPI, ctx: AppContext) -> None:
         view: str = "live",
         mine: bool = False,
         limit: int = 100,
+        priority: str | None = None,
+        tier: int | None = None,
         principal: auth.Principal = Depends(security),
     ) -> dict[str, Any]:
         """The cases in one view (queue, working, pending, live, resolved, all), most urgent first,
-        each with its clocks; the counts per status; and the catalogue."""
+        each with its clocks; the counts per status; and the catalogue. ``priority`` narrows to
+        some priorities (``critical,major``); ``tier`` to an agents' tier (1-4) or 0, the NOC
+        team."""
         if view not in VIEWS:
             raise HTTPException(status_code=400, detail=f"view: one of {', '.join(VIEWS)}")
+        priorities = None if not priority else frozenset(priority.split(","))
+        if priorities is not None and not priorities <= set(cases.PRIORITIES):
+            raise HTTPException(
+                status_code=400, detail=f"priority: any of {', '.join(cases.PRIORITIES)}"
+            )
+        if tier is not None and not 0 <= tier <= 4:
+            raise HTTPException(status_code=400, detail="tier: 1 to 4, or 0 for the NOC team")
         scope = await scope_for(principal)
         ne_ids = None if scope.unrestricted else scope.ne_ids
         async with store.reading():
@@ -142,6 +156,8 @@ def register(app: FastAPI, ctx: AppContext) -> None:
                 owner_ref=principal.ref if mine else None,
                 ne_ids=ne_ids,
                 limit=min(max(limit, 1), MAX_LIST),
+                priorities=priorities,
+                tier=tier,
             )
             counts = await store.noc_case_counts(ne_ids)
             cycles = {
@@ -169,10 +185,12 @@ def register(app: FastAPI, ctx: AppContext) -> None:
 
     @route.get("/api/noc/cases/kpis", operation_id="noc_case_kpis")
     async def case_kpis(
-        days: float = 7.0, principal: auth.Principal = Depends(security)
+        request: Request, days: float = 7.0, principal: auth.Principal = Depends(security)
     ) -> dict[str, Any]:
         """The NOC's clocks over the last ``days``: take and documentation met/missed, medians,
-        the overrun, per priority; and how many cases are in each status now."""
+        the overrun, per priority; and how many cases are in each status now. An admin's, a
+        named lead's or an agent's (ADR #470)."""
+        await require_lead(ctx, request, principal)
         span = min(max(days, 1 / 24), 90.0)
         scope = await scope_for(principal)
         ne_ids = None if scope.unrestricted else scope.ne_ids
@@ -273,7 +291,8 @@ def register(app: FastAPI, ctx: AppContext) -> None:
         sid: int, body: StatusIn, request: Request, principal: auth.Principal = Depends(security)
     ) -> dict[str, Any]:
         """Set your case pending — on the customer, a provider, a maintenance window, a dispatch,
-        device access, connectivity… — until its next update, when it returns to the queue."""
+        device access, connectivity… — until its next update, when it returns to the queue. With
+        no ``next_update_at`` and none ahead, the handbook's cadence for its priority sets it."""
         scope = await scope_for(principal)
         await visible_case(sid, scope)
         actor, admin = actor_of(principal), manages(request)
@@ -282,13 +301,17 @@ def register(app: FastAPI, ctx: AppContext) -> None:
                 case = await fresh(sid)
                 current(case, body.version)
                 now = time.time()
-                if body.next_update_at is not None:
+                when = body.next_update_at
+                ahead = case["next_update_at"] is not None and float(case["next_update_at"]) > now
+                if when is None and not ahead:
+                    when = kpi.next_update_due(case, now)
+                if when is not None:
                     case = await case_ops.update(
                         store,
                         case,
                         actor,
                         now,
-                        fields={"next_update_at": body.next_update_at},
+                        fields={"next_update_at": when},
                         summaries={},
                         organizations=frozenset(),
                         admin=admin,

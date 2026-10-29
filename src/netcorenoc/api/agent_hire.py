@@ -9,8 +9,9 @@ credentials. What happens to the token's value depends on how the agent is woken
   **once**, to the admin who hired it, and only its hash is kept. A `webhook` agent also gets a
   signing key, shown once and kept sealed, so it can tell the appliance's wake-ups from anyone
   else's;
-* `claude` — the appliance acts as the agent, so it keeps the token **sealed** (the secret key's
-  AES-256-GCM, bound to the agent) and never shows it to anyone.
+* `claude` and `openai` — the appliance acts as the agent, so it keeps the token **sealed** (the
+  secret key's AES-256-GCM, bound to the agent) and never shows it to anyone. Its provider's API
+  key is a vault credential of that provider's kind a custodian let agents use (`check_key`).
 
 A new key (rotation, or an adapter that changed between "elsewhere" and "here") retires the old
 token — revoked, its leases ended — before the new one is made.
@@ -20,16 +21,17 @@ from __future__ import annotations
 
 import secrets
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from fastapi import HTTPException
 
 from netcorenoc.crosscutting import auth, secretbox
+from netcorenoc.engine.noc import agents, providers
 
 if TYPE_CHECKING:
     from netcorenoc.store import Store
 
-__all__ = ["Identity", "binding", "issue", "retire"]
+__all__ = ["Identity", "binding", "check_key", "issue", "retire"]
 
 ROLE = "editor"
 
@@ -60,7 +62,8 @@ async def issue(
     await store.set_token_purpose(token_id, f"NOC agent #{agent_id}")
     await store.noc_set_grant(f"token:{token_id}", "agent", True, now, actor)
     box = secretbox.current()
-    sealed = box.seal(binding(agent_id, "token"), {"token": value}) if adapter == "claude" else None
+    here = adapter in agents.IN_PROCESS
+    sealed = box.seal(binding(agent_id, "token"), {"token": value}) if here else None
     key = secrets.token_urlsafe(32) if adapter == "webhook" else None
     key_sealed = None if key is None else box.seal(binding(agent_id, "webhook"), {"key": key})
     await store.noc_set_agent_identity(
@@ -71,7 +74,7 @@ async def issue(
         now=now,
         actor=actor,
     )
-    return Identity(token_id, None if adapter == "claude" else value, key)
+    return Identity(token_id, None if here else value, key)
 
 
 async def retire(store: Store, token_id: int | None, now: float, actor: str) -> None:
@@ -82,3 +85,22 @@ async def retire(store: Store, token_id: int | None, now: float, actor: str) -> 
     await store.noc_revoke_subject_leases(ref, now, actor)
     await store.noc_set_grant(ref, "agent", False, now, actor)
     await store.noc_retire_token(token_id, now)
+
+
+async def check_key(store: Store, config: dict[str, Any]) -> None:
+    """The provider key an in-process agent is configured with: a credential of its provider's
+    kind (a Claude agent also takes an older generic API token) that agents may use."""
+    if "secret_id" not in config:
+        return
+    provider = providers.PROVIDERS.get(str(config.get("provider") or "anthropic"))
+    wanted = {"api_token"} if provider is None or provider.id == "anthropic" else set()
+    if provider is not None:
+        wanted.add(provider.kind)
+    secret = await store.noc_get_secret(int(config["secret_id"]))
+    if secret is None or secret["kind"] not in wanted:
+        label = provider.label if provider else "this provider"
+        raise HTTPException(400, f"adapter_config.secret_id: no such {label} key in the vault")
+    if not secret["agent_access"]:
+        raise HTTPException(
+            400, "adapter_config.secret_id: a custodian has not let agents use that credential"
+        )

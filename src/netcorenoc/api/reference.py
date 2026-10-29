@@ -29,6 +29,7 @@ VAULT, AGENTS = "NOC — Secrets", "NOC — Agents and leases"
 CASES = "NOC — Cases"
 AUTOMATION = "NOC — Executor and playbooks"
 ORG, MCP = "NOC — Organization", "NOC — MCP"
+CUSTOMERS = "NOC — Customers"
 
 REFERENCE: dict[tuple[str, str], Entry] = {
     ("POST", "/api/login"): Entry(PUBLIC, "Sign in with a username and password (sets a cookie)"),
@@ -159,16 +160,19 @@ REFERENCE: dict[tuple[str, str], Entry] = {
     ("POST", "/api/noc/secrets/{secret_id}/reveal"): Entry(VAULT, "Show a credential (step-up)"),
     ("POST", "/api/noc/secrets/{secret_id}/agents"): Entry(VAULT, "Switch agent access on or off"),
     ("POST", "/api/noc/secrets/{secret_id}/check"): Entry(VAULT, "Check a credential's endpoint"),
-    ("GET", "/api/noc/grants"): Entry(VAULT, "Custodians and agents"),
-    ("POST", "/api/noc/grants"): Entry(VAULT, "Name or withdraw a custodian or an agent"),
+    ("POST", "/api/noc/secrets/{secret_id}/models"): Entry(VAULT, "Models an AI key may use"),
+    ("GET", "/api/noc/grants"): Entry(VAULT, "Custodians, leads and agents"),
+    ("POST", "/api/noc/grants"): Entry(VAULT, "Name or withdraw a custodian, a lead or an agent"),
+    ("GET", "/api/noc/access"): Entry(VAULT, "What you hold in the NOC: custodian, lead, agent"),
     ("GET", "/api/noc/agent"): Entry(AGENTS, "For an agent: credentials it may lease, its leases"),
     ("POST", "/api/noc/secrets/{secret_id}/lease"): Entry(AGENTS, "Lease a credential (agents)"),
     ("POST", "/api/noc/leases/introspect"): Entry(AGENTS, "Is a lease active, and for what"),
     ("POST", "/api/noc/leases/{lease_id}/revoke"): Entry(AGENTS, "End a lease"),
     ("GET", "/api/noc/cases"): Entry(CASES, "The NOC queue and the cases in each status"),
-    ("GET", "/api/noc/cases/kpis"): Entry(CASES, "Take and documentation times against target"),
+    ("GET", "/api/noc/cases/kpis"): Entry(CASES, "Take and documentation times (leads)"),
+    ("GET", "/api/noc/overview"): Entry(CASES, "The NOC now: queue, working, pending by tier"),
     ("GET", "/api/noc/cases/{sid}"): Entry(CASES, "One case: customer update, clocks, cycles"),
-    ("POST", "/api/noc/cases/{sid}"): Entry(CASES, "Edit a case's customer update (its owner)"),
+    ("POST", "/api/noc/cases/{sid}"): Entry(CASES, "Edit a case's customer update"),
     ("POST", "/api/noc/cases/{sid}/take"): Entry(CASES, "Take a case: it becomes yours, Working"),
     ("POST", "/api/noc/cases/{sid}/release"): Entry(CASES, "Put your case back in the NOC queue"),
     ("POST", "/api/noc/cases/{sid}/status"): Entry(CASES, "Set your case pending until its update"),
@@ -203,4 +207,62 @@ REFERENCE: dict[tuple[str, str], Entry] = {
     ("POST", "/api/noc/cases/{sid}/assign"): Entry(CASES, "Route a case to an agent or the people"),
     ("POST", "/api/noc/cases/{sid}/escalate"): Entry(CASES, "Escalate a case to the next tier"),
     ("POST", "/api/mcp"): Entry(MCP, "The MCP endpoint: tools for AI agents (JSON-RPC)"),
+    # ADR #473: the customers' books.
+    ("GET", "/api/noc/customers"): Entry(
+        CUSTOMERS, "The customers the NOC serves, and their books"
+    ),
+    ("GET", "/api/noc/customers/{customer_id}"): Entry(
+        CUSTOMERS, "A customer's instructions, memory, workbook, docs"
+    ),
+    ("POST", "/api/noc/customers/{customer_id}"): Entry(
+        CUSTOMERS, "Replace a customer's instructions (people)"
+    ),
+    ("POST", "/api/noc/customers/{customer_id}/memory"): Entry(
+        CUSTOMERS, "Add to or condense the NOC's memory of it"
+    ),
+    ("POST", "/api/noc/customers/{customer_id}/contacts"): Entry(
+        CUSTOMERS, "Add a contact to a customer's workbook"
+    ),
+    ("POST", "/api/noc/customers/{customer_id}/contacts/{contact_id}"): Entry(
+        CUSTOMERS, "Replace a workbook contact"
+    ),
+    ("POST", "/api/noc/customers/{customer_id}/contacts/{contact_id}/delete"): Entry(
+        CUSTOMERS, "Remove a workbook contact"
+    ),
+    ("POST", "/api/noc/customers/{customer_id}/docs"): Entry(
+        CUSTOMERS, "Upload a customer's document (the body)"
+    ),
+    ("GET", "/api/noc/customers/{customer_id}/docs/{doc_id}"): Entry(
+        CUSTOMERS, "A document and its text, page by page"
+    ),
+    ("GET", "/api/noc/customers/{customer_id}/docs/{doc_id}/file"): Entry(
+        CUSTOMERS, "Download a document's file"
+    ),
+    ("POST", "/api/noc/customers/{customer_id}/docs/{doc_id}/delete"): Entry(
+        CUSTOMERS, "Remove a customer's document"
+    ),
+    ("GET", "/api/noc/circuits"): Entry(
+        CUSTOMERS, "Find circuits across customers by port, ODF, site"
+    ),
+    ("GET", "/api/noc/customers/{customer_id}/circuits"): Entry(
+        CUSTOMERS, "A customer's circuits, searched"
+    ),
+    ("POST", "/api/noc/customers/{customer_id}/circuits/import"): Entry(
+        CUSTOMERS, "Read or store a sheet of circuits"
+    ),
+    ("POST", "/api/noc/customers/{customer_id}/circuits"): Entry(
+        CUSTOMERS, "Add a circuit and its path"
+    ),
+    ("GET", "/api/noc/customers/{customer_id}/circuits/{circuit_id}"): Entry(
+        CUSTOMERS, "One circuit, its path hop by hop"
+    ),
+    ("POST", "/api/noc/customers/{customer_id}/circuits/{circuit_id}"): Entry(
+        CUSTOMERS, "Replace a circuit, whole"
+    ),
+    ("POST", "/api/noc/customers/{customer_id}/circuits/{circuit_id}/notes"): Entry(
+        CUSTOMERS, "Add to a circuit's notes"
+    ),
+    ("POST", "/api/noc/customers/{customer_id}/circuits/{circuit_id}/delete"): Entry(
+        CUSTOMERS, "Remove a circuit"
+    ),
 }

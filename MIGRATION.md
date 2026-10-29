@@ -80,6 +80,23 @@ Two rules that have held since v0.1.0 and are not going to change:
 
 *(This table has no rows for v0.17.0 or v0.18.0: neither release wrote one, and inventing upgrade notes for a release somebody else built would be describing an upgrade nobody tested.)*
 
+## Unreleased — the NOC at a glance, AI providers and customers (#470-#473)
+
+Nothing to do to upgrade the database: migrations **0038** (the `lead` grant and the `openai`
+adapter) and **0039** (the customers' books) apply at start and are additive. Then:
+
+* **The KPIs and the playbooks are a lead's**: an admin, an editor an admin names a NOC lead
+  (*Secrets → People & agents*) or an agent. An editor who read them before reads them again once
+  named.
+* **AI provider keys**: an Anthropic key stored as an *API token* keeps working; store new keys as
+  their provider's kind (*Secrets → AI providers*) so each goes only to its own API.
+* **Customers are organizations**: an admin adds one in *Customers* (or `POST /api/organizations`)
+  and puts its elements in it from each element's page. A scoped person sees a customer's book only
+  when one of its elements is in their scope.
+* **A request body may be up to 12 MiB** on `POST /api/noc/customers/{id}/docs` only (every other
+  route keeps the 1 MiB ceiling). A reverse proxy in front of the appliance that caps bodies lower
+  must let that path through — `client_max_body_size 13m;` for that location in nginx.
+
 ## Unreleased — the NOC's agents and the MCP server (#464-#469)
 
 Nothing to do to upgrade the database: migrations **0036** (a case's priority and restore clock)

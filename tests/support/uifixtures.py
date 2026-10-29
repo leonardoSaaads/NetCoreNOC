@@ -126,6 +126,11 @@ CLIENT_GETS: list[tuple[str, str]] = [
     # ADRs #459, #460: the queue as the Cases screen first reads it, and the KPIs.
     ("cases.read", "/api/noc/cases?view=queue"),
     ("cases.read", "/api/noc/cases/kpis?days=7"),
+    # ADR #470: the NOC's overview, and what the caller holds in the NOC (read with the roster).
+    ("cases.read", "/api/noc/overview"),
+    ("cases.read", "/api/noc/access"),
+    # ADR #473: the customers — the sidebar's list and the Customers screen.
+    ("cases.read", "/api/noc/customers"),
     ("playbooks.read", "/api/noc/playbooks"),
     # ADRs #465, #468: the organization — the sidebar's roster, Agents and Organization.
     ("agents.read", "/api/noc/agents"),

@@ -1,15 +1,26 @@
-/* A case's customer update: what the customer and the next NOC shift read (ADR #459).
+/* A case's customer update: what the customer and the next NOC shift read (ADRs #459, #470).
  *
  * The handbook's Customer Update tab, with the appliance's words: title and description, the
  * executive summary (and each organization's own, when a company wants its own title), the current
- * analysis, the NOC's next step, the customer's, and when the NOC looks again. Editable by the
- * case's owner (the server says so in `actions`); read-only for everyone else. Saving sends only
- * what changed, with the version it was read at, so two people never overwrite each other.
+ * analysis, the NOC's next step, the customer's, and when the NOC looks again. **It is never
+ * final**: whoever works cases — the agent it is routed to above all — keeps it current as facts
+ * arrive (the server says so in `actions`); a reader who does not work cases reads it. Saving
+ * sends only what changed, with the version it was read at, so two writers never overwrite each
+ * other.
+ *
+ * **Send customer update** sits at the end of the form, beside saving: it is how the update will
+ * reach the customer by email. Sending is not connected yet, and the button says so rather than
+ * pretending; it asks for the update to be saved first, because what is sent is what was saved.
+ *
+ * **The next update** offers its times as one click each — the handbook's cadence for the case's
+ * priority first, then the usual steps — beside the free choice.
  */
 
-import { html, Component } from "../../dom.js";
+import { html, Component, cx } from "../../dom.js";
 import { post } from "../../api.js";
 import { absolute } from "../../format.js";
+import { Icon } from "../../icons.js";
+import { span } from "./caseclock.js";
 
 const pad = (n) => String(n).padStart(2, "0");
 
@@ -27,6 +38,36 @@ export function fromLocalInput(text) {
   return Number.isFinite(t) ? t / 1000 : null;
 }
 
+/** The times a next update is usually set to, as one click each: the handbook's cadence for the
+ *  case's priority (`cadence_s`, from the catalogue's targets) first, then the usual steps. */
+export function nextChoices(now, cadenceS) {
+  const tomorrow = new Date(now * 1000);
+  tomorrow.setDate(tomorrow.getDate() + 1);
+  tomorrow.setHours(9, 0, 0, 0);
+  const steps = [[30 * 60, "In 30 min"], [3600, "In 1 h"], [4 * 3600, "In 4 h"]]
+    .filter(([s]) => s !== cadenceS)
+    .map(([s, label]) => [now + s, label]);
+  return [
+    ...(cadenceS ? [[now + cadenceS, `Cadence (${span(cadenceS)})`]] : []),
+    ...steps,
+    [tomorrow.getTime() / 1000, "Tomorrow 09:00"],
+  ];
+}
+
+/** A `datetime-local` with its usual times beside it. `value` is the input's text. */
+export function NextPicker({ id, value, onChange, cadenceS, required }) {
+  const now = Date.now() / 1000;
+  return html`<div class="next-picker">
+    <input id=${id} type="datetime-local" value=${value} required=${required}
+      onInput=${(e) => onChange(e.currentTarget.value)} />
+    <div class="next-choices" role="group" aria-label="Usual times">
+      ${nextChoices(now, cadenceS).map(([at, label]) => html`<button type="button" key=${label}
+        class=${cx("next-choice", toLocalInput(at) === value && "on")}
+        onClick=${() => onChange(toLocalInput(at))}>${label}</button>`)}
+    </div>
+  </div>`;
+}
+
 const LONG = new Set(["description", "current_analysis", "noc_next_step", "customer_next_step"]);
 const ORDER = ["title", "executive_summary", "description", "current_analysis", "noc_next_step",
   "customer_next_step"];
@@ -40,7 +81,7 @@ function initial(c) {
 export class CaseForm extends Component {
   constructor(props) {
     super(props);
-    this.state = { ...initial(props.c), busy: false, error: null, saved: false };
+    this.state = { ...initial(props.c), busy: false, error: null, saved: false, sendNote: null };
   }
 
   changes() {
@@ -63,7 +104,7 @@ export class CaseForm extends Component {
     event.preventDefault();
     const body = this.changes();
     if (!Object.keys(body).length) return;
-    this.setState({ busy: true, error: null, saved: false });
+    this.setState({ busy: true, error: null, saved: false, sendNote: null });
     try {
       const c = await post(`/api/noc/cases/${this.props.c.id}`, { ...body, version: this.props.c.version });
       this.setState({ busy: false, saved: true });
@@ -93,16 +134,23 @@ export class CaseForm extends Component {
       <label for=${id}>${meta.label}</label>${control}</div>`;
   }
 
-  render({ c, editable, priorities }, st) {
+  /** Not connected yet (ADR #470): the button is the place, and it says what it will do. */
+  send() {
+    this.setState({ sendNote: "Sending to the customer by email is not connected yet. The update "
+      + "is saved, and the NOC and the agents read it." });
+  }
+
+  render({ c, editable, priorities, cadence }, st) {
     if (!editable) return html`<${CaseUpdateView} c=${c} fields=${this.props.fields} />`;
     const p = `case-${c.id}`;
     const dirty = Object.keys(this.changes()).length > 0;
+    const cadenceS = cadence && cadence.working ? cadence.working[c.priority] : null;
     return html`<form class="case-form" onSubmit=${(e) => this.save(e)} autocomplete="off">
       <div class="pe-fields">
         ${ORDER.map((k) => this.field(k))}
-        <div class="pe-field"><label for=${`${p}-next`}>Next update</label>
-          <input id=${`${p}-next`} type="datetime-local" value=${st.next}
-            onInput=${(e) => this.setState({ next: e.currentTarget.value, saved: false })} /></div>
+        <div class="pe-field case-wide"><label for=${`${p}-next`}>Next update</label>
+          <${NextPicker} id=${`${p}-next`} value=${st.next} cadenceS=${cadenceS}
+            onChange=${(next) => this.setState({ next, saved: false })} /></div>
         <div class="pe-field"><label for=${`${p}-prio`}>Priority</label>
           <select id=${`${p}-prio`} value=${st.priority}
             onChange=${(e) => this.setState({ priority: e.currentTarget.value, saved: false })}>
@@ -119,11 +167,16 @@ export class CaseForm extends Component {
         </div>`)}
       </fieldset>` : null}
       ${st.error ? html`<p class="err" role="alert">${st.error}</p>` : null}
-      <div class="stepup-acts">
+      <div class="case-form-acts">
         <button type="submit" class="primary" disabled=${st.busy || !dirty}>
           ${st.busy ? "Saving…" : "Save the customer update"}</button>
         ${st.saved && !dirty ? html`<span class="muted" role="status">Saved.</span>` : null}
+        <button type="button" class="primary send-update" disabled=${st.busy || dirty}
+          title=${dirty ? "Save the customer update first: what is sent is what was saved."
+            : "Email this customer update to the customer."}
+          onClick=${() => this.send()}><${Icon} name="send" /> Send customer update</button>
       </div>
+      ${st.sendNote ? html`<p class="hint send-note" role="status">${st.sendNote}</p>` : null}
     </form>`;
   }
 }

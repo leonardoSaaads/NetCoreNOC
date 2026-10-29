@@ -1,8 +1,9 @@
 """NOC → Secrets: who may hold the vault, and the leases agents use instead (ADRs #456, #458).
 
-* **Custodians and agents** are named by an admin (`secrets.grants`), stepped up to name one and
-  never to withdraw one. A custodian is an enabled editor (every admin already is one); an agent is
-  a live service token. Withdrawing an agent ends its leases at once.
+* **Custodians, leads and agents** are named by an admin (`secrets.grants`), stepped up to name one
+  and never to withdraw one. A custodian (the vault) and a lead (the NOC's KPIs and playbooks, ADR
+  #470) are enabled editors — every admin already is both; an agent is a live service token.
+  Withdrawing an agent ends its leases at once.
 * **A lease** is asked for by an agent, for one credential a custodian switched agent access on
   for, and is shown once. It carries no secret (`engine/noc/lease.py`).
 * **Introspection** answers RFC 7662's question — is this lease active, and for what? — to the
@@ -28,6 +29,8 @@ from netcorenoc.engine.noc import lease
 
 #: The live leases one agent may hold at once: enough for a diagnosis across a dozen devices.
 MAX_LIVE_LEASES = 20
+#: The grants a person holds; `agent` is a token's.
+PERSON_ROLES = frozenset({"custodian", "lead"})
 
 
 def _summary(row: Mapping[str, Any]) -> dict[str, Any]:
@@ -68,6 +71,7 @@ def register(app: FastAPI, ctx: AppContext) -> None:
                 "display_name": u.get("display_name"),
                 "role": u["role"],
                 "custodian": u["role"] == "admin" or (f"user:{u['id']}", "custodian") in grants,
+                "lead": u["role"] == "admin" or (f"user:{u['id']}", "lead") in grants,
                 "by_role": u["role"] == "admin",
             }
             for u in users
@@ -91,9 +95,10 @@ def register(app: FastAPI, ctx: AppContext) -> None:
         body: GrantIn, request: Request, principal: auth.Principal = Depends(security)
     ) -> dict[str, Any]:
         kind, _, raw_id = body.subject.partition(":")
-        if (kind == "user") != (body.role == "custodian"):
+        if (kind == "user") != (body.role in PERSON_ROLES):
             raise HTTPException(
-                status_code=400, detail="a custodian is a person (user:<id>); an agent is a token"
+                status_code=400,
+                detail="a custodian or a lead is a person (user:<id>); an agent is a token",
             )
         async with store.reading():
             if kind == "user":
@@ -108,8 +113,8 @@ def register(app: FastAPI, ctx: AppContext) -> None:
         if not fit:
             raise HTTPException(
                 status_code=400,
-                detail="a custodian is an enabled editor (admins already are); an agent is a "
-                "live service token",
+                detail="a custodian or a lead is an enabled editor (admins already are); an "
+                "agent is a live service token",
             )
         detail: dict[str, Any] = {"role": body.role, "enabled": body.enabled, "name": name}
         if body.enabled:
@@ -147,6 +152,20 @@ def register(app: FastAPI, ctx: AppContext) -> None:
             "enabled": body.enabled,
             "changed": changed,
             "leases_ended": ended,
+        }
+
+    @route.get("/api/noc/access", operation_id="noc_my_access")
+    async def my_access(
+        request: Request, principal: auth.Principal = Depends(security)
+    ) -> dict[str, Any]:
+        """What you hold in the NOC beyond your role (ADRs #456, #470): the vault (custodian), its
+        measures and playbooks (lead), credential leases (agent). The console hides what you
+        lack; every route still decides on its own."""
+        return {
+            "custodian": await gate.is_custodian(ctx, request, principal),
+            "lead": await gate.is_lead(ctx, request, principal),
+            "agent": await gate.is_agent(ctx, principal),
+            "explanations": {"custodian": gate.NOT_CUSTODIAN, "lead": gate.NOT_LEAD},
         }
 
     @route.get("/api/noc/agent")

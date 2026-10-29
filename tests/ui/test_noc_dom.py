@@ -62,21 +62,33 @@ async def test_the_top_bar_switches_planes_and_the_sidebar_follows(store: Store)
     assert broker["navGroups"] == ["Operations", "Evidence", "Administer"]
     noc = _render(tables["admin"], "#/secrets")
     assert ".plane-noc.plane-on" in noc["dump"]
-    # ADR #468: Paperclip's company sidebar — the work, the agents one by one, the NOC itself.
+    # ADR #468: Paperclip's company sidebar — the work, the agents one by one, the NOC itself;
+    # ADR #470: the Overview first, where the switch lands.
     assert noc["navItems"] == [
+        "Overview",
         "Cases",
         "KPIs",
         "Playbooks",
+        "All customers",
         "All agents",
         "Organization",
         "Secrets",
     ]
-    assert noc["navGroups"] == ["Work", "Agents", "NOC"]
+    # ADR #473: the customers the NOC serves, between the work and the agents.
+    assert noc["navGroups"] == ["Work", "Customers", "Agents", "NOC"]
+    assert "GET /api/noc/access" in noc["requestPaths"]
+    # ADR #470: the KPIs and the playbooks are a lead's — an editor nobody named is not offered
+    # them (and each route refuses them on its own).
+    editor = _render(tables["editor"], "#/cases")
+    assert "KPIs" not in editor["navItems"] and "Playbooks" not in editor["navItems"]
+    assert editor["navItems"][:2] == ["Overview", "Cases"]
     # A viewer reads cases (the customer's side), so the switch is there — and the NOC plane
-    # offers them the cases and nothing of the vault: never a greyed half.
+    # offers them the overview, the cases and the customers' books (ADR #473) and nothing of the
+    # vault: never a greyed half.
     viewer = _render(tables["viewer"], "#/cases")
     assert ".plane-noc.plane-on" in viewer["dump"]
-    assert viewer["navItems"] == ["Cases", "KPIs"] and viewer["navGroups"] == ["Work"]
+    assert viewer["navItems"] == ["Overview", "Cases", "All customers"]
+    assert viewer["navGroups"] == ["Work", "Customers"]
     refused = _render(tables["viewer"], "#/secrets")
     assert refused["refused"] is True
     assert not [p for p in refused["requestPaths"] if "/api/noc/" in p], "a refusal asks nothing"

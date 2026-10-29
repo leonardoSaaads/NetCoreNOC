@@ -13,6 +13,7 @@ import { get, post } from "../../api.js";
 import { can } from "../../session.js";
 import { age, relative, timeTitle } from "../../format.js";
 import { Icon } from "../../icons.js";
+import { Avatar } from "../../avatar.js";
 import { Clock, Priority, span } from "./caseclock.js";
 import { CaseForm } from "./caseform.js";
 import { PendForm, ResolveForm } from "./caseacts.js";
@@ -120,7 +121,9 @@ export class CaseDetail extends Component {
         ${c.priority_auto ? html`<span class="muted hl-note">from the Broker</span>` : null}</dd></div>
       <div><dt>Status</dt><dd><span class=${cx("case-status", `case-${c.super_state}`)}>${c.status_label}</span></dd></div>
       <div><dt>Level</dt><dd>${c.agent || c.with_people ? c.level_label : "—"}</dd></div>
-      <div><dt>Owner</dt><dd>${c.owner ? `${c.owner.name}${c.owner.you ? " (you)" : ""}` : html`<span class="muted">Nobody has taken it</span>`}</dd></div>
+      <div><dt>Owner</dt><dd>${c.owner ? html`${c.owner.kind === "person" ? html`<${Avatar} id=${c.owner.user_id}
+        digest=${c.owner.avatar} name=${c.owner.name} username=${c.owner.name} size=${22} />` : null}
+        ${c.owner.name}${c.owner.you ? " (you)" : ""}` : html`<span class="muted">Nobody has taken it</span>`}</dd></div>
       <div><dt>Opened</dt><dd title=${timeTitle(c.opened_at)}>${relative(c.opened_at)}</dd></div>
       <div><dt>Take</dt><dd><${Clock} clock=${c.clocks && c.clocks.take} now=${this.state.now} label="Take" /></dd></div>
     </dl>`;
@@ -154,7 +157,8 @@ export class CaseDetail extends Component {
         ${edit && c.missing.length ? html`<p class="hint">Still to fill before it can wait on
           someone: ${c.missing.map((m) => (catalogue.fields[m] ? catalogue.fields[m].label : "Next update")).join(", ")}.</p>` : null}
         <${CaseForm} c=${c} editable=${edit} fields=${catalogue.fields}
-          priorities=${catalogue.priorities} onSaved=${(x) => this.done(x)} />
+          priorities=${catalogue.priorities} cadence=${catalogue.targets && catalogue.targets.update_cadence_s}
+          onSaved=${(x) => this.done(x)} />
       </div>` : null}
       ${tab === "history" ? this.history(c) : null}
     </section>`;
@@ -165,6 +169,11 @@ export class CaseDetail extends Component {
     return html`<aside class="record-side">
       <${Milestones} c=${c} now=${now} />
       <${Assignment} c=${c} onMode=${(mode) => this.setState({ mode })} />
+      ${(c.organizations || []).some((o) => o.customer) ? html`<section class="panel-block" aria-label="Its customers">
+        <h3>Its customers</h3>
+        ${c.organizations.filter((o) => o.customer).map((o) => html`<p key=${o.id}><a class="tap"
+          href=${`#/customers/${o.id}`}>${o.name}: instructions, workbook, circuits →</a></p>`)}
+      </section>` : null}
       <section class="panel-block" aria-label="The situation">
         <h3>The situation</h3>
         <p>${s.name || `Situation #${c.id}`}</p>
@@ -197,7 +206,7 @@ export class CaseDetail extends Component {
       ${this.highlights(c)}
       <${StatusPath} c=${c} now=${now} />
       ${note ? html`<p class="err" role="alert">${note}</p>` : null}
-      ${mode === "pend" ? html`<${PendForm} c=${c} pending=${catalogue.pending}
+      ${mode === "pend" ? html`<${PendForm} c=${c} pending=${catalogue.pending} targets=${catalogue.targets}
         statuses=${catalogue.statuses} fields=${catalogue.fields} onDone=${(x) => this.done(x)}
         onCancel=${close} />` : null}
       ${mode === "resolve" ? html`<${ResolveForm} c=${c} causes=${catalogue.causes}

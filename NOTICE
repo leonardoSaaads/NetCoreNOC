@@ -22,6 +22,19 @@ apply to their respective files:
     (`author: Jason Miller`, `license: Apache-2.0`) and is recorded here
     because Apache-2.0 §4(c) expects it to travel with the redistribution.
 
+This product also shows the marks of the AI providers an agent can run on, as
+path data in src/netcorenoc/ui/app/brands.js, to identify each provider beside
+its name:
+
+  - Anthropic, OpenAI, xAI (Grok), Google (Gemini) and Ollama: from Lobe Icons
+    (@lobehub/icons-static-svg v1.101.0), Copyright (c) 2023 LobeHub, licensed
+    under the MIT licence, whose text is reproduced at the head of brands.js.
+  - Meta: from Simple Icons (v16.36.0), dedicated to the public domain under
+    CC0 1.0.
+
+The marks are the trademarks of their respective owners; their use identifies
+the provider and implies no endorsement.
+
 No other third-party code is bundled. The runtime Python dependencies
 (pysnmp, aiosqlite, fastapi, uvicorn, pydantic) are declared in pyproject.toml
 and installed from their own distributions under their own licences; they are

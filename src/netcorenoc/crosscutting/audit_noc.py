@@ -53,5 +53,24 @@ NOC_ACTIONS: frozenset[str] = frozenset(
         "noc.run.finish",
         "noc.case.assign",
         "noc.case.escalate",
+        # ADR #471: the appliance opened a credential to act for someone — an agent's AI
+        # provider key for one of its runs (under the agent's token), or a custodian's model list
+        # (under the custodian). Never the key itself.
+        "noc.secret.use",
+        # ADR #473: the customers' books — who changed a customer's instructions or the NOC's
+        # memory of it, its workbook, its documents (by name and SHA-256) and its circuits, and
+        # who imported a sheet of them. Never a document's content, a contact's details or a note.
+        "noc.customer.update",
+        "noc.customer.memory",
+        "noc.contact.create",
+        "noc.contact.update",
+        "noc.contact.delete",
+        "noc.doc.upload",
+        "noc.doc.delete",
+        "noc.circuit.create",
+        "noc.circuit.update",
+        "noc.circuit.notes",
+        "noc.circuit.delete",
+        "noc.circuit.import",
     }
 )

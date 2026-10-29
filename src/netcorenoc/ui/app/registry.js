@@ -51,10 +51,12 @@ import { Audit } from "./views/audit.js";
 import { Account } from "./views/account.js";
 import { Secrets } from "./views/secrets.js";
 import { Cases } from "./views/cases.js";
+import { NocOverview } from "./views/nocoverview.js";
 import { NocKpis } from "./views/nockpis.js";
 import { Playbooks } from "./views/playbooks.js";
 import { Agents } from "./views/agents.js";
 import { Org } from "./views/org.js";
+import { Customers } from "./views/customers.js";
 
 /**
  * `id`         the URL fragment and the DOM's `data-view`
@@ -157,9 +159,16 @@ export const VIEWS = [
 
   /* ---------- NOC (phase 2): the work, the agents, and the NOC itself (ADR #468) ---------- */
   {
+    // ADR #470: the NOC at a glance — queue, working and pending, by tier and priority. First in
+    // the NOC plane: it is where the switch lands, as the Broker's Overview is the Broker's.
+    id: "noc", label: "Overview", icon: "dashboard", group: "work", plane: "noc",
+    capability: "cases.read", component: NocOverview,
+    summary: "The NOC now: what waits, what is worked and what is pending — by tier and priority.",
+  },
+  {
     // ADRs #459-#461. Every principal who may read a situation may read its case and post on its
     // feed; taking and working one is `cases.work`, offered in the screen from the server's
-    // `actions`. First in the NOC plane: it is where the switch lands.
+    // `actions`.
     id: "cases", label: "Cases", icon: "cases", group: "work", plane: "noc",
     capability: "cases.read", component: Cases,
     summary: "The NOC queue: situations to take, work, wait on, and resolve — with their clocks.",
@@ -174,6 +183,13 @@ export const VIEWS = [
     id: "playbooks", label: "Playbooks", icon: "playbook", group: "work", plane: "noc",
     capability: "playbooks.read", component: Playbooks,
     summary: "Troubleshooting trees agents wrote; each runs on matching cases before the queue.",
+  },
+  {
+    // ADR #473: the customers the NOC serves. The sidebar lists each one below this entry and,
+    // under the one open, the four parts of its book; `#/customers/{id}/{part}` opens a part.
+    id: "customers", label: "Customers", icon: "building", group: "customers", plane: "noc",
+    navLabel: "All customers", capability: "cases.read", component: Customers,
+    summary: "Each customer's instructions, workbook, documents and circuits — what agents read first.",
   },
   {
     // ADRs #465, #468: Paperclip's agents page. The sidebar lists each agent below this entry;
@@ -194,7 +210,7 @@ export const VIEWS = [
     // nothing. Every write below it is gated in the screen on its own capability.
     id: "secrets", label: "Secrets", icon: "vault", group: "noc", plane: "noc",
     capability: "secrets.read", component: Secrets,
-    summary: "Credentials for equipment, sealed twice. Agents get a lease, never the secret.",
+    summary: "Credentials for equipment and AI providers' keys, sealed twice. Agents never get the secret.",
   },
 
   /* ---------- reachable by address, not offered in navigation ---------- */

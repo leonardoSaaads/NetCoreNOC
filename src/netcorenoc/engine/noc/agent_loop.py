@@ -11,8 +11,8 @@ then start the runs that are ready, each in a task of its own with nothing held 
 * an idle agent whose **heartbeat** has come is woken (`timer`);
 * a run past its time limit is ended `timed_out`;
 * a **queued run** starts: a `webhook` agent is sent its signed wake-up and works over MCP until it
-  reports the run finished; a `claude` agent is run by the appliance (`claude`, injected — it calls
-  this appliance's API in process, which this domain may not import).
+  reports the run finished; a `claude` or `openai` agent is run by the appliance (the runners are
+  injected — they call this appliance's API in process, which this domain may not import).
 """
 
 from __future__ import annotations
@@ -51,8 +51,13 @@ class Outcome:
     cost_cents: float = 0.0
 
 
-#: Runs one `claude` agent's run to its end (`api/agent_runtime.py`).
+#: Runs one appliance-run agent's run to its end (`api/agent_runtime.py`, `api/agent_openai.py`).
 Runner = Callable[[Mapping[str, Any], Mapping[str, Any]], Awaitable[Outcome]]
+#: The adapters the appliance runs itself, and what a run says when its runner is missing.
+IN_PROCESS: dict[str, str] = {
+    "claude": "the Claude adapter is not installed",
+    "openai": "the OpenAI-compatible adapter is not available",
+}
 
 
 def _climb_reason(
@@ -162,11 +167,11 @@ async def _wake_webhook(store: Store, run: Mapping[str, Any], agent: Mapping[str
         await store.commit()
 
 
-async def _run_claude(
-    store: Store, run: Mapping[str, Any], agent: Mapping[str, Any], claude: Runner
+async def _run_in_process(
+    store: Store, run: Mapping[str, Any], agent: Mapping[str, Any], runner: Runner
 ) -> None:
     try:
-        outcome = await claude(run, agent)
+        outcome = await runner(run, agent)
     except Exception as exc:  # a failed run is recorded, never a stuck agent
         log.exception("agent %s run %s failed", agent["id"], run["id"])
         outcome = Outcome("failed", error=type(exc).__name__)
@@ -193,9 +198,13 @@ async def _run_claude(
 
 
 async def start_ready(
-    store: Store, running: dict[int, asyncio.Task[None]], claude: Runner | None
+    store: Store,
+    running: dict[int, asyncio.Task[None]],
+    claude: Runner | None,
+    openai: Runner | None = None,
 ) -> int:
     """Start every queued run whose agent is free; how many started."""
+    runners = {"claude": claude, "openai": openai}
     async with store.reading():
         ready = await store.noc_agent_runs_ready()
         everyone = {int(a["id"]): a for a in await store.noc_agents()}
@@ -206,9 +215,10 @@ async def start_ready(
             continue
         async with store.lock:
             at = time.time()
-            if agent["adapter"] == "claude" and claude is None:
+            adapter = str(agent["adapter"])
+            if adapter in IN_PROCESS and runners.get(adapter) is None:
                 await store.noc_agent_run_finish(
-                    int(run["id"]), "failed", at, error="the Claude adapter is not installed"
+                    int(run["id"]), "failed", at, error=IN_PROCESS[adapter]
                 )
                 await store.commit()
                 continue
@@ -217,9 +227,10 @@ async def start_ready(
                 int(run["id"]), "wake", run["trigger"], True, agents.TRIGGERS[run["trigger"]], at
             )
             await store.commit()
+        runner = runners.get(str(agent["adapter"]))
         work = (
-            _run_claude(store, run, agent, claude)
-            if agent["adapter"] == "claude" and claude is not None
+            _run_in_process(store, run, agent, runner)
+            if runner is not None
             else _wake_webhook(store, run, agent)
         )
         running[int(run["id"])] = asyncio.create_task(work)
@@ -227,12 +238,14 @@ async def start_ready(
     return started
 
 
-async def agent_loop(store: Store, claude: Runner | None = None) -> None:
+async def agent_loop(
+    store: Store, claude: Runner | None = None, openai: Runner | None = None
+) -> None:
     """The supervised loop (a crash is the supervisor's to count and restart)."""
     running: dict[int, asyncio.Task[None]] = {}
     while True:
         await tick(store)
-        await start_ready(store, running, claude)
+        await start_ready(store, running, claude, openai)
         for run_id in [r for r, task in running.items() if task.done()]:
             running.pop(run_id)
         await asyncio.sleep(LOOK_EVERY_S)

@@ -54,6 +54,8 @@ export const GROUPS = [
   { id: "evidence", label: "Evidence", plane: "broker" },
   { id: "administer", label: "Administer", plane: "broker" },
   { id: "work", label: "Work", plane: "noc" },
+  // ADR #473: the customers the NOC serves, each with the four parts of its book below it.
+  { id: "customers", label: "Customers", plane: "noc" },
   { id: "agents", label: "Agents", plane: "noc" },
   { id: "noc", label: "NOC", plane: "noc" },
 ];
@@ -63,7 +65,8 @@ export const GROUPS = [
  * `{ key, href, label, icon, state, live, badge, noun }` — so the sidebar stays a renderer of
  * links and the one tab stop covers them as it covers the views. */
 function entriesOf({ capabilities, plane = "broker", extras = {} }) {
-  const views = reachableViews(capabilities, plane);
+  // ADR #470: `extras.hide` names views a NOC grant opens that the caller does not hold.
+  const views = reachableViews(capabilities, plane).filter((v) => !(extras.hide || []).includes(v.id));
   const out = [];
   const push = (group, list) => {
     for (const view of list) {
@@ -82,10 +85,17 @@ function entriesOf({ capabilities, plane = "broker", extras = {} }) {
   return out;
 }
 
-/** Which entry is the page on screen: an extra naming the address exactly, else the view. */
+/** Which entry is the page on screen: an extra naming the address exactly, else the deepest extra
+ * the address lies under (a circuit under its customer's *Circuits*, ADR #473), else the view. */
 function activeIndex(entries, activeId, activeHref) {
   const exact = entries.findIndex((e) => e.sub && e.href === activeHref);
-  return exact !== -1 ? exact : entries.findIndex((e) => e.view && e.view.id === activeId);
+  if (exact !== -1) return exact;
+  let under = -1;
+  entries.forEach((e, i) => {
+    if (e.sub && String(activeHref || "").startsWith(`${e.href}/`)
+      && (under === -1 || e.href.length > entries[under].href.length)) under = i;
+  });
+  return under !== -1 ? under : entries.findIndex((e) => e.view && e.view.id === activeId);
 }
 
 export class Sidebar extends Component {
@@ -203,7 +213,7 @@ export class Sidebar extends Component {
           const said = badge != null && badge > 0 ? `${named} — ${badge} ${noun}` : named;
           return html`<li key=${entry.key}>
             <a
-              class=${cx("nav-item", on && "active", entry.sub && "nav-sub")}
+              class=${cx("nav-item", on && "active", entry.sub && "nav-sub", entry.deep && "nav-deep")}
               href=${entry.href}
               aria-current=${on ? "page" : null}
               aria-label=${collapsed ? said : null}

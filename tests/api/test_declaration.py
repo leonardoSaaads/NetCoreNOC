@@ -704,11 +704,14 @@ async def test_f43_every_path_served_today_still_registers(store: Store) -> None
     # escalating a case, the MCP endpoint).
     # Unreleased: 290 -> 302, /api unchanged — the NOC plane redrawn (ADR #468): twelve UI modules
     # (the roster, Agents, Organization, an agent's parts, a case's milestones and assignment).
-    assert len(served) == 302, f"the served surface moved: {len(served)} method/path pairs"
+    # Unreleased: 302 -> 335 and 165 -> 187 — the NOC's overview, its grants and an AI key's
+    # models (ADRs #470, #471: three /api pairs, five UI modules), and the customers' books (ADR
+    # #473: nineteen /api pairs, six UI modules).
+    assert len(served) == 335, f"the served surface moved: {len(served)} method/path pairs"
     api_pairs = {(method, path) for method, path in served if path.startswith("/api")}
     # **v0.19.0: 53 -> 55.** `GET /api/models` and `POST /api/models/register`: what the
     # models are doing, and turning one of this appliance's own fits into an artefact.
-    assert len(api_pairs) == 165, (
+    assert len(api_pairs) == 187, (
         f"the /api surface moved: {len(api_pairs)} pairs. v0.16.0 adds exactly five — the "
         f"operator's five gestures — v0.16.2 adds exactly one, `POST …/promote` (DECISIONS #273), "
         f"v0.16.5 adds exactly one, `POST /api/alarms/clear` (DECISIONS #301), "
@@ -887,11 +890,14 @@ async def test_f42_every_path_served_today_still_registers(store: Store) -> None
     # escalating a case, the MCP endpoint).
     # Unreleased: 290 -> 302, /api unchanged — the NOC plane redrawn (ADR #468): twelve UI modules
     # (the roster, Agents, Organization, an agent's parts, a case's milestones and assignment).
-    assert len(served) == 302, f"the served surface moved: {len(served)} method/path pairs"
+    # Unreleased: 302 -> 335 and 165 -> 187 — the NOC's overview, its grants and an AI key's
+    # models (ADRs #470, #471: three /api pairs, five UI modules), and the customers' books (ADR
+    # #473: nineteen /api pairs, six UI modules).
+    assert len(served) == 335, f"the served surface moved: {len(served)} method/path pairs"
     api_pairs = {(method, path) for method, path in served if path.startswith("/api")}
     # **v0.19.0: 53 -> 55.** `GET /api/models` and `POST /api/models/register`: what the
     # models are doing, and turning one of this appliance's own fits into an artefact.
-    assert len(api_pairs) == 165, (
+    assert len(api_pairs) == 187, (
         f"the /api surface moved: {len(api_pairs)} pairs. v0.16.0 adds exactly five — the "
         f"operator's five gestures — v0.16.2 adds exactly one, `POST …/promote` (DECISIONS #273), "
         f"v0.16.5 adds exactly one, `POST /api/alarms/clear` (DECISIONS #301), "
@@ -989,7 +995,8 @@ def test_every_unscoped_declaration_carries_a_written_justification() -> None:
     # and forgetting a pinned host key — gated by the lease and by custody, not by scope.
     # ADRs #465-#467: 45 -> 59 — the five playbook routes (a tree names no element; writing one is
     # gated by the agent grant), the nine agent routes and the MCP door (staff, not elements).
-    assert len(entries) == 59, entries
+    # ADRs #470, #471: 59 -> 61 — the caller's own NOC grants, and an AI key's models (custody).
+    assert len(entries) == 61, entries
     unjustified = [lines[i].strip() for i in entries if not lines[i - 1].strip().startswith("#")]
     assert not unjustified, (
         "every `unscoped` route must be preceded by a comment saying why it is not scoped:\n  "
@@ -1011,6 +1018,11 @@ _CONCRETE = {
     "{target_id}": "1",
     # v0.21.0: a maintenance window.
     "{wid}": "1",
+    # ADR #473: a customer and the contacts, documents and circuits in its book.
+    "{customer_id}": "1",
+    "{contact_id}": "1",
+    "{doc_id}": "1",
+    "{circuit_id}": "1",
 }
 
 
@@ -1028,6 +1040,55 @@ async def _seed(store: Store) -> None:
             ne_id = await store.ne_id(ip, BASE)
             await store.entity_level0(ne_id, ip, BASE)
         await store.commit()
+
+
+async def _out_of_scope_customer(store: Store, ne_id: int) -> dict[str, int]:
+    """A customer whose one element is ``ne_id``, with a contact, a document and a circuit in its
+    book (ADR #473), written straight to the store — so a 404 for it is the scope's."""
+    from netcorenoc.engine.noc import circuits
+
+    circuit = circuits.clean({"designation": "HIDDEN-01", "path": []})
+    async with store.lock:
+        org = await store.create_organization("Hidden customer", "hidden-customer", BASE)
+        await store.set_ne_organization(ne_id, org)
+        contact = await store.noc_create_contact(
+            org,
+            {
+                "party": "Hidden",
+                "party_kind": "customer",
+                "escalation_level": 1,
+                "name": "Desk",
+                "role": "",
+                "email": "",
+                "phone": "123",
+                "hours": "",
+                "notes": "",
+            },
+            BASE,
+            "test",
+        )
+        doc = await store.noc_create_doc(
+            org,
+            {
+                "name": "a.txt",
+                "title": "",
+                "category": "other",
+                "ext": "txt",
+                "mime": "text/plain",
+                "size": 1,
+                "sha256": "0" * 64,
+                "content": b"a",
+                "body_text": "a",
+                "text_note": "",
+            },
+            BASE,
+            "test",
+        )
+        circuit_id = await store.noc_put_circuit(
+            org, circuit, circuits.search_text(circuit), "manual", BASE, "test"
+        )
+        await store.commit()
+    return {"customer": org, "contact": contact, "doc": doc, "circuit": circuit_id}
 
 
 async def _out_of_scope_window(store: Store, ne_id: int) -> int:
@@ -1132,7 +1193,8 @@ def test_the_three_postures_are_all_populated() -> None:
     # Unreleased: 42 -> 43, `GET /api/noc/people` (ADR #461).
     # Unreleased: 43 -> 45, `POST /api/noc/exec` and `POST …/hostkey` (ADR #462).
     # Unreleased: 45 -> 59, the playbooks, agents and MCP routes named above (ADRs #465-#467).
-    assert len(UNSCOPED) == 59, UNSCOPED
+    # ADRs #470, #471: 59 -> 61, the two named at the justification test above.
+    assert len(UNSCOPED) == 61, UNSCOPED
     # v0.16.0: 12 -> 17. Every one of the five gestures names a network element and every one
     # is below `admin`, so every one is `scoped` — the write perimeter F34 established,
     # widened by exactly the routes this release adds.
@@ -1166,7 +1228,10 @@ def test_the_three_postures_are_all_populated() -> None:
     # scoped as the situation is — the queue and the KPIs narrow (collections), and the eight
     # routes naming one case 404 on one the caller cannot see (targeted).
     # ADR #467: 50 -> 52, routing and escalating a case — a case is its situation.
-    assert len(SCOPED) == 52, SCOPED
+    # ADR #470: 52 -> 53, the NOC's overview (a collection). ADR #473: 53 -> 72, the customers'
+    # books — the two lists narrow (collections), and the seventeen routes naming one customer 404
+    # on one none of whose elements the caller can see (targeted).
+    assert len(SCOPED) == 72, SCOPED
     assert len(rbac.ROUTE_SCOPE) == len(ADMIN_ONLY) + len(UNSCOPED) + len(SCOPED)
 
 
@@ -1193,6 +1258,23 @@ _BODIES: dict[tuple[str, str], dict[str, Any]] = {
     # ADR #467: routing to the NOC team, and an escalation with its reason.
     ("POST", "/api/noc/cases/{sid}/assign"): {"agent_id": None},
     ("POST", "/api/noc/cases/{sid}/escalate"): {"reason": "guard"},
+    # ADR #473: each write to a customer's book in a shape that passes validation.
+    ("POST", "/api/noc/customers/{customer_id}"): {"instructions": "guard"},
+    ("POST", "/api/noc/customers/{customer_id}/memory"): {"memory": "guard"},
+    ("POST", "/api/noc/customers/{customer_id}/contacts"): {
+        "party": "guard",
+        "name": "guard",
+        "phone": "123",
+    },
+    ("POST", "/api/noc/customers/{customer_id}/contacts/{contact_id}"): {
+        "party": "guard",
+        "name": "guard",
+        "phone": "123",
+    },
+    ("POST", "/api/noc/customers/{customer_id}/circuits/import"): {"text": "guard"},
+    ("POST", "/api/noc/customers/{customer_id}/circuits"): {"designation": "guard"},
+    ("POST", "/api/noc/customers/{customer_id}/circuits/{circuit_id}"): {"designation": "guard"},
+    ("POST", "/api/noc/customers/{customer_id}/circuits/{circuit_id}/notes"): {"notes": "guard"},
     ("POST", "/api/situations/{sid}/feedback"): {"verdict": "confirm"},
     ("POST", "/api/labels"): {"kind": "ne", "id": 1, "label": "x"},
     # v0.16.0. The five gestures, in shapes that pass validation so the *posture* is what is
@@ -1347,6 +1429,9 @@ SCOPED_TARGETED = [
     # ADR #467: routing and escalating one case — the same 404 for one the caller cannot see.
     ("POST", "/api/noc/cases/{sid}/assign"),
     ("POST", "/api/noc/cases/{sid}/escalate"),
+    # ADR #473: every route naming one customer — its book, a contact, a document, a circuit —
+    # 404s on a customer none of whose elements the caller can see, as on one that does not exist.
+    *[(m, p) for (m, p) in rbac.ROUTE_SCOPE if p.startswith("/api/noc/customers/{customer_id}")],
 ]
 SCOPED_COLLECTION = [r for r in SCOPED if r not in SCOPED_TARGETED]
 
@@ -1366,6 +1451,7 @@ async def test_scoped_routes_404_an_out_of_scope_target(
     out_of_scope_ne = await _out_of_scope_ids(store, engine, queue)
     if route[1].startswith("/api/noc/cases"):
         await _open_every_situation(store)  # so the case exists and the 404 is the scope's
+    book = await _out_of_scope_customer(store, out_of_scope_ne["ne"])
     await _activate_scope(store, NARROW)
     method, path = route
     body = dict(_BODIES.get(route) or {})
@@ -1408,7 +1494,13 @@ async def test_scoped_routes_404_an_out_of_scope_target(
         .replace("{kind}", "ne")
         .replace("{target_id}", str(out_of_scope_ne["ne"]))
         .replace("{wid}", str(window_id))
+        .replace("{customer_id}", str(book["customer"]))
+        .replace("{contact_id}", str(book["contact"]))
+        .replace("{doc_id}", str(book["doc"]))
+        .replace("{circuit_id}", str(book["circuit"]))
     )
+    if path == "/api/noc/customers/{customer_id}/docs":
+        concrete += "?name=guard.txt"  # the file's name is a required query parameter
     client = await authutil.client_as(app, "editor")
     try:
         resp = await client.request(method, concrete, json=body or None)
@@ -1426,8 +1518,20 @@ async def test_scoped_collection_routes_answer_differently_under_a_policy(
     engine, queue, app = await authutil.make_env(store)
     await _out_of_scope_ids(store, engine, queue)
     method, path = route
-    if path.startswith("/api/noc/cases"):
+    if path.startswith(("/api/noc/cases", "/api/noc/overview")):
         await _open_every_situation(store)
+    if path.startswith(("/api/noc/customers", "/api/noc/circuits")):
+        # ADR #473: a customer whose one element is on the hidden /24, with a circuit.
+        async with store.lock:
+            hidden = await store.ne_id("192.168.50.1", BASE)
+        await _out_of_scope_customer(store, hidden)
+    if path == "/api/noc/cases/kpis":
+        # ADR #470: the KPIs are a lead's; the editor is named one, so the scope is what differs.
+        async with store.lock:
+            editor = await store.get_user_by_name(authutil.ROLE_USER["editor"])
+            assert editor is not None
+            await store.noc_set_grant(f"user:{editor['id']}", "lead", True, 0.0, "test")
+            await store.commit()
     if path.startswith("/api/activity/"):
         # v0.22.0: these read a window ending NOW, and the fixture's traffic is from 2023 — so
         # both answers were empty and differed only in their `from`/`to`, which moved between the
@@ -1468,6 +1572,9 @@ def _without_clock(body: bytes) -> bytes:
             "cycles": parsed.get("cycles"),
         }
         return json.dumps(kept, sort_keys=True).encode()
+    if isinstance(parsed, dict) and "states" in parsed and "takes" in parsed:
+        # The NOC overview (ADR #470) reduced to what it counts: its `now` moves between reads.
+        return json.dumps({k: v for k, v in parsed.items() if k != "now"}, sort_keys=True).encode()
     if isinstance(parsed, dict) and {"from", "to"} <= set(parsed):
         parsed = {k: v for k, v in parsed.items() if k not in ("from", "to")}
         return json.dumps(parsed, sort_keys=True).encode()

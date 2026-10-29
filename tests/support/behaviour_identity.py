@@ -223,12 +223,20 @@ UNDRIVEN_QUERY_PARAMS: dict[tuple[str, str], tuple[str, ...]] = {
     # ADRs #459-#461: the queue's views, the KPI window and the feed's paging, recorded at their
     # defaults; every view, `mine`, the windows and `before` are driven in
     # `tests/api/test_noc_cases.py` and `tests/api/test_declaration.py`.
-    ("GET", "/api/noc/cases"): ("limit", "mine", "view"),
+    # ADR #470: the severity and tier filters, driven in `tests/api/test_noc_overview.py`.
+    ("GET", "/api/noc/cases"): ("limit", "mine", "priority", "tier", "view"),
     ("GET", "/api/noc/cases/kpis"): ("days",),
     ("GET", "/api/noc/cases/{sid}/feed"): ("before", "limit"),
     # ADR #465: an agent's activity window, recorded at its default; driven in
     # `tests/api/test_noc_agents.py`.
     ("GET", "/api/noc/agents/{agent_id}"): ("days",),
+    # ADR #473: the circuits' search and paging, a document's text page, and an upload's name and
+    # labels — recorded at their defaults (the record holds no customer); driven over real books in
+    # `tests/api/test_noc_customers.py` and `tests/api/test_declaration.py`.
+    ("GET", "/api/noc/circuits"): ("limit", "q"),
+    ("GET", "/api/noc/customers/{customer_id}/circuits"): ("limit", "offset", "q", "status"),
+    ("GET", "/api/noc/customers/{customer_id}/docs/{doc_id}"): ("limit", "offset"),
+    ("POST", "/api/noc/customers/{customer_id}/docs"): ("category", "name", "title"),
 }
 
 #: Headers dropped from the record, with the reason each one is not a behaviour of this project.

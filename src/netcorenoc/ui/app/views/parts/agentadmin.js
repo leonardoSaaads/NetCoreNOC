@@ -79,11 +79,18 @@ function facts(a) {
     rows.push(["Model", c.model], ["Effort", c.effort], ["Most steps per run", c.max_turns],
       ["API key", `vault credential #${c.secret_id}`]);
   }
+  if (a.adapter === "openai") {
+    rows.push(["Provider", c.provider], ["Model", c.model], ["Most steps per run", c.max_turns],
+      ["API key", `vault credential #${c.secret_id}`],
+      ["Price per 1M tokens", c.price_in || c.price_out ? `$${c.price_in} in · $${c.price_out} out`
+        : "not set — tokens counted, spend not"]);
+  }
   if (a.adapter === "webhook") rows.push(["Wake-up URL", c.url], ["Waits for", `${c.timeout_s} s`]);
   rows.push(
     ["Wakes on a routed case", a.wake_on_assignment ? "yes" : "no"],
     ["Heartbeat", a.heartbeat_s ? `every ${span(a.heartbeat_s)}` : "off"],
-    ["Escalates after", a.escalate_after_s ? span(a.escalate_after_s) : "the handbook's (30 min critical)"],
+    ["Escalates after", a.escalate_after_s ? span(a.escalate_after_s)
+      : "standard — 30 min critical, 1 h major, 2 h minor"],
     ["A run may last", span(a.run_timeout_s)],
     ["Monthly budget", a.budget_month_cents ? money(a.budget_month_cents) : "none"],
     ["Its key", !a.has_token ? "none" : a.acts_in_process ? "sealed in the vault" : "issued, shown once"],
@@ -135,7 +142,7 @@ export class AgentConfig extends Component {
           ${admin ? html`<button type="button" onClick=${() => this.mode("edit")}>Edit the configuration</button>` : null}</div>
         <dl class="fact-grid">${facts(agent).map(([k, v]) => html`<div key=${k}><dt>${k}</dt><dd>${v}</dd></div>`)}</dl>
       </section>
-      ${admin && agent.adapter !== "claude" ? html`<section class="panel-block">
+      ${admin && !["claude", "openai"].includes(agent.adapter) ? html`<section class="panel-block">
         <h3>Its key</h3>
         <p class="consequence" role="note">A new key replaces the one ${agent.name} holds: the old one
           stops working at once, and its credential leases end.</p>

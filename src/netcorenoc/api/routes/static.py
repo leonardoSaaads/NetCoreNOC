@@ -242,6 +242,19 @@ _UI_MODULES = (
     "app/views/parts/agentadmin.js",
     "app/views/parts/casemilestones.js",
     "app/views/parts/caseassign.js",
+    # ADR #470: the NOC's overview, what the caller holds in the NOC, and the AI providers' marks.
+    "app/views/nocoverview.js",
+    "app/brands.js",
+    "app/views/parts/vaultui.js",
+    "app/views/parts/aiproviders.js",
+    "app/views/parts/agentrun.js",
+    # ADR #473: the customers' books.
+    "app/views/customers.js",
+    "app/views/parts/custbook.js",
+    "app/views/parts/custcontacts.js",
+    "app/views/parts/custdocs.js",
+    "app/views/parts/circuits.js",
+    "app/views/parts/circuitedit.js",
 )
 
 _VENDOR_ASSETS = (

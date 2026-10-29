@@ -46,8 +46,8 @@ import { Bell } from "./notices.js";
 import { Health } from "./health.js";
 import { StopButton } from "./views/parts/autonomy.js";
 import * as store from "./store.js";
-import { onRoster, roster, watchRoster } from "./roster.js";
-import { navEntries } from "./views/parts/nocui.js";
+import { customerList, hiddenViews, onRoster, roster, watchRoster } from "./roster.js";
+import { customerEntries, navEntries } from "./views/parts/nocui.js";
 import { plural, utcOffset, TIMEZONE } from "./format.js";
 
 export class Shell extends Component {
@@ -122,8 +122,9 @@ export class Shell extends Component {
       situations: (live.situations || []).filter((s) => s.status !== "resolved").length,
     };
 
-    const extras = this.plane === "noc" ? { agents: navEntries(this.state.agents) } : {};
     const activeHref = (this.state.fragment || "").split("?")[0];
+    const extras = this.plane === "noc" ? { agents: navEntries(this.state.agents), hide: hiddenViews(),
+      customers: customerEntries(customerList(), activeHref) } : {};
 
     return html`<div id="app" class=${cx("shell", `nav-${this.state.nav}`)}>
       <${Sidebar} capabilities=${active.capabilities} activeId=${activeId} plane=${this.plane}

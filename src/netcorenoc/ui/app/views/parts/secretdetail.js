@@ -1,5 +1,5 @@
 /* One credential: its light, where it works, what was done with it — and the acts that need a
- * step-up (ADRs #455-#458).
+ * step-up (ADRs #455-#458, #471).
  *
  * * **The light** is a colour AND a word AND the sentence that earned it (`status.reason`), and it
  *   says what green does not mean: an endpoint that answers, not a password that works.
@@ -8,6 +8,9 @@
  * * **Agents** are off by default. On takes a step-up; off never does, and ends every lease.
  * * **History** is the audit log's own rows about this credential: who created it, who read it,
  *   which agent leased and used it.
+ * * **An AI provider's key** shows what a device credential does not need — the models it may use,
+ *   asked of the provider with the key, on request — and leaves out what it does not have: an
+ *   access level, an SSH host key.
  */
 
 import { html, Component, cx } from "../../dom.js";
@@ -17,6 +20,7 @@ import { can } from "../../session.js";
 import { relative, timeTitle } from "../../format.js";
 import { StepUp, StepUpFields, stepupBody } from "./stepup.js";
 import { SecretForm } from "./secretform.js";
+import { KindMark, providerOf } from "./vaultui.js";
 
 const LIGHT = {
   up: ["green", "Reachable"],
@@ -44,7 +48,31 @@ const ACTION = {
   "noc.lease.issue": "was lent a lease",
   "noc.lease.use": "used a lease",
   "noc.lease.revoke": "ended a lease",
+  "noc.secret.use": "used it for",
 };
+
+/** What an AI provider's key may run, asked of the provider when the custodian wants to know. */
+class Models extends Component {
+  async ask() {
+    this.setState({ busy: true, error: null });
+    try {
+      this.setState({ busy: false, answer: await post(`/api/noc/secrets/${this.props.id}/models`) });
+    } catch (error) {
+      this.setState({ busy: false, error: error.message });
+    }
+  }
+
+  render(_props, { busy, answer, error }) {
+    return html`<section class="ai-models">
+      <h4>Models this key may use</h4>
+      ${answer ? html`<p class="muted">${answer.count} model${answer.count === 1 ? "" : "s"}.</p>
+        <ul class="model-chips">${answer.models.map((m) => html`<li key=${m}><code>${m}</code></li>`)}</ul>`
+        : html`<button type="button" disabled=${busy} onClick=${() => this.ask()}>
+          ${busy ? "Asking…" : "Ask the provider"}</button>`}
+      ${error ? html`<p class="err" role="alert">${error}</p>` : null}
+    </section>`;
+  }
+}
 
 class Revealed extends Component {
   constructor(props) {
@@ -174,9 +202,11 @@ export class SecretDetail extends Component {
     if (error) return html`<div class="panel-block"><p class="err" role="alert">${error}</p></div>`;
     if (!d) return html`<div class="panel-block muted">Reading the credential…</div>`;
     const writable = can("secrets.write");
+    const ai = Boolean(providerOf(d.kind));
+    const ssh = ["ssh_password", "ssh_key", "sftp"].includes(d.kind);
     return html`<section class="secret-detail panel-block" aria-label=${`Credential ${d.name}`}>
       <div class="pe-head">
-        <h3>${d.name} <${StatusLight} status=${d.status} /></h3>
+        <h3><${KindMark} kind=${d.kind} size=${32} /> ${d.name} <${StatusLight} status=${d.status} /></h3>
         <button type="button" onClick=${onClose}>Close</button>
       </div>
       <p class="muted">${d.status.reason}${d.status.state === "up"
@@ -184,16 +214,16 @@ export class SecretDetail extends Component {
       <dl class="secret-facts">
         <div><dt>Type</dt><dd>${d.kind_label}${d.protocol_version ? ` · ${d.protocol_version}` : ""}</dd></div>
         <div><dt>Where</dt><dd class="mono">${d.host}:${d.port}</dd></div>
-        <div><dt>Grants</dt><dd>${d.access_label}</dd></div>
+        ${ai ? null : html`<div><dt>Grants</dt><dd>${d.access_label}</dd></div>`}
         <div><dt>Version</dt><dd>${d.version}</dd></div>
         <div><dt>Stored</dt><dd title=${timeTitle(d.created_at)}>${relative(d.created_at)} by ${d.created_by}</dd></div>
         <div><dt>Last read</dt><dd title=${timeTitle(d.revealed_at)}>${d.revealed_at
           ? `${relative(d.revealed_at)} by ${d.revealed_by}` : "never"}</dd></div>
         <div><dt>Agents</dt><dd>${d.agent_access ? "may lease it" : "off"}</dd></div>
-        <div><dt>SSH host key</dt><dd title=${timeTitle(d.host_key_at)}>${d.host_key_at
+        ${ssh ? html`<div><dt>SSH host key</dt><dd title=${timeTitle(d.host_key_at)}>${d.host_key_at
           ? `pinned ${relative(d.host_key_at)}` : "not pinned yet"}${writable && d.host_key_at
           ? html` <button type="button" class="linkish"
-              onClick=${() => this.setState({ mode: "hostkey" })}>Forget…</button>` : null}</dd></div>
+              onClick=${() => this.setState({ mode: "hostkey" })}>Forget…</button>` : null}</dd></div>` : null}
       </dl>
       <div class="secret-acts">
         <button type="button" disabled=${busy}
@@ -209,6 +239,7 @@ export class SecretDetail extends Component {
       </div>
       ${note ? html`<p class="err" role="alert">${note}</p>` : null}
       ${this.body(d)}
+      ${ai ? html`<${Models} id=${d.id} />` : null}
       ${writable ? html`<${Destructive} compact title=${`Delete ${d.name}`} previewLabel="Delete…"
         confirmLabel=${`Delete ${d.name}`}
         consequence=${"The credential, its checks and its leases are destroyed; an agent holding a lease loses it at once. Its audit history stays."}

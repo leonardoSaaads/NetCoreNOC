@@ -39,6 +39,7 @@ __all__ = [
     "UPDATE_CADENCE_S",
     "cadence",
     "document",
+    "next_update_due",
     "restore",
     "summary",
     "take",
@@ -127,6 +128,12 @@ def cadence(case: Mapping[str, Any], now: float) -> dict[str, Any] | None:
         "cadence_s": limit,
         "beyond_cadence": when - now > limit,
     }
+
+
+def next_update_due(case: Mapping[str, Any], now: float, phase: str = "pending") -> float:
+    """When the next update falls by the handbook's cadence, counted from now: what setting a case
+    pending uses when nobody named a time and the case has none ahead (ADR #470)."""
+    return now + UPDATE_CADENCE_S[phase][str(case["priority"])]
 
 
 def _rate(hits: int, total: int) -> float | None:

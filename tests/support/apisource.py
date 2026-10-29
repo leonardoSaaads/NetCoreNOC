@@ -42,6 +42,7 @@ MODULE_ORDER: tuple[str, ...] = (
     "models_noc.py",  # the NOC plane: the vault, custodians and agents, leases (ADR #454)
     "models_cases.py",  # NOC cases and their feed (ADRs #459-#461)
     "models_agents.py",  # the NOC's agents and case routing (ADRs #465-#467)
+    "models_customers.py",  # the customers' books (ADR #473)
     "public_paths.py",  # v0.26.0: the unauthenticated-path allowlist, off `declare.py`
     "reference.py",  # v0.30.0: one sentence per route, for the API reference
     "shipped_view.py",  # v0.26.0: the shipped model as the console sees it, off `routes/decider.py`
@@ -60,6 +61,7 @@ MODULE_ORDER: tuple[str, ...] = (
     "noc_gate.py",  # the vault's custody and step-up gates, which both NOC route modules import
     "case_view.py",  # how a case and its feed read, shared by both case route modules
     "case_close.py",  # the broker's half of resolving a case
+    "customer_view.py",  # ADR #473: how a customer's book reads, shared by its three route modules
     # ADRs #465-#467: an agent's identity and views, the in-process call, the MCP protocol and
     # tools, and the `claude` adapter — helpers the route modules and the runner import.
     "agent_hire.py",
@@ -67,6 +69,9 @@ MODULE_ORDER: tuple[str, ...] = (
     "asgi_call.py",
     "mcp_tools.py",
     "mcp.py",
+    # ADR #471: what both in-process adapters share, and the OpenAI-compatible one.
+    "agent_tools.py",
+    "agent_openai.py",
     "agent_runtime.py",
     "app.py",
     "routes/__init__.py",
@@ -110,12 +115,18 @@ MODULE_ORDER: tuple[str, ...] = (
     # The NOC plane (ADRs #454-#458), in the order `create_app` registers them.
     "routes/secrets.py",
     "routes/noc_access.py",
+    "routes/providers.py",
     "routes/cases.py",
+    "routes/noc_overview.py",
     "routes/case_feed.py",
     "routes/noc_exec.py",
     "routes/playbooks.py",
     "routes/agents.py",
     "routes/case_agents.py",
+    # ADR #473: the customers' books.
+    "routes/customers.py",
+    "routes/customer_docs.py",
+    "routes/circuits.py",
     "routes/mcp.py",
 )
 

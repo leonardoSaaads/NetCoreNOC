@@ -94,7 +94,7 @@ async def test_hiring_an_organization_and_its_keys(store: Store) -> None:
                 "adapter_config": {"secret_id": 99},
             },
         )
-        assert claude.status_code == 400 and "API token" in claude.json()["detail"]
+        assert claude.status_code == 400 and "Anthropic key" in claude.json()["detail"]
         async with store.reading():
             tokens = {t["name"]: t for t in await store.list_tokens()}
             granted = await store.noc_has_grant(f"token:{tokens['Vega']['id']}", "agent")

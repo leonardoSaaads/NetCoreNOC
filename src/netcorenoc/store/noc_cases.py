@@ -20,6 +20,9 @@ _CASE = (
     "c.resolved_at, c.resolved_by, c.alarms_cleared, c.version, c.created_at, c.updated_at, "
     "c.updated_by, c.priority_by, c.restored_at, c.agent_id, c.assigned_at, c.tier, "
     "c.escalated_at, c.with_people, "
+    # The holder's photo digest, when a person holds it (ADR #470): `user:<id>` is the owner ref.
+    "(SELECT a.sha256 FROM user_avatar a WHERE c.owner_ref = 'user:' || a.user_id) "
+    "AS owner_avatar, "
     "(SELECT g.name FROM noc_agent g WHERE g.id = c.agent_id) AS agent_name, "
     "(SELECT g.escalate_after_s FROM noc_agent g WHERE g.id = c.agent_id) "
     "AS agent_escalate_after_s, "
@@ -44,9 +47,7 @@ EDITABLE = (
     "next_update_at",
     "priority",
 )
-#: The severities a case priority is drawn from, worst first (`noc_case_severity`).
-_WORST_FIRST = ("critical", "major", "minor", "warning", "indeterminate")
-_IN_SCOPE = (
+IN_SCOPE = (
     "EXISTS (SELECT 1 FROM situation_alarm sa JOIN alarm a ON a.id = sa.alarm_id "
     "WHERE sa.situation_id = c.situation_id AND a.ne_id = ANY(?))"
 )
@@ -71,19 +72,26 @@ class NocCaseMixin(StoreBase):
         owner_ref: str | None = None,
         ne_ids: frozenset[int] | None = None,
         limit: int = 100,
+        priorities: Iterable[str] | None = None,
+        tier: int | None = None,
     ) -> list[dict[str, Any]]:
         """Cases in ``statuses`` (all when ``None``), most urgent first: live before over, then by
-        priority, then the longest-waiting. ``ne_ids`` is the caller's scope (``None``: all)."""
+        priority, then the longest-waiting. ``ne_ids`` is the caller's scope (``None``: all);
+        ``tier`` 1-4 an agents' tier, 0 the NOC team (past the agents)."""
         where: list[str] = ["TRUE"]
         args: list[Any] = []
-        if statuses is not None:
-            where.append("c.status = ANY(?)")
-            args.append(sorted(statuses))
+        for column, values in (("c.status", statuses), ("c.priority", priorities)):
+            if values is not None:
+                where.append(f"{column} = ANY(?)")
+                args.append(sorted(values))
+        if tier is not None:
+            where.append("c.with_people" if tier == 0 else "NOT c.with_people AND c.tier = ?")
+            args.extend([] if tier == 0 else [tier])
         if owner_ref is not None:
             where.append("c.owner_ref = ?")
             args.append(owner_ref)
         if ne_ids is not None:
-            where.append(_IN_SCOPE)
+            where.append(IN_SCOPE)
             args.append(sorted(ne_ids))
         cur = await self.conn.execute(
             f"SELECT {_CASE} FROM noc_case c JOIN situation s ON s.id = c.situation_id "  # nosec B608
@@ -96,7 +104,7 @@ class NocCaseMixin(StoreBase):
 
     async def noc_case_counts(self, ne_ids: frozenset[int] | None = None) -> dict[str, int]:
         """How many cases are in each status, within the caller's scope."""
-        where, args = ("WHERE " + _IN_SCOPE, (sorted(ne_ids),)) if ne_ids is not None else ("", ())
+        where, args = ("WHERE " + IN_SCOPE, (sorted(ne_ids),)) if ne_ids is not None else ("", ())
         cur = await self.conn.execute(
             f"SELECT c.status, COUNT(*) AS n FROM noc_case c {where} "  # nosec B608
             "GROUP BY c.status ORDER BY c.status",
@@ -115,7 +123,7 @@ class NocCaseMixin(StoreBase):
         self, since: float, ne_ids: frozenset[int] | None = None
     ) -> list[dict[str, Any]]:
         """Every cycle that entered the queue at or after ``since``, for the KPI summary."""
-        scope, args = (" AND " + _IN_SCOPE, (sorted(ne_ids),)) if ne_ids is not None else ("", ())
+        scope, args = (" AND " + IN_SCOPE, (sorted(ne_ids),)) if ne_ids is not None else ("", ())
         cur = await self.conn.execute(
             f"SELECT {', '.join('y.' + c for c in _CYCLE.split(', '))} "  # nosec B608
             "FROM noc_case_cycle y JOIN noc_case c ON c.situation_id = y.situation_id "
@@ -127,7 +135,8 @@ class NocCaseMixin(StoreBase):
     async def noc_case_organizations(self, situation_id: int) -> list[dict[str, Any]]:
         """The organizations whose elements are members, each with its summary if it has one."""
         cur = await self.conn.execute(
-            "SELECT o.id, o.name, m.summary, m.updated_at, m.updated_by FROM organization o "
+            "SELECT o.id, o.name, o.is_default, m.summary, m.updated_at, m.updated_by "
+            "FROM organization o "
             "LEFT JOIN noc_case_summary m ON m.organization_id = o.id AND m.situation_id = ? "
             "WHERE m.situation_id IS NOT NULL OR o.id IN (SELECT n.organization_id "
             "FROM situation_alarm sa JOIN alarm a ON a.id = sa.alarm_id "
@@ -216,40 +225,6 @@ class NocCaseMixin(StoreBase):
             "WHERE situation_id = ? AND taken_at IS NULL AND ended_at IS NULL",
             (priority, situation_id),
         )
-
-    async def noc_case_severity(self, situation_id: int) -> str | None:
-        """What the Broker shows for the situation, worst first: its own severity (autonomy's —
-        the worst member, one level higher when it spans many elements) and each active member's
-        (all of them when none is active) with the Broker's precedence — declared, the
-        catalogue's rule, then what the trap carried or was learned (`store/active.py`). None
-        when nothing places any."""
-        cur = await self.conn.execute(
-            "SELECT a.class_id, c.oid, a.severity_rank, a.status FROM situation_alarm sa "
-            "JOIN alarm a ON a.id = sa.alarm_id JOIN alarm_class c ON c.id = a.class_id "
-            "WHERE sa.situation_id = ?",
-            (situation_id,),
-        )
-        rows = await cur.fetchall()
-        band = await self._band_of()  # type: ignore[attr-defined]
-        live = [r for r in rows if r["status"] == "active"] or rows
-        bands = {band(int(r["class_id"]), str(r["oid"]), r["severity_rank"]) for r in live}
-        cur = await self.conn.execute(
-            "SELECT severity FROM situation WHERE id = ?", (situation_id,)
-        )
-        own = await cur.fetchone()
-        if own is not None and own[0] is not None:
-            bands.add(str(own[0]))
-        return next((word for word in _WORST_FIRST if word in bands), None)
-
-    async def noc_cases_auto_priority(self, limit: int = 200) -> list[int]:
-        """Live cases whose priority is still the appliance's and could still rise."""
-        cur = await self.conn.execute(
-            "SELECT situation_id FROM noc_case WHERE priority_by IS NULL "
-            "AND priority <> 'critical' AND status NOT IN ('resolved', 'closed') "
-            "ORDER BY situation_id LIMIT ?",
-            (limit,),
-        )
-        return [int(r[0]) for r in await cur.fetchall()]
 
     async def noc_case_set_summary(
         self, situation_id: int, organization_id: int, summary: str, now: float, actor: str

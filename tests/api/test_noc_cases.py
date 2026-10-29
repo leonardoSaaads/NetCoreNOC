@@ -90,14 +90,20 @@ async def test_an_opened_situation_is_queued_and_the_take_clock_runs(store: Stor
         assert body["status"] == "working" and body["owner"]["you"] is True
         assert body["clocks"]["take"]["state"] == "met"
         assert body["clocks"]["document"]["state"] == "running"
-        # Another worker may not edit it without taking it first; an admin may act on any case.
+        # ADR #470: the customer update is the NOC's — another worker keeps it current without
+        # taking the case — but its status stays the owner's; an admin may act on any case.
         token = await authutil.make_token(store, "second-worker", "editor")
         other = authutil.new_client(_app)
         other.headers["Authorization"] = f"Bearer {token}"
-        refused = await other.post(f"/api/noc/cases/{sid}", json={"title": "x"})
+        helped = await other.post(f"/api/noc/cases/{sid}", json={"title": "x"})
+        assert helped.status_code == 200 and "edit" in helped.json()["actions"]
+        assert "pend" not in helped.json()["actions"]
+        refused = await other.post(
+            f"/api/noc/cases/{sid}/status", json={"status": "pending_customer"}
+        )
         assert refused.status_code == 403 and "take the case first" in refused.json()["detail"]
         await other.aclose()
-        allowed = await clients["admin"].post(f"/api/noc/cases/{sid}", json={"title": "x"})
+        allowed = await clients["admin"].post(f"/api/noc/cases/{sid}", json={"title": "y"})
         assert allowed.status_code == 200
     finally:
         await _close(clients)
@@ -120,7 +126,10 @@ async def test_a_late_take_reports_the_overrun(store: Store) -> None:
         assert 29 * 60 < before["clocks"]["take"]["overrun_s"] < 31 * 60
         after = (await clients["editor"].post(f"/api/noc/cases/{sid}/take")).json()
         assert after["clocks"]["take"]["state"] == "missed"
-        kpis = (await clients["viewer"].get("/api/noc/cases/kpis")).json()
+        # ADR #470: the KPIs are a lead's — an admin's, a named editor's, an agent's.
+        closed = await clients["editor"].get("/api/noc/cases/kpis")
+        assert closed.status_code == 403 and "NOC lead" in closed.json()["detail"]
+        kpis = (await clients["admin"].get("/api/noc/cases/kpis")).json()
         assert kpis["take"]["missed"] >= 1 and kpis["take"]["overrun_s"] >= 29 * 60
         assert kpis["by_priority"]["major"]["missed"] >= 1
     finally:

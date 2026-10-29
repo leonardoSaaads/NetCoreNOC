@@ -28,7 +28,7 @@ from netcorenoc.api.declare import DeclaredRoutes
 from netcorenoc.api.models_noc import AgentAccessIn, SecretIn, StepUpOnly
 from netcorenoc.crosscutting import auth, secretbox, stepup
 from netcorenoc.crosscutting.vault import VaultError
-from netcorenoc.engine.noc import kinds, probe
+from netcorenoc.engine.noc import kinds, probe, providers
 from netcorenoc.engine.noc.kinds import CredentialError
 
 #: How long the console keeps a revealed credential on screen (it is a statement, not a control).
@@ -56,13 +56,18 @@ def _bound(
             )
     except CredentialError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+    port = body.port or kind.port
+    try:
+        providers.check_endpoint(kind.id, host, port)
+    except providers.ProviderError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     meta = {
         "name": body.name.strip(),
         "description": body.description.strip(),
         "kind": kind.id,
         "access_level": body.access_level,
         "host": host,
-        "port": body.port or kind.port,
+        "port": port,
         "protocol_version": version,
         "monitor": body.monitor,
     }
