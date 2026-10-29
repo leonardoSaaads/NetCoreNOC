@@ -14,6 +14,9 @@ import { get, post } from "../../api.js";
 import { BrandMark } from "../../brands.js";
 import { Icon } from "../../icons.js";
 
+/** How an agent elsewhere is reached -> its mark: a signed POST is sent; MCP is a link. */
+const ELSEWHERE_ICON = { webhook: "send", external: "link" };
+
 /** The adapter and provider a provider card stands for. */
 export function runOf(provider) {
   return provider.adapter === "claude" ? { adapter: "claude", provider: "anthropic" }
@@ -81,7 +84,7 @@ export class RunSettings extends Component {
           ["external", "External", "Comes over MCP when it decides"]].map(([k, label, what]) => html`<button type="button"
             key=${k} role="radio" aria-checked=${st.adapter === k} class=${cx("run-card", "run-elsewhere", st.adapter === k && "on")}
             onClick=${() => this.props.onChange({ adapter: k })}>
-          <span class="run-elsewhere-mark" aria-hidden="true"><${Icon} name=${k === "webhook" ? "send" : "link"} /></span>
+          <span class="run-elsewhere-mark" aria-hidden="true"><${Icon} name=${ELSEWHERE_ICON[k]} /></span>
           <span><b>${label}</b><span class="muted">${what}</span></span>
         </button>`)}
       </div>

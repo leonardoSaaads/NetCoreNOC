@@ -61,7 +61,8 @@ class NocCustomerMixin(StoreBase):
             "(SELECT COUNT(*) FROM noc_circuit k WHERE k.organization_id = o.id) AS circuits, "
             f"{_OPEN_CASES} AS open_cases, "
             "COALESCE(m.instructions, '') AS instructions, COALESCE(m.memory, '') AS memory, "
-            "COALESCE(m.version, 0) AS version, m.updated_at, m.updated_by, m.memory_at, "
+            "COALESCE(m.version, 0) AS version, COALESCE(m.memory_version, 0) AS memory_version, "
+            "m.updated_at, m.updated_by, m.memory_at, "
             "m.memory_by FROM organization o "
             "LEFT JOIN noc_customer m ON m.organization_id = o.id "
             "WHERE o.id = ? AND NOT o.is_default",
@@ -109,8 +110,9 @@ class NocCustomerMixin(StoreBase):
     ) -> None:
         await self.conn.execute(
             "INSERT INTO noc_customer (organization_id, memory, updated_at, updated_by, memory_at, "
-            "memory_by) VALUES (?, ?, ?, ?, ?, ?) ON CONFLICT (organization_id) DO UPDATE SET "
-            "memory = EXCLUDED.memory, version = noc_customer.version + 1, "
+            "memory_by, memory_version) VALUES (?, ?, ?, ?, ?, ?, 1) "
+            "ON CONFLICT (organization_id) DO UPDATE SET "
+            "memory = EXCLUDED.memory, memory_version = noc_customer.memory_version + 1, "
             "memory_at = EXCLUDED.memory_at, memory_by = EXCLUDED.memory_by",
             (organization_id, memory, now, actor, now, actor),
         )

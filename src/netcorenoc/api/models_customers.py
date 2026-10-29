@@ -32,7 +32,8 @@ class InstructionsIn(BaseModel):
 
 class MemoryIn(BaseModel):
     """What the NOC learned about this customer's network. ``append`` adds one dated line (at
-    most 1000 characters) at the end; ``replace`` rewrites the whole memory — to condense it."""
+    most 1000 characters) at the end; ``replace`` rewrites the whole memory — to condense it.
+    ``version`` is the memory's own (``memory_version``), apart from the instructions'."""
 
     model_config = ConfigDict(extra="forbid")
 

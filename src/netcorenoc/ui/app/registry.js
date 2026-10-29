@@ -56,6 +56,7 @@ import { NocKpis } from "./views/nockpis.js";
 import { Playbooks } from "./views/playbooks.js";
 import { Agents } from "./views/agents.js";
 import { Org } from "./views/org.js";
+import { Customers } from "./views/customers.js";
 
 /**
  * `id`         the URL fragment and the DOM's `data-view`
@@ -182,6 +183,13 @@ export const VIEWS = [
     id: "playbooks", label: "Playbooks", icon: "playbook", group: "work", plane: "noc",
     capability: "playbooks.read", component: Playbooks,
     summary: "Troubleshooting trees agents wrote; each runs on matching cases before the queue.",
+  },
+  {
+    // ADR #473: the customers the NOC serves. The sidebar lists each one below this entry and,
+    // under the one open, the four parts of its book; `#/customers/{id}/{part}` opens a part.
+    id: "customers", label: "Customers", icon: "building", group: "customers", plane: "noc",
+    navLabel: "All customers", capability: "cases.read", component: Customers,
+    summary: "Each customer's instructions, workbook, documents and circuits — what agents read first.",
   },
   {
     // ADRs #465, #468: Paperclip's agents page. The sidebar lists each agent below this entry;

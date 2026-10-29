@@ -64,3 +64,24 @@ export function navEntries(agents) {
     noun: "open cases",
   }));
 }
+
+/** The four parts of a customer's book, in the order the sidebar and its page show them. */
+export const BOOK = [["instructions", "Instructions", "book"], ["workbook", "Workbook", "phone"],
+  ["docs", "Additional docs", "doc"], ["circuits", "Circuits", "circuit"]];
+
+/** The sidebar's line for each customer, under *Customers*, and under the one open its book's
+ * four parts (ADR #473). */
+export function customerEntries(customers, activeHref) {
+  const out = [];
+  for (const c of customers || []) {
+    const href = `#/customers/${c.id}`;
+    out.push({ key: `customer-${c.id}`, href, label: c.name, icon: "building",
+      badge: c.open_cases, noun: "open cases" });
+    if (activeHref === href || String(activeHref || "").startsWith(`${href}/`)) {
+      for (const [part, label, icon] of BOOK) {
+        out.push({ key: `customer-${c.id}-${part}`, href: `${href}/${part}`, label, icon, deep: true });
+      }
+    }
+  }
+  return out;
+}

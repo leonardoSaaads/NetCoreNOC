@@ -10,6 +10,9 @@
  * A screen that changes an agent (hiring, pausing, a new manager) calls `refreshRoster()`, so the
  * sidebar says what the screen just did without waiting for the next read.
  *
+ * **The customers** (ADR #473) are read with it too, for the same sidebar: each one by name under
+ * *Customers*, a screen that changes one calling `refreshRoster()` as a hire does.
+ *
  * **The NOC grants** (`/api/noc/access`) are read with it: custodian (the vault), lead (the KPIs
  * and the playbooks) and agent. The sidebar offers a lead's screens to leads only (`hiddenViews`),
  * and those screens show their closed state from the same answer — while every route still
@@ -22,6 +25,7 @@ import { can } from "./session.js";
 const POLL_MS = 20000;
 
 let agents = null;
+let customers = null;
 let access = null;
 let timer = null;
 const listeners = new Set();
@@ -44,6 +48,9 @@ export function hiddenViews() {
   return Object.keys(GATED).filter((id) => !(access && access[GATED[id]]));
 }
 
+/** The customers last read, or null before the first read. */
+export function customerList() { return customers; }
+
 /** The agents last read (terminated ones are not listed), or null before the first read. */
 export function roster() { return agents; }
 
@@ -55,6 +62,7 @@ export function onRoster(listener) {
 
 export async function refreshRoster() {
   try { if (can("cases.read")) access = await get("/api/noc/access"); } catch { /* kept */ }
+  try { if (can("cases.read")) customers = (await get("/api/noc/customers")).customers; } catch { /* kept */ }
   if (!can("agents.read")) {
     for (const listener of listeners) listener(agents);
     return;

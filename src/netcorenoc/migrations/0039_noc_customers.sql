@@ -27,6 +27,9 @@ CREATE TABLE noc_customer (
     instructions    text COLLATE "C" NOT NULL DEFAULT '' CHECK (length(instructions) <= 65536),
     memory          text COLLATE "C" NOT NULL DEFAULT '' CHECK (length(memory) <= 32768),
     version         integer NOT NULL DEFAULT 1,
+    -- The memory moves on its own count: an agent adding a line never makes a person's edit of
+    -- the instructions stale, nor the other way round.
+    memory_version  integer NOT NULL DEFAULT 0,
     updated_at      timestamptz NOT NULL,
     updated_by      text COLLATE "C" NOT NULL,
     memory_at       timestamptz,

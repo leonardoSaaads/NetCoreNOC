@@ -135,7 +135,8 @@ class NocCaseMixin(StoreBase):
     async def noc_case_organizations(self, situation_id: int) -> list[dict[str, Any]]:
         """The organizations whose elements are members, each with its summary if it has one."""
         cur = await self.conn.execute(
-            "SELECT o.id, o.name, m.summary, m.updated_at, m.updated_by FROM organization o "
+            "SELECT o.id, o.name, o.is_default, m.summary, m.updated_at, m.updated_by "
+            "FROM organization o "
             "LEFT JOIN noc_case_summary m ON m.organization_id = o.id AND m.situation_id = ? "
             "WHERE m.situation_id IS NOT NULL OR o.id IN (SELECT n.organization_id "
             "FROM situation_alarm sa JOIN alarm a ON a.id = sa.alarm_id "

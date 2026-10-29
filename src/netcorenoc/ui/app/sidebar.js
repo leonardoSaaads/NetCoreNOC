@@ -54,6 +54,8 @@ export const GROUPS = [
   { id: "evidence", label: "Evidence", plane: "broker" },
   { id: "administer", label: "Administer", plane: "broker" },
   { id: "work", label: "Work", plane: "noc" },
+  // ADR #473: the customers the NOC serves, each with the four parts of its book below it.
+  { id: "customers", label: "Customers", plane: "noc" },
   { id: "agents", label: "Agents", plane: "noc" },
   { id: "noc", label: "NOC", plane: "noc" },
 ];
@@ -204,7 +206,7 @@ export class Sidebar extends Component {
           const said = badge != null && badge > 0 ? `${named} — ${badge} ${noun}` : named;
           return html`<li key=${entry.key}>
             <a
-              class=${cx("nav-item", on && "active", entry.sub && "nav-sub")}
+              class=${cx("nav-item", on && "active", entry.sub && "nav-sub", entry.deep && "nav-deep")}
               href=${entry.href}
               aria-current=${on ? "page" : null}
               aria-label=${collapsed ? said : null}

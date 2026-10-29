@@ -177,7 +177,7 @@ def register(app: FastAPI, ctx: AppContext) -> None:
         async with write_txn():
             row = await store.noc_customer(customer_id)
             assert row is not None
-            _current(body.version, int(row["version"]))
+            _current(body.version, int(row["memory_version"]))
             try:
                 memory = (
                     customers.appended(str(row["memory"]), body.memory, principal.actor)

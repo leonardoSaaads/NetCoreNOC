@@ -129,6 +129,8 @@ CLIENT_GETS: list[tuple[str, str]] = [
     # ADR #470: the NOC's overview, and what the caller holds in the NOC (read with the roster).
     ("cases.read", "/api/noc/overview"),
     ("cases.read", "/api/noc/access"),
+    # ADR #473: the customers — the sidebar's list and the Customers screen.
+    ("cases.read", "/api/noc/customers"),
     ("playbooks.read", "/api/noc/playbooks"),
     # ADRs #465, #468: the organization — the sidebar's roster, Agents and Organization.
     ("agents.read", "/api/noc/agents"),

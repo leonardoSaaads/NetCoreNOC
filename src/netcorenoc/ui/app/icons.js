@@ -163,6 +163,23 @@ const ICONS = {
                  "M18.5 3v3M17 4.5h3"] },
   more: { d: [], c: [[6, 12, 1.2], [12, 12, 1.2], [18, 12, 1.2]] },
   external: { d: ["M13.5 4.5h6v6", "M19.5 4.5 11 13", "M17 14v5.5H4.5V7H10"] },
+
+  // -- ADR #473: the customers the NOC serves, and the four parts of each one's book ----------
+  // A customer: a building. Its instructions: a book; its workbook: a handset; its documents: a
+  // page; its circuits: two ports and the line between them. A document's own type: a page, a
+  // sheet's grid, a picture. Moving a file: an arrow up into a tray, an arrow down out of it.
+  building: { d: ["M3.5 20.5h17", "M5.5 20.5v-16h8.5v16", "M14 9.5h4.5v11", "M8.5 8h2.5M8.5 11.5h2.5" +
+                  "M8.5 15h2.5"] },
+  book: { d: ["M5 5.5a2 2 0 0 1 2-2h12v14H7a2 2 0 0 0-2 2v-14Z", "M5 19.5a2 2 0 0 0 2 2h12v-4",
+              "M9 7.5h6M9 11h4"] },
+  phone: { d: ["M6 3.5h3l1.5 4-2 1.3a10.5 10.5 0 0 0 6.7 6.7l1.3-2 4 1.5v3a2 2 0 0 1-2 2A16 16 0 0 1" +
+               " 4 5.5a2 2 0 0 1 2-2Z"] },
+  doc: { d: ["M6 3.5h8l4 4v13H6v-17Z", "M14 3.5v4h4", "M9 12.5h6M9 16h6"] },
+  sheet: { d: ["M4 4.5h16v15H4v-15Z", "M4 9.5h16M4 14.5h16M10 4.5v15"] },
+  image: { d: ["M4 5h16v14H4V5Z", "M4 16l5-5 4 4 2.5-2.5L20 17"], c: [[15.5, 9, 1.5]] },
+  circuit: { d: ["M3 12h4.5M16.5 12H21", "M7.5 9h3v6h-3V9Z", "M13.5 9h3v6h-3V9Z", "M10.5 12h3"] },
+  upload: { d: ["M12 15V4M7.5 8.5 12 4l4.5 4.5", "M4.5 14.5v5h15v-5"] },
+  download: { d: ["M12 4v11M7.5 10.5 12 15l4.5-4.5", "M4.5 14.5v5h15v-5"] },
 };
 
 /** Every name this module can draw. Read by `tests/ui/test_icons.py`, never for dispatch. */

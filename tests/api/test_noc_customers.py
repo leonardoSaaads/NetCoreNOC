@@ -241,6 +241,9 @@ async def test_a_customers_book_is_kept_by_people_and_its_memory_by_agents(store
         )
         assert resp.status_code == 200, resp.text
         assert "(vega): Zayo answers only by phone" in resp.json()["memory"]
+        # The memory moves on its own version: a person's edit read before it is not stale.
+        kept = await editor.post(base, json={"instructions": said, "version": 1})
+        assert kept.status_code == 200, kept.text
         refused = await agent.post(base, json={"instructions": "be quick"})
         assert refused.status_code == 403 and "kept by people" in refused.json()["detail"]
         assert (
@@ -298,7 +301,7 @@ async def test_a_customers_book_is_kept_by_people_and_its_memory_by_agents(store
         for client in (editor, viewer, agent):
             await client.aclose()
 
-    assert [r["actor"] for r in await _audit(store, "noc.customer.update")] == ["edt"]
+    assert {r["actor"] for r in await _audit(store, "noc.customer.update")} == {"edt"}
     assert [r["actor"] for r in await _audit(store, "noc.customer.memory")] == ["vega"]
     assert [r["actor"] for r in await _audit(store, "noc.circuit.notes")] == ["vega"]
     assert len(await _audit(store, "noc.contact.create")) == 2

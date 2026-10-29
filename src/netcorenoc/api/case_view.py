@@ -238,6 +238,8 @@ def case_view(
                 "name": o["name"],
                 "summary": text(o["summary"]) if o["summary"] else None,
                 "reads": text(o["summary"]) if o["summary"] else default,
+                # ADR #473: a customer's book opens from the case (the default is no customer).
+                "customer": not o.get("is_default", False),
             }
             for o in organizations
         ]

@@ -199,6 +199,7 @@ def customer_view(
         "version": row["version"],
         "updated_at": row["updated_at"],
         "updated_by": _by(row["updated_by"], editor.role),
+        "memory_version": row["memory_version"],
         "memory_at": row["memory_at"],
         "memory_at_iso": _iso(row["memory_at"]),
         "memory_by": _by(row["memory_by"], editor.role),
