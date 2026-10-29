@@ -15,7 +15,10 @@ module decides only what is the NOC's own:
   an entry agent at Tier 1; when it is not concluded within the agent's escalation time it goes
   to that agent's manager, and from the top of the chain to the NOC team. Critical cases climb
   every 30 minutes — Tier 4 by the 90th minute — major every hour, minor every two;
-* **what a run costs**, from the token counts the API reports and the published prices.
+* **what a run costs**, from the token counts the API reports and the published prices — for
+  Claude, Anthropic's rates (cache writes at 1.25 and reads at 0.1 times the input rate); for any
+  other provider, the price per million tokens its admin set, since only they know their contract
+  (ADR #472). An unpriced run counts its tokens and costs nothing, so its budget cannot stop it.
 
 Pure.
 """
@@ -46,6 +49,7 @@ __all__ = [
     "cost_cents",
     "cycle",
     "escalate_after",
+    "priced",
     "subtree",
     "validate_config",
 ]
@@ -124,7 +128,7 @@ RUN_STATUSES: dict[str, str] = {
 ESCALATE_EVERY_S: dict[str, int] = {"critical": 1800, "major": 3600, "minor": 7200}
 
 #: The models the `claude` adapter offers, with their price per million tokens (input, output) in
-#: US dollars. The default is the first.
+#: US dollars — Anthropic's published rates. The default is the first.
 MODELS: dict[str, tuple[float, float]] = {
     "claude-opus-5-5": (4.0, 20.0),
     "claude-sonnet-5-5": (2.0, 10.0),
@@ -132,6 +136,11 @@ MODELS: dict[str, tuple[float, float]] = {
     "claude-fable-5-1": (10.0, 50.0),
 }
 EFFORTS: tuple[str, ...] = ("low", "medium", "high", "xhigh", "max")
+#: What a cache write and a cache read cost, against the model's input rate (Anthropic's).
+CACHE_WRITE = 1.25
+CACHE_READ = 0.1
+#: The most a price per million tokens may be set to, in US dollars.
+MAX_PRICE = 1000.0
 
 
 def _int(where: str, value: Any, low: int, high: int) -> int:
@@ -185,6 +194,12 @@ def _claude(config: Mapping[str, Any]) -> dict[str, Any]:
     }
 
 
+def _price(where: str, value: Any) -> float:
+    if isinstance(value, bool) or not isinstance(value, int | float) or not 0 <= value <= MAX_PRICE:
+        raise AgentError(f"{where}: US dollars per million tokens, from 0 to {MAX_PRICE:g}")
+    return float(value)
+
+
 def _openai(config: Mapping[str, Any]) -> dict[str, Any]:
     provider = config.get("provider")
     if provider not in OPENAI_PROVIDERS:
@@ -203,6 +218,9 @@ def _openai(config: Mapping[str, Any]) -> dict[str, Any]:
         "max_tokens": _int(
             "adapter_config.max_tokens", config.get("max_tokens", 16000), 1024, 64000
         ),
+        # ADR #472: what its provider charges, set by its admin; 0 is unpriced (or free, local).
+        "price_in": _price("adapter_config.price_in", config.get("price_in", 0)),
+        "price_out": _price("adapter_config.price_out", config.get("price_out", 0)),
     }
 
 
@@ -272,7 +290,30 @@ def escalate_after(agent: Mapping[str, Any], priority: str) -> int:
     return int(own) if own else ESCALATE_EVERY_S.get(priority, ESCALATE_EVERY_S["minor"])
 
 
-def cost_cents(model: str, input_tokens: int, output_tokens: int) -> float:
-    """What a call cost, in US cents, at the model's published price (0 for an unknown model)."""
-    price_in, price_out = MODELS.get(model, (0.0, 0.0))
-    return round((input_tokens * price_in + output_tokens * price_out) / 10_000, 4)
+def cost_cents(
+    model: str,
+    input_tokens: int,
+    output_tokens: int,
+    *,
+    cache_write: int = 0,
+    cache_read: int = 0,
+    price: tuple[float, float] | None = None,
+) -> float:
+    """What a call cost, in US cents: ``price`` (per million tokens, input and output) when given,
+    else the model's published price (0 for an unknown model). ``input_tokens`` are the uncached
+    ones; cache writes and reads are priced against the input rate."""
+    price_in, price_out = price if price is not None else MODELS.get(model, (0.0, 0.0))
+    inputs = input_tokens + cache_write * CACHE_WRITE + cache_read * CACHE_READ
+    return round((inputs * price_in + output_tokens * price_out) / 10_000, 4)
+
+
+def priced(adapter: str, config: Mapping[str, Any]) -> str:
+    """How a run of this agent is priced: ``published`` (Anthropic's rates), ``set`` (its admin's
+    price), ``local`` (Ollama, on one's own hardware, unpriced), ``unpriced`` or ``elsewhere``."""
+    if adapter == "claude":
+        return "published"
+    if adapter != "openai":
+        return "elsewhere"
+    if config.get("price_in") or config.get("price_out"):
+        return "set"
+    return "local" if config.get("provider") == "ollama" else "unpriced"

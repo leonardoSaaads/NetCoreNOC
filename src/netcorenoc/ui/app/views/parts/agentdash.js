@@ -79,6 +79,23 @@ function CaseBars({ activity, by }) {
     span=${`${activity.days} days`} note=${any ? null : "no case yet"} />`;
 }
 
+/** What its runs cost each day (ADR #472), drawn only when it is priced: a column of zeros for an
+ *  unpriced agent would claim it spent nothing. */
+function SpendActivity({ activity, agent, now }) {
+  const shown = days(activity.days, agent.created_at, now);
+  const per = shown.map((day) => Math.round(activity.runs.filter((r) => r.day === day)
+    .reduce((n, r) => n + Number(r.cost_cents || 0), 0) * 100) / 100);
+  return html`<${Series} title="Spend per day (US cents)" mark="column"
+    series=${[{ name: "spend", tone: null, values: per }]}
+    labels=${shown.map((d) => d.slice(5))} source=${PRICED_SOURCE[agent.priced] || "its runs"}
+    span=${`${shown.length} day${shown.length === 1 ? "" : "s"}, UTC`} />`;
+}
+
+const PRICED_SOURCE = {
+  published: "Anthropic's published rates",
+  set: "the price per million tokens its admin set",
+};
+
 function SuccessRate({ activity }) {
   let ok = 0;
   let ended = 0;
@@ -126,6 +143,15 @@ function Chain({ agent }) {
   </section>`;
 }
 
+/** How its spend is counted, in a sentence — so $0.00 never reads as "free" when it is unpriced. */
+const PRICED_NOTE = {
+  published: "Priced at Anthropic's published rates, cache reads and writes included.",
+  set: "Priced at the rate its admin set per million tokens.",
+  local: "Runs on your own hardware: its tokens are counted, no charge is.",
+  unpriced: "No price is set: its tokens are counted, its spend is not, so a budget cannot stop it. Set its price per million tokens under Configuration.",
+  elsewhere: "It runs elsewhere: what it spends there is not counted here.",
+};
+
 function Spend({ agent }) {
   const budget = agent.budget_month_cents;
   const used = budget ? Math.min(100, (100 * agent.spent_month_cents) / budget) : null;
@@ -133,10 +159,12 @@ function Spend({ agent }) {
     <h3>This month</h3>
     <p class="success-figure">${money(agent.spent_month_cents)}</p>
     ${budget ? html`<span class="gauge-track" aria-hidden="true"><span
-        class=${cx("gauge-fill", used >= 90 && "gauge-low")} style=${`width:${used.toFixed(1)}%`}></span></span>
-      <p class="muted">of a ${money(budget)} budget; reached, it is paused.</p>`
+        class=${cx("gauge-fill", used >= 80 && used < 100 && "gauge-low", used >= 100 && "gauge-over")}
+        style=${`width:${used.toFixed(1)}%`}></span></span>
+      <p class="muted">${Math.round(used)}% of a ${money(budget)} budget; reached, it is paused until
+        someone resumes it.</p>`
       : html`<p class="muted">No budget is set.</p>`}
-    ${agent.adapter !== "claude" ? html`<p class="hint">It runs elsewhere: what it spends there is not counted here.</p>` : null}
+    <p class="hint">${PRICED_NOTE[agent.priced] || PRICED_NOTE.elsewhere}</p>
   </section>`;
 }
 
@@ -148,6 +176,8 @@ export function AgentOverview({ d, onRuns }) {
       <div class="chart-grid agent-charts">
         <${RunActivity} activity=${d.activity} agent=${d.agent} now=${now} />
         <${SuccessRate} activity=${d.activity} />
+        ${["published", "set"].includes(d.agent.priced)
+          ? html`<${SpendActivity} activity=${d.activity} agent=${d.agent} now=${now} />` : null}
         <${CaseBars} activity=${d.activity} by="priority" />
         <${CaseBars} activity=${d.activity} by="status" />
       </div>

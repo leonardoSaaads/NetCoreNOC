@@ -117,10 +117,10 @@ def agent_view(
         ),
     }
     config = json.loads(agent["adapter_config"])
-    # ADR #471: the AI provider an agent the appliance runs thinks with, for its logo.
-    out["provider"] = (
-        "anthropic" if agent["adapter"] == "claude" else config.get("provider")
-    )
+    # ADR #471: the AI provider an agent the appliance runs thinks with, for its logo; ADR #472:
+    # how its runs are priced, so a spend of $0 says whether it is free or unpriced.
+    out["provider"] = "anthropic" if agent["adapter"] == "claude" else config.get("provider")
+    out["priced"] = agents.priced(str(agent["adapter"]), config)
     if whole:
         out["instructions"] = agent["instructions"]
         out["adapter_config"] = config

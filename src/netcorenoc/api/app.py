@@ -182,6 +182,10 @@ def create_app(
     # ADRs #465-#467: the agents (`/me` before `/{agent_id}`, in the module), case routing.
     routes.agents.register(app, ctx)
     routes.case_agents.register(app, ctx)
+    # ADR #473: the customers' books — instructions, memory, workbook, documents, circuits.
+    routes.customers.register(app, ctx)
+    routes.customer_docs.register(app, ctx)
+    routes.circuits.register(app, ctx)
     routes.mcp.register(app, ctx)  # ADR #466: the MCP endpoint, last — it calls the others
 
     # F40: the gate's completeness half. `DeclaredRoutes` refuses at registration and gives the

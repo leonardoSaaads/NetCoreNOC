@@ -314,11 +314,13 @@ class NocAgentMixin(StoreBase):
         return [dict(r) for r in await cur.fetchall()]
 
     async def noc_agent_activity(self, agent_id: int, since: float) -> dict[str, Any]:
-        """The agent page's charts: runs per day by status, and its cases by priority and status."""
+        """The agent page's charts: runs per day by status, with what they cost and the tokens
+        they used (ADR #472), and its cases by priority and status."""
         cur = await self.conn.execute(
             "SELECT to_char(queued_at AT TIME ZONE 'UTC', 'YYYY-MM-DD') AS day, status, "
-            "COUNT(*) AS n FROM noc_agent_run WHERE agent_id = ? AND queued_at >= to_timestamp(?) "
-            "GROUP BY 1, 2 ORDER BY 1",
+            "COUNT(*) AS n, COALESCE(SUM(cost_cents), 0) AS cost_cents, "
+            "COALESCE(SUM(input_tokens + output_tokens), 0) AS tokens FROM noc_agent_run "
+            "WHERE agent_id = ? AND queued_at >= to_timestamp(?) GROUP BY 1, 2 ORDER BY 1",
             (agent_id, since),
         )
         runs = [dict(r) for r in await cur.fetchall()]

@@ -56,6 +56,8 @@ from netcorenoc.store.mw_reads import MaintenanceReadMixin
 from netcorenoc.store.noc_access import NocAccessMixin
 from netcorenoc.store.noc_agents import NocAgentMixin
 from netcorenoc.store.noc_cases import NocCaseMixin
+from netcorenoc.store.noc_circuits import NocCircuitMixin
+from netcorenoc.store.noc_customers import NocCustomerMixin
 from netcorenoc.store.noc_feed import NocFeedMixin
 from netcorenoc.store.noc_overview import NocOverviewMixin
 from netcorenoc.store.noc_playbooks import NocPlaybookMixin
@@ -117,6 +119,8 @@ class Store(
     NocPlaybookMixin,
     NocAgentMixin,
     NocRoutingMixin,
+    NocCustomerMixin,
+    NocCircuitMixin,
     AutonomyMixin,
     # v0.27.0: the league's decisions and pin, and pending proposals (ADRs #425, #428). Plain
     # `StoreBase` mixins that override nothing.

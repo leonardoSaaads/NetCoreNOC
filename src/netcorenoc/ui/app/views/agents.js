@@ -94,6 +94,7 @@ export class Agents extends Loader {
             onClick=${() => this.props.navigate("#/agents?hire=1")}>Hire an agent</button>` : null}
         </div>
       </div>
+      ${live.length ? this.month(live) : null}
       ${!live.length ? html`<${Empty} title="No agents yet"
         will=${can("agents.manage")
           ? "Hire the first one: a NOC engineer at Tier 1 that takes cases from the queue, with a supervisor above it to escalate to."
@@ -101,6 +102,23 @@ export class Agents extends Loader {
         : !shown.length ? html`<p class="muted">No agent is ${filter} now.</p>`
           : html`<ul class="agent-rows">${shown.map((a) => html`<li key=${a.id}>${this.row(a)}</li>`)}</ul>`}
       ${can("agents.manage") && live.length ? html`<${McpConnect} mcpPath=${data.mcp_path} />` : null}
+    </div>`;
+  }
+
+  /** Paperclip's costs at a glance (ADR #472): this month's spend against the budgets set, who is
+   *  near its budget, and how many run unpriced — whose $0 is not a saving. */
+  month(live) {
+    const spent = live.reduce((n, a) => n + Number(a.spent_month_cents || 0), 0);
+    const budgeted = live.filter((a) => a.budget_month_cents);
+    const budget = budgeted.reduce((n, a) => n + a.budget_month_cents, 0);
+    const near = budgeted.filter((a) => a.spent_month_cents >= 0.8 * a.budget_month_cents).length;
+    const unpriced = live.filter((a) => a.priced === "unpriced").length;
+    return html`<div class="agents-month" role="group" aria-label="This month">
+      <div class="agents-month-fact"><b>${money(spent)}</b><span>spent this month</span></div>
+      <div class="agents-month-fact"><b>${budget ? money(budget) : "—"}</b><span>${budgeted.length
+        ? `budgets of ${budgeted.length} agent${budgeted.length === 1 ? "" : "s"}` : "no budget set"}</span></div>
+      <div class=${cx("agents-month-fact", near && "warn")}><b>${near}</b><span>at 80% of their budget or more</span></div>
+      <div class=${cx("agents-month-fact", unpriced && "warn")}><b>${unpriced}</b><span>unpriced: tokens counted, spend not</span></div>
     </div>`;
   }
 
@@ -124,7 +142,8 @@ export class Agents extends Loader {
         <span class="muted">Last run</span> ${a.last_run_at ? relative(a.last_run_at) : "never"}</span>
       <span class="agent-row-fact wide-only">
         <span class="muted">This month</span> ${money(a.spent_month_cents)}${budget
-          ? html`<span class="mini-meter" aria-hidden="true"><span style=${`width:${used.toFixed(1)}%`}></span></span>
+          ? html`<span class=${cx("mini-meter", used >= 80 && used < 100 && "near", used >= 100 && "over")}
+              aria-hidden="true"><span style=${`width:${used.toFixed(1)}%`}></span></span>
             <span class="muted"> of ${money(budget)}</span>` : null}
       </span>
     </a>`;

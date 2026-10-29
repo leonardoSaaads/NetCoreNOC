@@ -28,6 +28,7 @@ from netcorenoc.api import asgi_call, mcp, mcp_tools
 from netcorenoc.api.agent_hire import binding
 from netcorenoc.crosscutting import audit, secretbox
 from netcorenoc.engine.noc import agents, kinds, providers
+from netcorenoc.engine.noc.agent_loop import Outcome
 from netcorenoc.engine.noc.providers import Provider
 from netcorenoc.store import Store
 
@@ -35,6 +36,7 @@ __all__ = [
     "APPLIANCE",
     "MAX_RESULT",
     "Keys",
+    "Usage",
     "call_tool",
     "first_message",
     "open_keys",
@@ -52,6 +54,46 @@ KEY_KINDS: dict[str, frozenset[str]] = {
     "claude": frozenset({"api_token", providers.PROVIDERS["anthropic"].kind}),
     "openai": frozenset(p.kind for p in providers.PROVIDERS.values() if p.adapter == "openai"),
 }
+
+
+@dataclass
+class Usage:
+    """A run's tokens as the provider reported them, and what they cost (ADR #472): uncached
+    input, cache writes and cache reads apart, because each is priced apart."""
+
+    model: str
+    price: tuple[float, float] | None = None
+    fresh: int = 0
+    cache_write: int = 0
+    cache_read: int = 0
+    output: int = 0
+
+    @property
+    def input(self) -> int:
+        return self.fresh + self.cache_write + self.cache_read
+
+    def cents(self) -> float:
+        return agents.cost_cents(
+            self.model,
+            self.fresh,
+            self.output,
+            cache_write=self.cache_write,
+            cache_read=self.cache_read,
+            price=self.price,
+        )
+
+    def outcome(self, status: str, **said: Any) -> Outcome:
+        return Outcome(
+            status,
+            input_tokens=self.input,
+            output_tokens=self.output,
+            cost_cents=self.cents(),
+            **said,
+        )
+
+    def over_budget(self, agent: Mapping[str, Any]) -> bool:
+        budget = int(agent["budget_month_cents"])
+        return bool(budget) and float(agent["spent_cents"]) + self.cents() >= budget
 
 
 @dataclass(frozen=True)
@@ -137,7 +179,7 @@ async def toolbox(app: Any, token: str) -> tuple[list[tuple[str, str]], dict[str
 
 def system_prompt(agent: Mapping[str, Any]) -> str:
     own = str(agent["instructions"]).strip()
-    guide = mcp.GUIDE.replace("8. End your run with `noc_finish_run`", "8. End your turn")
+    guide = mcp.GUIDE.replace("9. End your run with `noc_finish_run`", "9. End your turn")
     return f"{own}\n\n{guide}" if own else guide
 
 

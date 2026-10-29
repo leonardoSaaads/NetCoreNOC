@@ -9,8 +9,9 @@ answers in words, or the run runs out of turns or time.
 
 The provider's key is a vault credential of its provider's kind, opened here and sent only to the
 host it is bound to (`engine/noc/llm_http.py`: no redirects, TLS verified); every opening is an
-audit row under the agent's token. Spend is counted for the models whose prices this appliance
-knows (Anthropic's); the others report their tokens, and a budget does not stop them.
+audit row under the agent's token. Spend is priced at what its admin set per million tokens
+(ADR #472) — the provider's contract is theirs to know — so its budget stops it as a Claude
+agent's does; with no price set its tokens are counted and its spend is not.
 """
 
 from __future__ import annotations
@@ -21,6 +22,7 @@ from collections.abc import Awaitable, Callable, Mapping
 from typing import Any
 
 from netcorenoc.api.agent_tools import (
+    Usage,
     call_tool,
     first_message,
     open_keys,
@@ -78,15 +80,17 @@ def openai_runner(app: Any, store: Store, *, chat: Chat = llm_http.chat) -> Runn
         functions = _functions(tools)
         model = str(config["model"])
         deadline = time.monotonic() + int(agent["run_timeout_s"])
-        used_in = used_out = 0
-
-        def ended(status: str, **said: Any) -> Outcome:
-            return Outcome(status, input_tokens=used_in, output_tokens=used_out, **said)
+        # ADR #472: priced at what its admin set per million tokens; unset, its tokens are counted
+        # and it costs nothing. Cached prompt tokens are priced as any other: never under.
+        used = Usage(model, (float(config.get("price_in", 0)), float(config.get("price_out", 0))))
+        ended = used.outcome
 
         for _turn in range(int(config.get("max_turns", 20))):
             left = deadline - time.monotonic()
             if left <= 0:
                 return ended("timed_out", error="past the agent's time limit")
+            if used.over_budget(agent):
+                return ended("failed", error="its monthly budget is spent")
             payload: dict[str, Any] = {
                 "model": model,
                 "messages": messages,
@@ -101,8 +105,8 @@ def openai_runner(app: Any, store: Store, *, chat: Chat = llm_http.chat) -> Runn
             except ProviderCallError as exc:
                 return ended("failed", error=f"{keys.provider.label}: {exc}"[:500])
             usage = answer.get("usage") or {}
-            used_in += int(usage.get("prompt_tokens") or 0)
-            used_out += int(usage.get("completion_tokens") or 0)
+            used.fresh += int(usage.get("prompt_tokens") or 0)
+            used.output += int(usage.get("completion_tokens") or 0)
             choices = answer.get("choices") or []
             message = (
                 choices[0].get("message") if choices and isinstance(choices[0], dict) else None

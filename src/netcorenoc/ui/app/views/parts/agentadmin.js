@@ -81,13 +81,16 @@ function facts(a) {
   }
   if (a.adapter === "openai") {
     rows.push(["Provider", c.provider], ["Model", c.model], ["Most steps per run", c.max_turns],
-      ["API key", `vault credential #${c.secret_id}`]);
+      ["API key", `vault credential #${c.secret_id}`],
+      ["Price per 1M tokens", c.price_in || c.price_out ? `$${c.price_in} in · $${c.price_out} out`
+        : "not set — tokens counted, spend not"]);
   }
   if (a.adapter === "webhook") rows.push(["Wake-up URL", c.url], ["Waits for", `${c.timeout_s} s`]);
   rows.push(
     ["Wakes on a routed case", a.wake_on_assignment ? "yes" : "no"],
     ["Heartbeat", a.heartbeat_s ? `every ${span(a.heartbeat_s)}` : "off"],
-    ["Escalates after", a.escalate_after_s ? span(a.escalate_after_s) : "the handbook's (30 min critical)"],
+    ["Escalates after", a.escalate_after_s ? span(a.escalate_after_s)
+      : "standard — 30 min critical, 1 h major, 2 h minor"],
     ["A run may last", span(a.run_timeout_s)],
     ["Monthly budget", a.budget_month_cents ? money(a.budget_month_cents) : "none"],
     ["Its key", !a.has_token ? "none" : a.acts_in_process ? "sealed in the vault" : "issued, shown once"],

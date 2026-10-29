@@ -28,6 +28,7 @@ from typing import TYPE_CHECKING, Any
 
 from netcorenoc.api import agent_openai
 from netcorenoc.api.agent_tools import (
+    Usage,
     call_tool,
     first_message,
     open_keys,
@@ -87,26 +88,12 @@ def claude_runner(
         api = client(keys.api_key)
         model = str(config.get("model", next(iter(agents.MODELS))))
         deadline = time.monotonic() + int(agent["run_timeout_s"])
-        used_in = used_out = 0
-        budget = int(agent["budget_month_cents"])
+        used = Usage(model)
         for _turn in range(int(config.get("max_turns", 20))):
             if time.monotonic() > deadline:
-                return Outcome(
-                    "timed_out",
-                    error="past the agent's time limit",
-                    input_tokens=used_in,
-                    output_tokens=used_out,
-                    cost_cents=agents.cost_cents(model, used_in, used_out),
-                )
-            spent = float(agent["spent_cents"]) + agents.cost_cents(model, used_in, used_out)
-            if budget and spent >= budget:
-                return Outcome(
-                    "failed",
-                    error="its monthly budget is spent",
-                    input_tokens=used_in,
-                    output_tokens=used_out,
-                    cost_cents=agents.cost_cents(model, used_in, used_out),
-                )
+                return used.outcome("timed_out", error="past the agent's time limit")
+            if used.over_budget(agent):
+                return used.outcome("failed", error="its monthly budget is spent")
             response = await api.beta.messages.create(
                 model=model,
                 max_tokens=int(config.get("max_tokens", 16000)),
@@ -120,33 +107,20 @@ def claude_runner(
                 fallbacks="default",
             )
             usage = response.usage
-            used_in += int(usage.input_tokens or 0) + int(
-                getattr(usage, "cache_creation_input_tokens", 0) or 0
-            )
-            used_out += int(usage.output_tokens or 0)
+            used.fresh += int(usage.input_tokens or 0)
+            used.cache_write += int(getattr(usage, "cache_creation_input_tokens", 0) or 0)
+            used.cache_read += int(getattr(usage, "cache_read_input_tokens", 0) or 0)
+            used.output += int(usage.output_tokens or 0)
             messages.append({"role": "assistant", "content": response.content})
-            cost = agents.cost_cents(model, used_in, used_out)
             if response.stop_reason == "refusal":
-                return Outcome(
-                    "failed",
-                    error="the model declined this request",
-                    input_tokens=used_in,
-                    output_tokens=used_out,
-                    cost_cents=cost,
-                )
+                return used.outcome("failed", error="the model declined this request")
             if response.stop_reason == "pause_turn":
                 continue
             calls = [b for b in response.content if b.type == "tool_use"]
             if not calls:
                 text = " ".join(b.text for b in response.content if b.type == "text").strip()
                 await step(store, run, "text", "summary", True, text[:4000])
-                return Outcome(
-                    "succeeded",
-                    summary=text[:8000] or "(no summary)",
-                    input_tokens=used_in,
-                    output_tokens=used_out,
-                    cost_cents=cost,
-                )
+                return used.outcome("succeeded", summary=text[:8000] or "(no summary)")
             results = []
             for block in calls:
                 arguments = block.input if isinstance(block.input, dict) else {}
@@ -162,14 +136,7 @@ def claude_runner(
                     }
                 )
             messages.append({"role": "user", "content": results})
-        cost = agents.cost_cents(model, used_in, used_out)
-        return Outcome(
-            "failed",
-            error="out of turns before it finished",
-            input_tokens=used_in,
-            output_tokens=used_out,
-            cost_cents=cost,
-        )
+        return used.outcome("failed", error="out of turns before it finished")
 
     return run_one
 

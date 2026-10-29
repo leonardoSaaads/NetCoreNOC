@@ -18,7 +18,7 @@ const HERE = ["claude", "openai"];
 const HEARTBEATS = [[0, "Off — woken by cases only"], [300, "Every 5 minutes"],
   [900, "Every 15 minutes"], [1800, "Every 30 minutes"], [3600, "Every hour"],
   [21600, "Every 6 hours"], [86400, "Once a day"]];
-const ESCALATIONS = [[0, "The handbook's — critical 30 min, major 1 h, minor 2 h"],
+const ESCALATIONS = [[0, "Standard — 30 min critical · 1 h major · 2 h minor"],
   [900, "15 minutes"], [1800, "30 minutes"], [3600, "1 hour"], [7200, "2 hours"], [14400, "4 hours"]];
 const TIMEOUTS = [[300, "5 minutes"], [900, "15 minutes"], [1800, "30 minutes"], [3600, "1 hour"],
   [7200, "2 hours"]];
@@ -37,6 +37,7 @@ function initial(agent) {
     model: config.model || (a.adapter && a.adapter !== "claude" ? "" : "claude-opus-5-5"),
     effort: config.effort || "high",
     secret_id: config.secret_id || "", max_turns: config.max_turns || 20,
+    price_in: config.price_in || 0, price_out: config.price_out || 0,
     url: config.url || "", timeout_s: config.timeout_s || 10,
   };
 }
@@ -48,7 +49,8 @@ function adapterConfig(st) {
   }
   if (st.adapter === "openai") {
     return { provider: st.provider, model: st.model.trim(), secret_id: Number(st.secret_id) || null,
-      max_turns: Number(st.max_turns) || 20 };
+      max_turns: Number(st.max_turns) || 20, price_in: Number(st.price_in) || 0,
+      price_out: Number(st.price_out) || 0 };
   }
   if (st.adapter === "webhook") return { url: st.url.trim(), timeout_s: Number(st.timeout_s) || 10 };
   return {};
@@ -144,7 +146,8 @@ export class AgentForm extends Component {
       <fieldset class="form-section"><legend>Its place in the NOC</legend>
         <div class="pe-fields">
           ${this.field(`${p}-role`, "Role", html`<select id=${`${p}-role`} value=${st.role} onChange=${this.set("role")}>
-            ${Object.entries(catalogue.roles).map(([k, v]) => html`<option key=${k} value=${k}>${v}</option>`)}</select>`)}
+            ${Object.entries(catalogue.roles).map(([k, v]) => html`<option key=${k} value=${k}>${v}</option>`)}</select>`,
+            "What it does in the organization chart.")}
           ${this.field(`${p}-tier`, "Tier", html`<select id=${`${p}-tier`} value=${st.tier} onChange=${this.set("tier")}>
             ${[1, 2, 3, 4].map((t) => html`<option key=${t} value=${t}>Tier ${t}</option>`)}</select>`,
             "A case climbs a tier each time it is escalated.")}
@@ -179,16 +182,16 @@ export class AgentForm extends Component {
       <fieldset class="form-section"><legend>When it wakes, and its limits</legend>
         <label class="check-row"><input type="checkbox" checked=${st.wake_on_assignment}
           onChange=${this.set("wake_on_assignment")} /> Wake it when a case is routed to it</label>
-        <div class="pe-fields">
+        <div class="pe-fields pe-two">
           ${this.field(`${p}-beat`, "Heartbeat", html`<select id=${`${p}-beat`} value=${st.heartbeat_s}
             onChange=${this.set("heartbeat_s")}>${choices(HEARTBEATS, st.heartbeat_s)}</select>`)}
-          ${this.field(`${p}-esc`, "Escalate when not concluded within", html`<select id=${`${p}-esc`}
+          ${this.field(`${p}-esc`, "Escalates to the next tier after", html`<select id=${`${p}-esc`}
             value=${st.escalate_after_s} onChange=${this.set("escalate_after_s")}>${choices(ESCALATIONS, st.escalate_after_s)}</select>`)}
           ${this.field(`${p}-limit`, "A run may last", html`<select id=${`${p}-limit`} value=${st.run_timeout_s}
             onChange=${this.set("run_timeout_s")}>${choices(TIMEOUTS, st.run_timeout_s)}</select>`)}
           ${this.field(`${p}-budget`, "Monthly budget (US$)", html`<input id=${`${p}-budget`} type="number"
             min="0" step="0.01" value=${st.budget} onInput=${this.set("budget")} />`,
-            "0 is no limit. Reached, the agent is paused until an editor resumes it.")}
+            "0 is no limit. Reached, it is paused until someone resumes it; at 80% it is flagged.")}
         </div>
       </fieldset>
 

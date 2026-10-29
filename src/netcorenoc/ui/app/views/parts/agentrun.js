@@ -64,21 +64,27 @@ export class RunSettings extends Component {
 
   cards(st, providers) {
     const here = providerFor(st);
-    return html`<div class="run-pick" role="radiogroup" aria-label="Where it thinks">
-      ${providers.map((pv) => html`<button type="button" key=${pv.id} role="radio" aria-checked=${here === pv.id}
-          class=${cx("run-card", here === pv.id && "on")}
-          onClick=${() => this.props.onChange({ ...runOf(pv), secret_id: "",
-            model: pv.adapter === "claude" ? pv.models[0] : "" })}>
-        <${BrandMark} brand=${pv.id} size=${36} />
-        <span><b>${pv.label}</b><span class="muted">${pv.product}</span></span>
-      </button>`)}
-      ${[["webhook", "Webhook", "Runs elsewhere; woken by a signed POST"],
-        ["external", "External", "Comes over MCP on its own"]].map(([k, label, what]) => html`<button type="button"
-          key=${k} role="radio" aria-checked=${st.adapter === k} class=${cx("run-card", "run-elsewhere", st.adapter === k && "on")}
-          onClick=${() => this.props.onChange({ adapter: k })}>
-        <span class="run-elsewhere-mark" aria-hidden="true"><${Icon} name=${k === "webhook" ? "send" : "link"} /></span>
-        <span><b>${label}</b><span class="muted">${what}</span></span>
-      </button>`)}
+    return html`<div class="run-groups">
+      <p class="run-group-h" id="run-here">Here, on an AI provider</p>
+      <div class="run-pick" role="radiogroup" aria-labelledby="run-here">
+        ${providers.map((pv) => html`<button type="button" key=${pv.id} role="radio" aria-checked=${here === pv.id}
+            class=${cx("run-card", here === pv.id && "on")}
+            onClick=${() => this.props.onChange({ ...runOf(pv), secret_id: "",
+              model: pv.adapter === "claude" ? pv.models[0] : "" })}>
+          <${BrandMark} brand=${pv.id} size=${36} />
+          <span><b>${pv.label}</b><span class="muted">${pv.product}</span></span>
+        </button>`)}
+      </div>
+      <p class="run-group-h" id="run-elsewhere">Or elsewhere, on its own machine</p>
+      <div class="run-pick run-pick-two" role="radiogroup" aria-labelledby="run-elsewhere">
+        ${[["webhook", "Webhook", "Woken by a signed POST"],
+          ["external", "External", "Comes over MCP when it decides"]].map(([k, label, what]) => html`<button type="button"
+            key=${k} role="radio" aria-checked=${st.adapter === k} class=${cx("run-card", "run-elsewhere", st.adapter === k && "on")}
+            onClick=${() => this.props.onChange({ adapter: k })}>
+          <span class="run-elsewhere-mark" aria-hidden="true"><${Icon} name=${k === "webhook" ? "send" : "link"} /></span>
+          <span><b>${label}</b><span class="muted">${what}</span></span>
+        </button>`)}
+      </div>
     </div>`;
   }
 
@@ -117,8 +123,16 @@ export class RunSettings extends Component {
         ${field(`${p}-turns`, "Most steps per run", html`<input id=${`${p}-turns`} type="number"
           min="1" max="60" value=${st.max_turns} onInput=${set("max_turns")} />`)}
       </div>
-      ${provider.adapter === "claude" ? null : html`<p class="hint">Its tokens are counted per run;
-        spend is priced for Claude models only, so a budget does not stop it.</p>`}` : null}
+      ${provider.adapter === "claude" ? html`<p class="hint">Priced at Anthropic's published rates;
+        its monthly budget, below, pauses it when reached.</p>` : html`<div class="pe-fields">
+        ${field(`${p}-price-in`, "Price per 1M input tokens (US$)", html`<input id=${`${p}-price-in`}
+          type="number" min="0" max="1000" step="0.01" value=${st.price_in} onInput=${set("price_in")} />`)}
+        ${field(`${p}-price-out`, "Price per 1M output tokens (US$)", html`<input id=${`${p}-price-out`}
+          type="number" min="0" max="1000" step="0.01" value=${st.price_out} onInput=${set("price_out")} />`)}
+        <p class="hint run-price-hint">${provider.own_host
+          ? "Local models cost no tokens: leave 0, or set what your hardware costs you per million."
+          : `From ${provider.label}'s price page for this model. With 0, its tokens are counted but its spend is not, so its budget cannot stop it.`}</p>
+      </div>`}` : null}
       ${st.adapter === "webhook" ? html`<div class="pe-fields">
         ${field(`${p}-url`, "Wake-up URL", html`<input id=${`${p}-url`} type="url" required
           placeholder="https://agents.example.net/netcorenoc" value=${st.url} onInput=${set("url")} />`,

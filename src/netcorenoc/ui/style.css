@@ -3357,16 +3357,18 @@ table.secrets-table td { vertical-align: middle; }
 .grant-token { display: inline-grid; place-items: center; width: 32px; height: 32px; border-radius: 50%; background: var(--bg-hover); font-size: 16px; color: var(--fg-muted); }
 .noc-grants h3 { display: flex; align-items: center; gap: var(--space-2); }
 .ai-intro { margin: 0 0 var(--space-3); max-width: 60rem; }
-.ai-grid { list-style: none; margin: 0 0 var(--space-3); padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(13.5rem, 1fr)); gap: var(--space-3); }
+/* Three across on a desktop, so the longest name ("Google AI Studio") sits on one line like the
+ * others; each card is the same three rows — mark and name, state, button — so they line up. */
+.ai-grid { list-style: none; margin: 0 0 var(--space-3); padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(19rem, 1fr)); gap: var(--space-3); }
 .ai-card {
-  display: flex; flex-direction: column; gap: var(--space-2); padding: var(--space-3);
+  display: grid; grid-template-rows: auto auto 1fr; align-items: start; gap: var(--space-2); padding: var(--space-3);
   border: 1px solid var(--line); border-radius: var(--radius-2); background: var(--bg-raised); box-shadow: var(--shadow-1);
 }
-.ai-card > button { margin-top: auto; }
+.ai-card > button { align-self: end; justify-self: start; min-width: 9rem; }
 .ai-card-head { display: flex; align-items: center; gap: var(--space-3); min-width: 0; }
 .ai-card-on { border-color: color-mix(in srgb, var(--quiet) 60%, var(--line)); }
 .ai-card-text { display: grid; flex: 1 1 auto; min-width: 0; gap: 1px; }
-.ai-card-text b { font-size: var(--fs-lg); }
+.ai-card-text b { font-size: var(--fs-lg); line-height: 1.25; overflow-wrap: anywhere; }
 .ai-state { display: inline-flex; align-items: center; gap: 6px; font-size: var(--fs-sm); font-weight: 600; }
 .ai-state::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: currentColor; }
 .ai-state-on { color: var(--quiet); }
@@ -3382,18 +3384,26 @@ table.secrets-table td { vertical-align: middle; }
 .model-chips li { padding: 1px var(--space-2); border: 1px solid var(--line); border-radius: 999px; font-size: var(--fs-xs); }
 /* The hiring form's "how it runs" (ADR #471): a card per AI provider with its logo, then the two
  * ways an agent runs elsewhere; the key by name, the model from the provider's own list. */
-.run-pick { display: grid; grid-template-columns: repeat(auto-fill, minmax(12.5rem, 1fr)); gap: var(--space-2); margin-bottom: var(--space-3); }
+.run-groups { display: grid; gap: var(--space-2); margin-bottom: var(--space-3); }
+.run-group-h { margin: 0; font-size: var(--fs-xs); font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: var(--fg-muted); }
+.run-pick { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--space-2); }
+.run-pick-two { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+@media (max-width: 640px) { .run-pick, .run-pick-two { grid-template-columns: minmax(0, 1fr); } }
 .run-card {
   display: flex; align-items: center; gap: var(--space-2); padding: var(--space-2) var(--space-3); text-align: left; font: inherit;
   min-height: 0; height: auto; border: 1px solid var(--line); border-radius: var(--radius-2); background: var(--bg-raised); color: var(--fg);
 }
 .run-card > span:last-child { display: grid; min-width: 0; font-size: var(--fs-sm); }
+.run-card b { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .run-card.on { border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); background: color-mix(in srgb, var(--accent) 8%, var(--bg-raised)); }
 .run-elsewhere { border-style: dashed; }
 .run-elsewhere-mark { display: inline-grid; place-items: center; width: 36px; height: 36px; border-radius: 8px; background: var(--bg-hover); color: var(--fg-muted); font-size: 18px; }
 .model-row { display: flex; gap: var(--space-2); align-items: center; }
 .model-row input { flex: 1 1 auto; min-width: 0; }
 .model-row button { white-space: nowrap; }
+.run-price-hint { grid-column: 1 / -1; margin: 0; }
+.pe-fields.pe-two { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+@media (max-width: 640px) { .pe-fields.pe-two { grid-template-columns: minmax(0, 1fr); } }
 
 /* ---------- NOC → Cases, as a case management system draws them (ADRs #459-#461, #468) ----------
  *
@@ -3787,6 +3797,13 @@ a.btn-link.primary, a.btn-link.primary:hover { background: var(--accent); border
 .agent-row-fact { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 4px; font-size: var(--fs-sm); }
 .mini-meter { display: inline-block; width: 48px; height: 4px; border-radius: 999px; background: var(--bg-hover); overflow: hidden; }
 .mini-meter > span { display: block; height: 100%; background: var(--accent); }
+.mini-meter.near > span { background: var(--warn); }
+.mini-meter.over > span { background: var(--alarm); }
+.agents-month { display: grid; grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr)); gap: var(--space-2); margin: 0 0 var(--space-3); }
+.agents-month-fact { display: grid; gap: 2px; padding: var(--space-2) var(--space-3); border: 1px solid var(--line); border-radius: var(--radius-2); background: var(--bg-raised); font-size: var(--fs-sm); color: var(--fg-muted); }
+.agents-month-fact b { font-family: var(--mono); font-size: var(--fs-xl); color: var(--fg); font-variant-numeric: tabular-nums; }
+.agents-month-fact.warn { border-color: var(--warn); }
+.agents-month-fact.warn b { color: var(--warn); }
 @media (max-width: 1100px) {
   .agent-row { display: flex; flex-wrap: wrap; }
   .agent-row-name { flex: 1 1 12rem; }
@@ -3820,6 +3837,7 @@ a.btn-link.primary, a.btn-link.primary:hover { background: var(--accent); border
 .gauge-track { display: block; height: 6px; margin-bottom: var(--space-1); border-radius: 999px; background: var(--bg-hover); overflow: hidden; }
 .gauge-fill { display: block; height: 100%; background: var(--quiet); }
 .gauge-fill.gauge-low { background: var(--warn); }
+.gauge-fill.gauge-over { background: var(--alarm); }
 .chain { list-style: none; margin: 0 0 var(--space-2); padding: 0; display: grid; gap: var(--space-2); }
 .chain li { position: relative; padding-left: var(--space-4); font-size: var(--fs-sm); }
 .chain li::before { content: ""; position: absolute; left: 3px; top: 0.45em; width: 8px; height: 8px; border-radius: 50%; background: var(--line-strong); }
