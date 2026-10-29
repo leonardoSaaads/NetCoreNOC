@@ -24,9 +24,10 @@ gains a **NOC** plane beside the Broker, and the NOC a credential vault for peop
 (#459-#461), and the first automated response: read-only acts on a device for an agent's lease,
 and playbooks that check a new case before the NOC is called (#462, #463) — then the NOC's own
 **AI agents**: an organization of them, an **MCP server** they work through, routing and escalation
-through the tiers, and the NOC plane redrawn after Paperclip and Salesforce (#464-#469). The schema
-is PostgreSQL's baseline, **migration 0031**, which includes SQLite's 0030, **0032** to **0037**
-(schema 37). See
+through the tiers, and the NOC plane redrawn after Paperclip and Salesforce (#464-#469) — and the
+NOC at a glance, AI providers' keys for agents on any OpenAI-compatible API, what agents cost, and
+**each customer's book** for the agents to read (#470-#473). The schema is PostgreSQL's baseline,
+**migration 0031**, which includes SQLite's 0030, **0032** to **0039** (schema 39). See
 [`MIGRATION.md`](MIGRATION.md): the SQLite file is **imported once**, before the first start; the
 appliance is three processes and a spool on disk, and a container needs two CPUs. No grouping
 decision changes (`make eval` is byte-identical).
@@ -127,6 +128,30 @@ stored device credential is unreadable (#455).
   a list view with who holds each case and the take clock drawn.
 - **Two lab devices to log in to** (#469): `tests/lab/noc_devices.py` — a MikroTik CRS326 and a
   Ciena 3930 with SSH, SNMP GET and the traps of a fibre cut and its repair.
+
+### Added — the NOC at a glance, AI providers, what agents cost, and customers (#470-#473)
+
+- **NOC → Overview** (#470): the live cases as Queue, Working and Pending, each by tier, priority
+  and holder, with the takes running late; each tile opens its cases. The case list filters by
+  severity and tier and shows the holder's photo; **the customer update is anyone's who works
+  cases**; *Set pending* fills the next update from the priority's cadence; **Send customer
+  update** is in place and sends nothing yet. **Leads**: the KPIs and the playbooks are an admin's,
+  a named editor's (`lead` grant) or an agent's; `GET /api/noc/access`. Migration **0038**.
+- **AI providers in the vault** (#471): Anthropic, OpenAI, Google AI Studio, xAI, Meta and a local
+  Ollama, each with its mark and a short form; a cloud key goes only to its own API; the models a key
+  may use are listed for a custodian. Agents gain the **`openai` adapter** (any OpenAI-compatible
+  API); both keys of a run are opened in process, and each opening of the provider's key is an
+  audit row under the agent's token.
+- **What agents cost** (#472): Claude's published prices (cache writes and reads priced apart),
+  the owner's prices for other providers, a local model free, an unpriced one said so; monthly
+  budgets that pause the agent; the month's spend on the agents page.
+- **NOC → Customers** (#473): a sidebar group with each customer and, under the one open, its
+  **Instructions** (beside the NOC's **memory** of its network, which agents keep), **Workbook**
+  (contacts by company, in escalation order), **Additional docs** (PDF, Office, Visio, CSV, text and
+  images up to 12 MiB, their text read for the agents) and **Circuits** (search by port, ODF, site
+  or reference; each circuit's path drawn site by site; the customer's own multi-row sheet imported
+  from a paste or an uploaded workbook, previewed first). Scoped by the customer's elements; eight
+  new MCP tools (42 in all). Migration **0039**.
 
 ### Fixed
 

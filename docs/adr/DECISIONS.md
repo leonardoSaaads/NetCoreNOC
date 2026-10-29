@@ -6651,3 +6651,95 @@ From this release an entry is about six lines: decision, reason, release.*
   (4) the agent's state, hidden text in the phone's scrolling nav strip, **widened the page**.
 - **Reason**: the owner asked for exactly this round — two devices like theirs, SSH open, traps
   sent — to see the NOC from an agent's side and an operator's.
+
+## 470. The NOC at a glance, its leads, and a customer update everyone working keeps (unreleased)
+
+- **Decision** (`engine/noc/overview.py`, `store/noc_overview.py`, `api/routes/noc_overview.py`,
+  `api/noc_gate.py`, `api/routes/noc_access.py`, migration 0038, `ui/app/views/nocoverview.js`):
+  **Overview** is the NOC plane's first screen — the live cases counted as **Queue**, **Working**
+  and **Pending**, each split by tier (the agents' Tier 1-4, or the NOC team), by priority and by
+  holder, with the takes running late; a tile opens the cases it counts. Who holds what is named
+  only to a reader who may see people. The case list narrows by priority (severity chips) and by
+  tier, in the address, and shows the holder's photo. **The customer update is everyone's who works
+  cases** — kept current as facts arrive, not only by its owner; setting a case pending with no next
+  update ahead takes the cadence for its priority; **Send customer update** is in place and sends
+  nothing yet (it says so). **Leads**: the KPIs and the playbooks are an admin's, an editor an admin
+  named a lead (`noc_grant.role = 'lead'`, a person, never a token) or an agent's;
+  `GET /api/noc/access` says which grants the caller holds, and the sidebar offers a lead's screens
+  to leads only — every route still decides on its own.
+- **Reason**: the owner asked to see what waits, what is worked and what is pending, by tier and
+  priority; to filter the queue by severity; and to keep the measures and the playbooks to admins
+  and chosen editors.
+
+## 471. AI providers' keys in the vault, and agents on any OpenAI-compatible API (unreleased)
+
+- **Decision** (`engine/noc/providers.py`, `engine/noc/kinds.py`, `engine/noc/llm_http.py`,
+  `api/agent_tools.py`, `api/agent_openai.py`, `api/routes/providers.py`, migration 0038,
+  `ui/app/brands.js`, `ui/app/views/parts/aiproviders.js`): each AI provider — **Anthropic, OpenAI,
+  Google AI Studio, xAI, Meta, Ollama** — is a credential kind of the vault's `ai` group whose one
+  field is the API key, sealed twice like every credential. **A cloud provider's key goes only to
+  its own API** (its host and port are fixed); a local Ollama's goes where its owner says and needs
+  none. A custodian lists the models a key may use, asked of the provider with the key — an audit
+  row `noc.secret.use`. Agents gain the **`openai` adapter**: the appliance runs the agent against
+  an OpenAI-compatible Chat Completions endpoint with its MCP tools, exactly as the `claude` adapter
+  does with the Anthropic SDK. **Agents never hold a key**: both keys of a run (the agent's token
+  and the provider's) are opened in process, and opening the provider's is an audit row under the
+  agent's token, naming the credential and the run — who stored it, who read it and which bot used
+  it are three rows of one log. The HTTP client follows no redirect and speaks only http(s).
+  Providers are drawn with their own marks (Lobe Icons, MIT; Simple Icons, CC0 — `NOTICE`).
+- **Reason**: the owner asked for keys for the agents apart from the devices' credentials, each
+  provider recognisable, Ollama local and easy, and for agents to reach only tokens, never secrets.
+
+## 472. What an agent costs: published prices, an owner's prices, budgets that stop it (unreleased)
+
+- **Decision** (`engine/noc/agents.py`, `api/agent_tools.py`, `ui/app/views/parts/agentdash.js`,
+  `ui/app/views/agents.js`): a run's cost is its tokens at its model's price per million —
+  **Claude's published prices** for a `claude` agent (cache writes at 1.25 times the input price,
+  cache reads at 0.1, as billed), **the prices its owner sets** for an `openai` one (input and
+  output per million tokens, at most $1000), nothing for a local Ollama — and a model with no price
+  is shown **unpriced**, never as free. As in Paperclip, each agent has a **monthly budget**: a run
+  that reaches it stops, and the agent is paused with the reason until a person resumes it. The agents page sums
+  the month (spend, runs, tokens) and shows each agent's spend against its budget; one agent's page
+  draws its spend and its runs per day, in US cents so a small spend is not drawn as nothing.
+- **Reason**: the owner asked whether the pricing was coherent and followed Paperclip's concepts:
+  per-agent budgets that stop the agent, cost by agent and model, and a page that says what is
+  spent and on what.
+
+## 473. Each customer's book: instructions, memory, workbook, documents and circuits (unreleased)
+
+- **Decision** (`engine/noc/customers.py`, `engine/noc/circuits.py`, `engine/noc/doctext.py`,
+  `engine/noc/office.py`, `store/noc_customers.py`, `store/noc_circuits.py`,
+  `api/routes/customers.py`, `api/routes/customer_docs.py`, `api/routes/circuits.py`,
+  `api/customer_view.py`, `api/body_limit.py`, migration 0039, `ui/app/views/customers.js`,
+  `ui/app/views/parts/cust*.js`, `ui/app/views/parts/circuit*.js`): a **customer** is an
+  organization other than the default — the companies whose equipment the NOC watches — and the NOC
+  keeps a book for each: its **instructions** (how it wants the NOC to act and to name its cases),
+  the **memory** the NOC keeps of its network, its **workbook** (who to call, company by company —
+  the customer, its fibre provider, a vendor — in escalation order), its **additional documents**
+  and its **circuits**, each with its path hop by hop. **Who keeps what**: the customer's own words
+  (instructions, workbook, documents, circuits) are kept by people; an agent reads them before it
+  acts and keeps what it learns — one dated line in the memory or on a circuit, or the memory
+  condensed — and the two move on separate versions, so an agent's line never makes a person's edit
+  stale. **Who sees what**: reading is `cases.read` and a customer is visible when one of its
+  elements is in the caller's scope; one that is not answers the same 404 as one that does not
+  exist. This reads the organization column to decide which customer's book a scoped caller reads,
+  and only that: it narrows, never widens, and decides nothing about any element — ADR #366's rule
+  for the elements stands. A contact's email and phone are shown to roles that may see people.
+  **Documents** are kept only when their first bytes are what their name says (PDF, Office, Visio,
+  CSV/TSV, text, PNG/JPEG; 12 MiB, 100 and 256 MiB per customer), read for the agents with the
+  standard library alone — Office files as ZIPs of XML with every part bounded and any DTD
+  refused, PDF text best effort — and downloaded as attachments that run nothing. The upload is the
+  one route the 1 MiB body ceiling lets through to 12 MiB, streamed so it authenticates before any
+  of the body is held. **Circuits** come one at a time or as the customer's own sheet, pasted or as
+  an uploaded workbook: the row naming the circuit is the header, the rows above it are its sites
+  and segments (merged cells carried over the columns they span), and the columns under a segment
+  become the path — previewed, then stored, a circuit of the same name replaced with its notes kept.
+  Agents reach all of it over MCP (`noc_list_customers`, `noc_get_customer`,
+  `noc_read_customer_doc`, `noc_find_circuits`, `noc_list_circuits`, `noc_get_circuit`,
+  `noc_update_customer_memory`, `noc_note_circuit`), a document's text marked as the customer's
+  data, never instructions. Every write is an audit row; none holds a document, a contact's details
+  or a note.
+- **Reason**: the owner asked for a *Customers* section with, for each customer the NOC serves
+  (Akamai and TIM Brasil in the example), its instructions, workbook, additional documents and
+  circuits — the circuits as the customer keeps them, client port to line port, ODF to ODF — for
+  the agents to read over MCP and to keep their memory of as they work.

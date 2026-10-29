@@ -104,7 +104,10 @@ retention and audit segmentation — is a larger, separate feature on the [roadm
 Every network element belongs to an organization, every maintenance window belongs to one, and
 lists filter by it. The column answers one question — *"whose equipment is this?"* — and
 
-* **no authorization decision anywhere reads it.** It is not an RBAC subject and not a scope input;
+* **no authorization decision about an element reads it.** It is not an RBAC subject and not a
+  scope input. One read narrows by it: a scoped person sees a NOC customer's book only when one of
+  that customer's elements is in their scope (ADR #473) — which narrows, never widens, and decides
+  nothing about any element;
 * **correlation still learns across every element**, and a situation may still form across an
   organization boundary, exactly as the scoping warning above says;
 * it is **admin-written**, which is why it is deliberately *not* folded into the visibility-scope
@@ -260,6 +263,32 @@ that an editor can always stop it. Turning a grade on is admin-only (#412).
 * Audit: `noc.agent.create`, `.update`, `.invoke`, `.pause`, `.resume`, `.terminate`, `.rotate`,
   `noc.run.finish`, `noc.case.assign` and `noc.case.escalate`; an agent's acts on cases and devices
   are recorded under its name.
+
+## The customers' books (ADR #473)
+
+* **Scoped by the customer's elements.** A customer's instructions, memory, workbook, documents and
+  circuits are read with `cases.read`, and only when one of its elements is in the caller's scope;
+  one that is not answers the same 404 as one that does not exist, and the lists (customers, circuits
+  found across them) narrow the same way. A contact's email and phone are shown only to roles that
+  may see people.
+* **The customer's words are kept by people.** Instructions, the workbook, documents and circuits
+  are written with `cases.work` by a person or a token that is not one of the NOC's agents; an
+  agent keeps only what it learns — the memory and a circuit's notes. Every write is an audit row
+  (`noc.customer.*`, `noc.contact.*`, `noc.doc.*`, `noc.circuit.*`) that holds no document, no
+  contact's details and no note.
+* **A document is what its first bytes say.** Its extension must be one of the accepted types and
+  its first bytes that type's signature; text must decode without NUL bytes. It is read with the
+  standard library only: an Office file is a ZIP whose parts are counted and each read bounded
+  (2 000 parts, 32 MiB inflated, 5 000 rows, 400 000 cells, 1 M characters), and **an XML part that
+  declares a DTD is refused before it is parsed**, so no entity is ever expanded. A PDF's text is
+  read from its content streams, each inflated to at most 8 MiB.
+* **Downloaded, never run.** A file is served as an attachment (an image inline) with
+  `X-Content-Type-Options: nosniff`, `Content-Security-Policy: default-src 'none'; sandbox` and
+  `no-store`. Its text is given to agents marked as the customer's data, never instructions.
+* **One route takes a large body, after authenticating.** `POST /api/noc/customers/{id}/docs` reads
+  up to 12 MiB; the 1 MiB ceiling's middleware passes that one path's body through as it arrives,
+  counted, so the route's authentication runs before any of it is held — an anonymous request is
+  refused without its body ever being read. 100 documents and 256 MiB per customer.
 
 ## The credential vault (NOC → Secrets)
 

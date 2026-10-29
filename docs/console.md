@@ -51,12 +51,14 @@ disabled controls.
 
 ## NOC — Work
 
-The NOC plane's sidebar reads like Paperclip's company (ADR #468): **Work** (Cases, KPIs,
-Playbooks), **Agents** (all of them, then each by name with its state and open cases) and **NOC**
-(Organization, Secrets).
+The NOC plane's sidebar reads like Paperclip's company (ADR #468): **Work** (Overview, Cases,
+KPIs, Playbooks), **Customers** (all of them, then each by name with its open cases and, under the
+one open, the four parts of its book — ADR #473), **Agents** (all of them, then each by name with
+its state and open cases) and **NOC** (Organization, Secrets).
 
 | View | The question it answers |
 |---|---|
+| **Overview** | The NOC now (ADR #470): the live cases as **Queue**, **Working** and **Pending**, each split by tier (an agents' tier, or the NOC team), by priority and by who holds them, and the takes running late. Each tile opens the cases it counts. Names are shown to roles that may see people |
 | **Cases** | What the NOC has to take, what it is working, what waits on someone else, and what is over. A list view: **Queue**, **Working**, **Pending**, **Resolved**, **All**, each with its count, a filter over the rows on screen (number or words), and *Only mine*. Every row: priority (its colour on the row's edge too), the case, its status, **who holds it** — an agent at its tier, a person, the NOC team, or nobody — the **take** clock counted and drawn ("12m left", "late 15m"), the customer-update clock, the next update and when it opened. Read again every 15 s |
 | **KPIs** | How fast the NOC takes a case, documents it and restores service, over 24 hours, 7 or 30 days: taken within target, median time to take, the time past target summed over every late take, customer updates within 30 minutes; per priority, the take and restore targets, and the takes missed |
 | **Playbooks** | Which troubleshooting trees check a new case before the NOC is called, and how each has done. A list — the name, what it matches (vendors, trap OIDs, severities), on or off, its runs and how they ended — and one playbook opened below it as its tree: each step, what it does, where each answer leads, down to the leaves (resolve, wait, NOC queue), its JSON and its last runs |
@@ -105,6 +107,25 @@ A situation the Broker opens becomes a case in the NOC queue (ADR #459). A case 
   they resolve a case; one is active as soon as it is stored, and acts only through read-only
   commands and credentials whose agent access is on. *Switch off* stops it matching new cases.
 
+## NOC — Customers
+
+A NOC serves several customers, each its own way (ADR #473). **Customers** lists them, a card each
+with its elements, open cases and what its book holds; an admin adds one there (a customer is an
+organization) and puts its elements in it from each element's page. A customer's page is its
+record — highlights (when its instructions and memory last changed and by whom, contacts,
+documents, circuits, open cases) — and four tabs, which are also the four lines under it in the
+sidebar:
+
+| Part | What it holds |
+|---|---|
+| **Instructions** | How the customer wants the NOC to act — how to name its cases, who to call first, what never to touch — written by people; beside it the **NOC memory**, what the NOC learned working its network, kept by agents one dated line at a time (and by people: *Add to the memory*, *Condense*). Its elements below, each opening on the Broker |
+| **Workbook** | Who to call, company by company — the customer, its fibre provider, a vendor — each company's people and desks in the order they are called (1st, 2nd…), with their phone (`tel:`), email (`mailto:`), hours and notes. A viewer sees that a contact exists, not its details |
+| **Additional docs** | What the customer handed over for troubleshooting — topology, sites and shelves, equipment, procedures — as PDF, Word, Excel, PowerPoint, Visio, CSV/TSV, text or PNG/JPEG up to 12 MiB. *Read* shows the text the appliance read from it (what an agent reads); *Download* gives the file |
+| **Circuits** | Every circuit, searched by any word of its fields, attributes, path or notes — a port, an ODF position, a site, a provider's reference. One circuit draws its **path** from the A end to the Z end, site by site, each hop's segment and coordinates (shelf, slot, port, mode, ODF Tx/Rx); then the NOC's notes on it and everything else the customer's sheet said. *Import a sheet* takes the customer's own spreadsheet — pasted from Excel with its header rows of sites and segments, or an Excel/CSV/TSV document already in its Additional docs — shows what it found, and stores it only when asked; a circuit of the same name is replaced, its notes kept |
+
+A case names the customers whose equipment it touches: *Its customers* on the case record opens each
+one's book.
+
 ## NOC — Agents
 
 | View | The question it answers |
@@ -129,7 +150,7 @@ A situation the Broker opens becomes a case in the NOC queue (ADR #459). A case 
 | View | The question it answers |
 |---|---|
 | **Organization** | Who reports to whom. A chart, the **NOC team** — the people — on top, then each agent as a card: its mark, name, role, tier, state and open cases. Choosing a card opens its place beside the chart: its manager, role, tier, whether cases start with it, and its instructions — which an admin changes there. A case climbs one level of this chart each time it is not concluded in time, and past the top comes to the NOC team |
-| **Secrets** | Which credentials reach which equipment, whether each endpoint answers, and who did what with them. A list a custodian scans in seconds — a status light (green answers, yellow intermittent or slow, red does not answer, grey not checked), the name, where it works, what it grants, whether agents may use it — and one credential opened below it: its facts, **Check now**, **Reveal…**, **Change…**, agent access, its leases and its own audit history. A second tab, **Custodians & agents**, is for admins |
+| **Secrets** | Which credentials reach which equipment, whether each endpoint answers, and who did what with them. A list a custodian scans in seconds — a status light (green answers, yellow intermittent or slow, red does not answer, grey not checked), the name, where it works, what it grants, whether agents may use it — and one credential opened below it: its facts, **Check now**, **Reveal…**, **Change…**, agent access, its leases and its own audit history. A tab of **AI providers** (ADR #471) — Anthropic, OpenAI, Google AI Studio, xAI, Meta and a local Ollama, each a card with its mark — keeps the keys the NOC's agents think with; a cloud key goes only to its own API, and a custodian lists the models it may use. A last tab, **People & agents**, is for admins: custodians, NOC leads (who read the KPIs and the playbooks) and agents |
 
 * **Only custodians see the vault**: every admin, and each editor an admin names under
   *Custodians & agents*. Anyone else who opens Secrets is told why and shown nothing.

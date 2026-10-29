@@ -1011,6 +1011,11 @@ _CONCRETE = {
     "{target_id}": "1",
     # v0.21.0: a maintenance window.
     "{wid}": "1",
+    # ADR #473: a customer and the contacts, documents and circuits in its book.
+    "{customer_id}": "1",
+    "{contact_id}": "1",
+    "{doc_id}": "1",
+    "{circuit_id}": "1",
 }
 
 
@@ -1028,6 +1033,55 @@ async def _seed(store: Store) -> None:
             ne_id = await store.ne_id(ip, BASE)
             await store.entity_level0(ne_id, ip, BASE)
         await store.commit()
+
+
+async def _out_of_scope_customer(store: Store, ne_id: int) -> dict[str, int]:
+    """A customer whose one element is ``ne_id``, with a contact, a document and a circuit in its
+    book (ADR #473), written straight to the store — so a 404 for it is the scope's."""
+    from netcorenoc.engine.noc import circuits
+
+    circuit = circuits.clean({"designation": "HIDDEN-01", "path": []})
+    async with store.lock:
+        org = await store.create_organization("Hidden customer", "hidden-customer", BASE)
+        await store.set_ne_organization(ne_id, org)
+        contact = await store.noc_create_contact(
+            org,
+            {
+                "party": "Hidden",
+                "party_kind": "customer",
+                "escalation_level": 1,
+                "name": "Desk",
+                "role": "",
+                "email": "",
+                "phone": "123",
+                "hours": "",
+                "notes": "",
+            },
+            BASE,
+            "test",
+        )
+        doc = await store.noc_create_doc(
+            org,
+            {
+                "name": "a.txt",
+                "title": "",
+                "category": "other",
+                "ext": "txt",
+                "mime": "text/plain",
+                "size": 1,
+                "sha256": "0" * 64,
+                "content": b"a",
+                "body_text": "a",
+                "text_note": "",
+            },
+            BASE,
+            "test",
+        )
+        circuit_id = await store.noc_put_circuit(
+            org, circuit, circuits.search_text(circuit), "manual", BASE, "test"
+        )
+        await store.commit()
+    return {"customer": org, "contact": contact, "doc": doc, "circuit": circuit_id}
 
 
 async def _out_of_scope_window(store: Store, ne_id: int) -> int:
@@ -1193,6 +1247,23 @@ _BODIES: dict[tuple[str, str], dict[str, Any]] = {
     # ADR #467: routing to the NOC team, and an escalation with its reason.
     ("POST", "/api/noc/cases/{sid}/assign"): {"agent_id": None},
     ("POST", "/api/noc/cases/{sid}/escalate"): {"reason": "guard"},
+    # ADR #473: each write to a customer's book in a shape that passes validation.
+    ("POST", "/api/noc/customers/{customer_id}"): {"instructions": "guard"},
+    ("POST", "/api/noc/customers/{customer_id}/memory"): {"memory": "guard"},
+    ("POST", "/api/noc/customers/{customer_id}/contacts"): {
+        "party": "guard",
+        "name": "guard",
+        "phone": "123",
+    },
+    ("POST", "/api/noc/customers/{customer_id}/contacts/{contact_id}"): {
+        "party": "guard",
+        "name": "guard",
+        "phone": "123",
+    },
+    ("POST", "/api/noc/customers/{customer_id}/circuits/import"): {"text": "guard"},
+    ("POST", "/api/noc/customers/{customer_id}/circuits"): {"designation": "guard"},
+    ("POST", "/api/noc/customers/{customer_id}/circuits/{circuit_id}"): {"designation": "guard"},
+    ("POST", "/api/noc/customers/{customer_id}/circuits/{circuit_id}/notes"): {"notes": "guard"},
     ("POST", "/api/situations/{sid}/feedback"): {"verdict": "confirm"},
     ("POST", "/api/labels"): {"kind": "ne", "id": 1, "label": "x"},
     # v0.16.0. The five gestures, in shapes that pass validation so the *posture* is what is
@@ -1347,6 +1418,9 @@ SCOPED_TARGETED = [
     # ADR #467: routing and escalating one case — the same 404 for one the caller cannot see.
     ("POST", "/api/noc/cases/{sid}/assign"),
     ("POST", "/api/noc/cases/{sid}/escalate"),
+    # ADR #473: every route naming one customer — its book, a contact, a document, a circuit —
+    # 404s on a customer none of whose elements the caller can see, as on one that does not exist.
+    *[(m, p) for (m, p) in rbac.ROUTE_SCOPE if p.startswith("/api/noc/customers/{customer_id}")],
 ]
 SCOPED_COLLECTION = [r for r in SCOPED if r not in SCOPED_TARGETED]
 
@@ -1366,6 +1440,7 @@ async def test_scoped_routes_404_an_out_of_scope_target(
     out_of_scope_ne = await _out_of_scope_ids(store, engine, queue)
     if route[1].startswith("/api/noc/cases"):
         await _open_every_situation(store)  # so the case exists and the 404 is the scope's
+    book = await _out_of_scope_customer(store, out_of_scope_ne["ne"])
     await _activate_scope(store, NARROW)
     method, path = route
     body = dict(_BODIES.get(route) or {})
@@ -1408,7 +1483,13 @@ async def test_scoped_routes_404_an_out_of_scope_target(
         .replace("{kind}", "ne")
         .replace("{target_id}", str(out_of_scope_ne["ne"]))
         .replace("{wid}", str(window_id))
+        .replace("{customer_id}", str(book["customer"]))
+        .replace("{contact_id}", str(book["contact"]))
+        .replace("{doc_id}", str(book["doc"]))
+        .replace("{circuit_id}", str(book["circuit"]))
     )
+    if path == "/api/noc/customers/{customer_id}/docs":
+        concrete += "?name=guard.txt"  # the file's name is a required query parameter
     client = await authutil.client_as(app, "editor")
     try:
         resp = await client.request(method, concrete, json=body or None)
@@ -1428,6 +1509,11 @@ async def test_scoped_collection_routes_answer_differently_under_a_policy(
     method, path = route
     if path.startswith(("/api/noc/cases", "/api/noc/overview")):
         await _open_every_situation(store)
+    if path.startswith(("/api/noc/customers", "/api/noc/circuits")):
+        # ADR #473: a customer whose one element is on the hidden /24, with a circuit.
+        async with store.lock:
+            hidden = await store.ne_id("192.168.50.1", BASE)
+        await _out_of_scope_customer(store, hidden)
     if path == "/api/noc/cases/kpis":
         # ADR #470: the KPIs are a lead's; the editor is named one, so the scope is what differs.
         async with store.lock:
