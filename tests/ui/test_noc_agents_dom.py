@@ -79,7 +79,8 @@ async def test_the_sidebar_lists_each_agent_and_the_pages_render_them(store: Sto
     assert items[at + 1].startswith("Atlas") and items[at + 2].startswith("Vega"), (
         "each agent under All agents, its manager first"
     )
-    assert admin["navGroups"] == ["Work", "Agents", "NOC"]
+    # ADR #473: the customers' group sits between the work and the agents.
+    assert admin["navGroups"] == ["Work", "Customers", "Agents", "NOC"]
     assert ".agent-row" in admin["dump"] and '"Hire an agent"' in admin["dump"]
     editor = _render(tables["editor"], "#/agents")
     assert ".agent-row" in editor["dump"] and '"Hire an agent"' not in editor["dump"], (

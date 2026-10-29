@@ -704,11 +704,14 @@ async def test_f43_every_path_served_today_still_registers(store: Store) -> None
     # escalating a case, the MCP endpoint).
     # Unreleased: 290 -> 302, /api unchanged — the NOC plane redrawn (ADR #468): twelve UI modules
     # (the roster, Agents, Organization, an agent's parts, a case's milestones and assignment).
-    assert len(served) == 302, f"the served surface moved: {len(served)} method/path pairs"
+    # Unreleased: 302 -> 335 and 165 -> 187 — the NOC's overview, its grants and an AI key's
+    # models (ADRs #470, #471: three /api pairs, five UI modules), and the customers' books (ADR
+    # #473: nineteen /api pairs, six UI modules).
+    assert len(served) == 335, f"the served surface moved: {len(served)} method/path pairs"
     api_pairs = {(method, path) for method, path in served if path.startswith("/api")}
     # **v0.19.0: 53 -> 55.** `GET /api/models` and `POST /api/models/register`: what the
     # models are doing, and turning one of this appliance's own fits into an artefact.
-    assert len(api_pairs) == 165, (
+    assert len(api_pairs) == 187, (
         f"the /api surface moved: {len(api_pairs)} pairs. v0.16.0 adds exactly five — the "
         f"operator's five gestures — v0.16.2 adds exactly one, `POST …/promote` (DECISIONS #273), "
         f"v0.16.5 adds exactly one, `POST /api/alarms/clear` (DECISIONS #301), "
@@ -887,11 +890,14 @@ async def test_f42_every_path_served_today_still_registers(store: Store) -> None
     # escalating a case, the MCP endpoint).
     # Unreleased: 290 -> 302, /api unchanged — the NOC plane redrawn (ADR #468): twelve UI modules
     # (the roster, Agents, Organization, an agent's parts, a case's milestones and assignment).
-    assert len(served) == 302, f"the served surface moved: {len(served)} method/path pairs"
+    # Unreleased: 302 -> 335 and 165 -> 187 — the NOC's overview, its grants and an AI key's
+    # models (ADRs #470, #471: three /api pairs, five UI modules), and the customers' books (ADR
+    # #473: nineteen /api pairs, six UI modules).
+    assert len(served) == 335, f"the served surface moved: {len(served)} method/path pairs"
     api_pairs = {(method, path) for method, path in served if path.startswith("/api")}
     # **v0.19.0: 53 -> 55.** `GET /api/models` and `POST /api/models/register`: what the
     # models are doing, and turning one of this appliance's own fits into an artefact.
-    assert len(api_pairs) == 165, (
+    assert len(api_pairs) == 187, (
         f"the /api surface moved: {len(api_pairs)} pairs. v0.16.0 adds exactly five — the "
         f"operator's five gestures — v0.16.2 adds exactly one, `POST …/promote` (DECISIONS #273), "
         f"v0.16.5 adds exactly one, `POST /api/alarms/clear` (DECISIONS #301), "
@@ -989,7 +995,8 @@ def test_every_unscoped_declaration_carries_a_written_justification() -> None:
     # and forgetting a pinned host key — gated by the lease and by custody, not by scope.
     # ADRs #465-#467: 45 -> 59 — the five playbook routes (a tree names no element; writing one is
     # gated by the agent grant), the nine agent routes and the MCP door (staff, not elements).
-    assert len(entries) == 59, entries
+    # ADRs #470, #471: 59 -> 61 — the caller's own NOC grants, and an AI key's models (custody).
+    assert len(entries) == 61, entries
     unjustified = [lines[i].strip() for i in entries if not lines[i - 1].strip().startswith("#")]
     assert not unjustified, (
         "every `unscoped` route must be preceded by a comment saying why it is not scoped:\n  "
@@ -1186,7 +1193,8 @@ def test_the_three_postures_are_all_populated() -> None:
     # Unreleased: 42 -> 43, `GET /api/noc/people` (ADR #461).
     # Unreleased: 43 -> 45, `POST /api/noc/exec` and `POST …/hostkey` (ADR #462).
     # Unreleased: 45 -> 59, the playbooks, agents and MCP routes named above (ADRs #465-#467).
-    assert len(UNSCOPED) == 59, UNSCOPED
+    # ADRs #470, #471: 59 -> 61, the two named at the justification test above.
+    assert len(UNSCOPED) == 61, UNSCOPED
     # v0.16.0: 12 -> 17. Every one of the five gestures names a network element and every one
     # is below `admin`, so every one is `scoped` — the write perimeter F34 established,
     # widened by exactly the routes this release adds.
@@ -1220,7 +1228,10 @@ def test_the_three_postures_are_all_populated() -> None:
     # scoped as the situation is — the queue and the KPIs narrow (collections), and the eight
     # routes naming one case 404 on one the caller cannot see (targeted).
     # ADR #467: 50 -> 52, routing and escalating a case — a case is its situation.
-    assert len(SCOPED) == 52, SCOPED
+    # ADR #470: 52 -> 53, the NOC's overview (a collection). ADR #473: 53 -> 72, the customers'
+    # books — the two lists narrow (collections), and the seventeen routes naming one customer 404
+    # on one none of whose elements the caller can see (targeted).
+    assert len(SCOPED) == 72, SCOPED
     assert len(rbac.ROUTE_SCOPE) == len(ADMIN_ONLY) + len(UNSCOPED) + len(SCOPED)
 
 

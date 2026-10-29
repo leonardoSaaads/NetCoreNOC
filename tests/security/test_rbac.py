@@ -73,7 +73,14 @@ async def _status(client: httpx.AsyncClient, method: str, path: str, key: tuple[
         return resp.status_code
 
 
+#: ADR #470: routes a capability opens only for a NOC lead — an admin, a named editor or an agent.
+#: Their one other refusal is the lead gate's own, with its own sentence; any other 403 still fails.
+LEAD_GATED = {("GET", "/api/noc/cases/kpis"), ("GET", "/api/noc/playbooks")}
+
+
 async def test_authorization_matrix(store: Store) -> None:
+    from netcorenoc.api.noc_gate import NOT_LEAD
+
     _engine, _queue, app = await authutil.make_env(store)
     failures: list[str] = []
     for (method, path), permission in rbac.ROUTE_PERMISSIONS.items():
@@ -82,14 +89,22 @@ async def test_authorization_matrix(store: Store) -> None:
             # A fresh login per case: some routes (logout, password) revoke the caller's
             # own session, so clients must not be shared across routes.
             client = await authutil.client_as(app, role)
+            lead_refusal = False
             try:
-                status = await _status(client, method, path, key)
+                if key in LEAD_GATED:
+                    resp = await client.request(method, _concrete(path))
+                    status = resp.status_code
+                    lead_refusal = status == 403 and resp.json().get("detail") == NOT_LEAD
+                else:
+                    status = await _status(client, method, path, key)
             finally:
                 await client.aclose()
             if role is None:
                 ok, want = status == 401, "401"
             elif not rbac.role_allows(role, permission):
                 ok, want = status == 403, "403"
+            elif lead_refusal:
+                ok, want = role != "admin", "not 401/403 for an admin, a lead"
             else:
                 ok, want = status not in (401, 403), "not 401/403"
             if not ok:

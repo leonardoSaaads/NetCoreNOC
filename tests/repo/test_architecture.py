@@ -535,6 +535,17 @@ ROUTE_ORDER_BASELINE: list[tuple[str, str]] = [
     ("GET", "/app/views/parts/agentadmin.js"),
     ("GET", "/app/views/parts/casemilestones.js"),
     ("GET", "/app/views/parts/caseassign.js"),
+    ("GET", "/app/views/nocoverview.js"),
+    ("GET", "/app/brands.js"),
+    ("GET", "/app/views/parts/vaultui.js"),
+    ("GET", "/app/views/parts/aiproviders.js"),
+    ("GET", "/app/views/parts/agentrun.js"),
+    ("GET", "/app/views/customers.js"),
+    ("GET", "/app/views/parts/custbook.js"),
+    ("GET", "/app/views/parts/custcontacts.js"),
+    ("GET", "/app/views/parts/custdocs.js"),
+    ("GET", "/app/views/parts/circuits.js"),
+    ("GET", "/app/views/parts/circuitedit.js"),
     ("GET", "/vendor/preact-10.29.8.module.js"),
     ("GET", "/vendor/htm-3.1.1.module.js"),
     ("GET", "/style.css"),
@@ -673,10 +684,12 @@ ROUTE_ORDER_BASELINE: list[tuple[str, str]] = [
     ("POST", "/api/noc/secrets/{secret_id}/check"),
     ("GET", "/api/noc/grants"),
     ("POST", "/api/noc/grants"),
+    ("GET", "/api/noc/access"),
     ("GET", "/api/noc/agent"),
     ("POST", "/api/noc/secrets/{secret_id}/lease"),
     ("POST", "/api/noc/leases/introspect"),
     ("POST", "/api/noc/leases/{lease_id}/revoke"),
+    ("POST", "/api/noc/secrets/{secret_id}/models"),
     ("GET", "/api/noc/cases"),
     ("GET", "/api/noc/cases/kpis"),
     ("GET", "/api/noc/cases/{sid}"),
@@ -685,6 +698,7 @@ ROUTE_ORDER_BASELINE: list[tuple[str, str]] = [
     ("POST", "/api/noc/cases/{sid}"),
     ("POST", "/api/noc/cases/{sid}/status"),
     ("POST", "/api/noc/cases/{sid}/resolve"),
+    ("GET", "/api/noc/overview"),
     ("GET", "/api/noc/cases/{sid}/feed"),
     ("POST", "/api/noc/cases/{sid}/feed"),
     ("GET", "/api/noc/people"),
@@ -709,6 +723,25 @@ ROUTE_ORDER_BASELINE: list[tuple[str, str]] = [
     ("POST", "/api/noc/runs/{run_id}/finish"),
     ("POST", "/api/noc/cases/{sid}/assign"),
     ("POST", "/api/noc/cases/{sid}/escalate"),
+    ("GET", "/api/noc/customers"),
+    ("GET", "/api/noc/customers/{customer_id}"),
+    ("POST", "/api/noc/customers/{customer_id}"),
+    ("POST", "/api/noc/customers/{customer_id}/memory"),
+    ("POST", "/api/noc/customers/{customer_id}/contacts"),
+    ("POST", "/api/noc/customers/{customer_id}/contacts/{contact_id}"),
+    ("POST", "/api/noc/customers/{customer_id}/contacts/{contact_id}/delete"),
+    ("POST", "/api/noc/customers/{customer_id}/docs"),
+    ("GET", "/api/noc/customers/{customer_id}/docs/{doc_id}"),
+    ("GET", "/api/noc/customers/{customer_id}/docs/{doc_id}/file"),
+    ("POST", "/api/noc/customers/{customer_id}/docs/{doc_id}/delete"),
+    ("GET", "/api/noc/circuits"),
+    ("GET", "/api/noc/customers/{customer_id}/circuits"),
+    ("POST", "/api/noc/customers/{customer_id}/circuits/import"),
+    ("POST", "/api/noc/customers/{customer_id}/circuits"),
+    ("GET", "/api/noc/customers/{customer_id}/circuits/{circuit_id}"),
+    ("POST", "/api/noc/customers/{customer_id}/circuits/{circuit_id}"),
+    ("POST", "/api/noc/customers/{customer_id}/circuits/{circuit_id}/notes"),
+    ("POST", "/api/noc/customers/{customer_id}/circuits/{circuit_id}/delete"),
     ("POST", "/api/mcp"),
 ]
 
@@ -826,7 +859,13 @@ async def test_the_api_route_order_is_unchanged_by_the_ui_rewrite(store: Store) 
     # `/api/noc/agents/me` is registered before `/api/noc/agents/{agent_id}`, which would otherwise
     # read it as an id; every act on an agent and a run is a concrete segment below its id;
     # `…/cases/{sid}/assign` and `…/escalate` are concrete below a case; `/api/mcp` is new.
-    assert len(live) == 165, (
+    # **Unreleased: 165 -> 187.** The overview, the caller's NOC grants and an AI key's models
+    # (ADRs #470, #471: `/api/noc/overview` and `/api/noc/access` are new segments,
+    # `…/secrets/{secret_id}/models` concrete beside `…/check`), and the customers' nineteen (ADR
+    # #473), one able to shadow another and ordered against it: `POST …/circuits/import` is a
+    # concrete segment where `POST …/circuits/{circuit_id}` has a template, so it is registered
+    # first; every other is a concrete segment below its id, and `/api/noc/circuits` is new.
+    assert len(live) == 187, (
         f"the /api surface is {len(live)} pairs; v0.16.0 adds exactly five, v0.16.2 exactly one, "
         f"v0.16.3 exactly one, v0.16.5 exactly one — `POST /api/alarms/clear` — v0.18.0 exactly "
         f"one, `GET /api/correlation`, and v0.21.0 exactly thirteen for maintenance windows, "
@@ -1474,8 +1513,8 @@ def test_the_queue_put_on_the_hot_path_is_non_blocking() -> None:
 #: `engine/noc/` `commands`, `executor`, `playbook` and `runbook`, `store/noc_playbooks.py`,
 #: migration `0035_noc_automation.sql`, the `noc_exec` and `playbooks` routes, and the
 #: `views/playbooks` console module.
-SRC_TREE_DIGEST = "9834143a68be692ab12c35d1a7462b0ffe3b4b29e22a3d8ab73202a826f90f45"
-SRC_FILE_COUNT = 461
+SRC_TREE_DIGEST = "f332e738260ac0340702c88ca71b02d5fa558a03db8a7b76ae1ec05c0447e088"
+SRC_FILE_COUNT = 494
 SRC_VERSION_FILE = "src/netcorenoc/__init__.py"
 
 
