@@ -46,6 +46,8 @@ export class NocKpis extends Loader {
     if (k.closed) return html`<${Empty} title="The NOC's KPIs are for its leads" will=${k.closed} />`;
     const days = this.days();
     const open = ["new", "auto", "queue"].reduce((n, s) => n + (k.counts[s] || 0), 0);
+    // ADR #476: the empty chart's sentence, "nothing taken yet", sat beside 7 takes met.
+    const taken = Object.values(k.by_priority).some((r) => r.met + r.missed);
     return html`<div class="noc-kpis">
       <div class="noc-toolbar"><div class="seg" role="tablist" aria-label="Window">
         ${WINDOWS.map(([d, label]) => html`<button type="button" role="tab" key=${d}
@@ -74,8 +76,9 @@ export class NocKpis extends Loader {
             <td>${span(k.targets.restore_s[p])}</td><td>${row.met}</td>
             <td>${row.missed}</td><td>${row.open}</td></tr>`)}</tbody></table>
         <${Bars} title="Takes missed, by priority" source="the NOC queue's entries"
-          span=${WINDOWS.find(([d]) => d === days)[1]} note="nothing taken yet"
-          rows=${Object.values(k.by_priority).some((r) => r.met + r.missed)
+          span=${WINDOWS.find(([d]) => d === days)[1]}
+          note=${taken ? null : "nothing taken yet"}
+          rows=${taken
             ? Object.entries(k.by_priority).map(([p, row]) => ({ key: p,
               label: k.priorities ? k.priorities[p] : p, value: row.missed, tone: TONE[p] }))
             : []} />

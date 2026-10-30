@@ -3811,7 +3811,7 @@ a.btn-link.primary, a.btn-link.primary:hover { background: var(--accent); border
 .agent-rows { list-style: none; margin: 0 0 var(--space-4); padding: 0; display: grid; gap: var(--space-2); }
 .agent-row {
   display: grid; align-items: center; gap: var(--space-3); padding: var(--space-3); color: var(--fg); text-decoration: none;
-  grid-template-columns: auto minmax(10rem, 1.4fr) minmax(10rem, 1.2fr) 7rem 7rem 8rem minmax(9rem, 1fr);
+  grid-template-columns: auto minmax(10rem, 1.4fr) minmax(10rem, 1.2fr) 7rem 7rem 9.5rem minmax(9rem, 1fr);
   border: 1px solid var(--line); border-radius: var(--radius-2); background: var(--bg-raised);
 }
 .agent-row:hover { border-color: var(--line-strong); box-shadow: var(--shadow-1); text-decoration: none; }

@@ -177,7 +177,8 @@ stored device credential is unreadable (#455).
 - The decision bar's buttons inherited a health panel's margins ("Close situation" stood taller),
   and the member table's actions cell left the row's layout; Secrets' status counts were dots with
   no words; a 24-hour chart printed gridlines "0, 1, 1"; SNMP's grey light promised a check that
-  never runs; a case asked to validate said `(self_cleared)` (#476).
+  never runs; a case asked to validate said `(self_cleared)`; the agents page wrapped a long "last
+  run"; the KPIs' missed-takes chart said "nothing taken yet" beside seven takes met (#476).
 - `noc_set_case_pending` lists its ten-plus-one statuses in its schema, so an agent picks one over
   MCP (#474).
 - `test_the_search_runs_out_of_process_and_never_blocks_a_tick` measured wall time and failed a
