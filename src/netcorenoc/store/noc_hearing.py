@@ -24,7 +24,8 @@ class NocHearingMixin(StoreBase):
         sentence — its class, its element (the name an operator gave it, else its address) and its
         port (the trap's interface name, else its instance)."""
         cur = await self.conn.execute(
-            "SELECT c.situation_id, a.id, a.status, a.count, a.is_flapping, a.instance, "
+            # nosec B608 - `_label_join` returns a fixed literal; every value here is bound.
+            "SELECT c.situation_id, a.id, a.status, a.count, a.is_flapping, a.instance, "  # nosec B608
             "a.class_id, a.varbinds, n.ip, l.label "
             "FROM (SELECT situation_id FROM noc_case WHERE status NOT IN (?, ?, ?, ?) "
             "ORDER BY situation_id LIMIT ?) c "
