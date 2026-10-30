@@ -130,8 +130,8 @@ export class Secrets extends Loader {
           <b class="seg-count">${per(f)}</b></button>`)}
       </div>
       <span class="secrets-counts" role="status">
-        ${["up", "degraded", "down", "unknown"].filter((k) => counts[k]).map((k) => html`
-          <${StatusLight} key=${k} compact status=${{ state: k, reason: `${counts[k]} ${k}` }} />
+        ${["down", "degraded", "up", "unknown"].filter((k) => counts[k]).map((k) => html`
+          <${StatusLight} key=${k} status=${{ state: k, reason: `${counts[k]} ${k}` }} />
           <b class="secrets-count">${counts[k]}</b>`)}
       </span>
       <label class="visually-hidden" for="secrets-find">Find a credential</label>

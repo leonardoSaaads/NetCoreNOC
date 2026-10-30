@@ -322,7 +322,12 @@ async def validate(store: Store, sid: int, now: float, why: str) -> None:
     """The situation resolved while someone owned the case: they confirm it is over."""
     await store.noc_cycle_left(sid, now)
     await store.noc_case_move(sid, "validate", now, "system")
-    await event(store, sid, f"The situation resolved ({why}): validate the resolution.", now)
+    await event(
+        store,
+        sid,
+        f"The situation resolved: {why}. Confirm the service is restored, then resolve the case.",
+        now,
+    )
 
 
 async def auto_resolve(store: Store, sid: int, now: float, resolution: str, why: str) -> None:

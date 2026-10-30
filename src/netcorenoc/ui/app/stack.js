@@ -22,12 +22,15 @@ const H = 40;
 const HEADROOM = 1.12;
 const GRID = 4;
 
-/** A round top at least 12 % above `v`, on steps that divide into four clean gridlines:
- *  100 active reads on a 0–120 axis, 2 037 on 0–2 400 (v0.24.0, #398). */
+/** A round top at least 12 % above `v`, on four gridlines a WHOLE step apart — these are counts:
+ *  100 active reads on a 0–120 axis, 2 037 on 0–2 400 (v0.24.0, #398), and one alarm on 0–4, not
+ *  on 0–1.2, whose gridlines 0.3, 0.6 and 0.9 were printed rounded as "0, 1, 1" (round T2). */
 function niceTop(v) {
-  const want = Math.max(1, v) * HEADROOM;
+  const want = (Math.max(1, v) * HEADROOM) / GRID;
   const p = 10 ** Math.floor(Math.log10(want));
-  return [1, 1.2, 1.6, 2, 2.4, 3, 4, 5, 6, 8, 10].map((m) => m * p).find((t) => t >= want) ?? 10 * p;
+  const step = [1, 1.5, 2, 2.5, 3, 4, 5, 6, 8, 10].map((m) => m * p)
+    .find((s) => s >= want && Number.isInteger(s)) ?? Math.max(1, 10 * p);
+  return step * GRID;
 }
 
 /** `points` for a polygon between two cumulative runs, left to right along the top and back. */

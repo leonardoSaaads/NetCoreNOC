@@ -80,6 +80,16 @@ Two rules that have held since v0.1.0 and are not going to change:
 
 *(This table has no rows for v0.17.0 or v0.18.0: neither release wrote one, and inventing upgrade notes for a release somebody else built would be describing an upgrade nobody tested.)*
 
+## Unreleased — the operators' review round (#474-#476)
+
+Nothing to do: migration **0040** (what each case heard of its alarms, the cycle reason `alarm`,
+the pending status `pending_monitoring`) applies at start and is additive. Behaviour you will
+notice: a **pending case returns to the NOC queue** when an alarm of its situation raises again or
+joins; a vendor's recovery trap (a Huawei `…Up`, a Ciena `…Clear`) **clears its fault the first
+time** instead of standing as an active "cleared" alarm — alarms already standing that way stay
+until cleared by hand (*Clear all* on the situation). `GET /api/situations` rows carry
+`root_class` and `device_label`; `GET /api/noc/overview` carries `reachability`.
+
 ## Unreleased — the NOC at a glance, AI providers and customers (#470-#473)
 
 Nothing to do to upgrade the database: migrations **0038** (the `lead` grant and the `openai`

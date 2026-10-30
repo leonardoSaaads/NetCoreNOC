@@ -276,13 +276,13 @@ class Engine(MaintenanceMixin, GapMixin, ScorerLifecycleMixin, EngineBase):
         # the level-0 entity and the heuristic instance — exact parity with v0.2.0.
         entity_id, instance = await self._resolve_entity(ne_id, item)
         placed = severity.place(item.varbinds, self.ne_severity.get(ne_id))
-        # **Before the window check, and that is load-bearing** (v0.21.0). This registers the
-        # universally-valid raise/clear pairs from `known_oids.CLEAR_PAIR_SEEDS` — bundled public
-        # data, not anything learned from this estate's traffic — and the ledger needs them: a
-        # suppressed `linkUp` has to be recognised as the clear for `linkDown` and filed under the
-        # RAISE fingerprint, or the repaired fault surfaces at the end of the window as one that
-        # never cleared. Measured: with this line after the check, a cut and its repair inside one
-        # window surfaced two phantom alarms instead of none.
+        # **Before the window check, and that is load-bearing** (v0.21.0). This registers the pairs
+        # `known_oids.clear_of` knows (standards' and the pack's vendor names: public data, never
+        # this estate's traffic), and the ledger needs them: a suppressed `linkUp` has to be
+        # recognised as the clear for `linkDown` and filed under the RAISE fingerprint, or the
+        # repaired fault surfaces at the end of the window as one that never cleared. Measured:
+        # with this line after the check, a cut and its repair inside one window surfaced two
+        # phantom alarms instead of none.
         await self._seed_clear_pair(item.trap_oid, class_id, item.ts)
         # **The maintenance-window check** (v0.21.0, Part V). After decode and after severity,
         # because D4's rules need the OID, the varbinds and the placed rank; before the store,
@@ -396,17 +396,16 @@ class Engine(MaintenanceMixin, GapMixin, ScorerLifecycleMixin, EngineBase):
         )
 
     async def _seed_clear_pair(self, oid: str, class_id: int, ts: float) -> None:
-        """Register the universal raise/clear pairs the first time either side shows up."""
+        """Register a known raise/clear pair (ADR #475) the first time either side shows up."""
         if oid in self._seeded_oids:
             return
         self._seeded_oids.add(oid)
-        clear_oid = known_oids.CLEAR_PAIR_SEEDS.get(oid)
+        clear_oid = known_oids.clear_of(oid)
         if clear_oid is not None:
             self.learner.clears.register(class_id, await self.store.class_id(clear_oid, ts))
-        for raise_oid, seed_clear in known_oids.CLEAR_PAIR_SEEDS.items():
-            if seed_clear == oid:
-                raise_id = await self.store.class_id(raise_oid, ts)
-                self.learner.clears.register(raise_id, class_id)
+        raise_oid = known_oids.fault_of(oid)
+        if raise_oid is not None:
+            self.learner.clears.register(await self.store.class_id(raise_oid, ts), class_id)
 
     async def _resolve_entity(self, ne_id: int, event: TrapEvent) -> tuple[int | None, str]:
         """(entity_id, dedup instance) for a trap, walking the NE's discriminator chain from

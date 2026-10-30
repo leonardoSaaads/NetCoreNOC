@@ -478,6 +478,12 @@ async def test_f32_redacted_members_disclose_no_identifier(store: Store) -> None
         blob = json.dumps(body)
         for hidden in hidden_ips:
             assert hidden not in blob, f"out-of-scope address {hidden} leaked into the response"
+        # ADR #476: nor in the list row's probable root, and a viewer reads even its own element
+        # as a network.
+        row = next(r for r in (await viewer.get("/api/situations")).json() if r["id"] == sid)
+        assert {"root_class", "device_label"} <= set(row)
+        for address in ips:
+            assert address not in json.dumps(row), f"{address} named by the list row's root"
         # Links to redacted members are withheld, so no alarm id survives as a dangling reference.
         visible_ids = {a["id"] for a in body["alarms"]}
         for link in body["links"]:
@@ -1322,7 +1328,11 @@ async def test_f38_truncation_is_applied_after_the_scope_filter(store: Store) ->
 #: output and nothing of the route's own, and that query is scoped in its WHERE clause, so a
 #: scoped viewer's marker set can only shrink relative to an admin's, never name an element they
 #: could not otherwise see.
-ROUTE_DERIVED_KEYS = {"stale", "maintenance"}
+#:
+#: **ADR #476 adds `root_class` and `device_label`**: the probable root a list row names, read from
+#: the row's own `root_alarm_id` on both paths, and None where the root's element is outside the
+#: reader's scope — so, like the other two, the scoped answer can only say less.
+ROUTE_DERIVED_KEYS = {"stale", "maintenance", "root_class", "device_label"}
 
 
 async def test_f38_the_unrestricted_result_set_is_unchanged(store: Store) -> None:

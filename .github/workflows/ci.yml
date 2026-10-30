@@ -234,7 +234,7 @@ jobs:
           # 30. `tests/store/test_store.py` carries the same pin for the same reason.
           v=$(NETCORENOC_SECRET_KEY_FILE=/tmp/ci-data/secret.key \
             /tmp/clean/bin/python -m netcorenoc db status | awk '$1 == "version" {print $2}')
-          test "$v" = 39 || { echo "::error::the appliance booted at schema $v, not 39"; exit 1; }
+          test "$v" = 40 || { echo "::error::the appliance booted at schema $v, not 40"; exit 1; }
           echo "schema version $v, all migrations applied"
           # The key was created owner-only beside the spool, and the runtime role owns no table.
           test "$(stat -c %a /tmp/ci-data/secret.key)" = 600

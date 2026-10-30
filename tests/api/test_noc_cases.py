@@ -12,7 +12,10 @@ What the NOC asked of a case, each answered by driving the real routes and the r
 * each organization may have its own executive summary;
 * resolving closes the situation, and clears its alarms only when verified clear on the device;
 * a situation that resolves on the broker's side resolves an untaken case, and asks an owner to
-  validate; a case outside the caller's scope is a 404, like one that does not exist.
+  validate; a case outside the caller's scope is a 404, like one that does not exist;
+* a case hears its alarms (ADR #474): what cleared, raised again or joined since it last looked is
+  an event on its feed, the first look says nothing, and a pending case whose fault came back is
+  back in the NOC queue while a case being worked stays with its owner.
 """
 
 from __future__ import annotations
@@ -22,7 +25,8 @@ from typing import Any
 
 import httpx
 
-from netcorenoc.engine.noc import case_loop
+from netcorenoc.api.models_cases import StatusIn
+from netcorenoc.engine.noc import case_loop, cases
 from netcorenoc.store import Store
 
 import authutil
@@ -163,6 +167,10 @@ async def test_pending_needs_the_customer_update_and_returns_to_the_queue(store:
         assert naive.status_code == 422, "an instant without an offset names no instant"
         stale = await editor.post(f"/api/noc/cases/{sid}", json={"title": "y", "version": 1})
         assert stale.status_code == 409 and "version" in stale.json()["detail"]
+        guessed = await editor.post(
+            f"/api/noc/cases/{sid}/status", json={"status": "Waiting on the field team"}
+        )
+        assert guessed.status_code == 422, "a status outside the vocabulary is refused"
         pend = await editor.post(
             f"/api/noc/cases/{sid}/status", json={"status": "pending_maintenance"}
         )
@@ -347,6 +355,10 @@ async def test_a_situation_resolving_on_its_own_resolves_or_asks_to_validate(sto
         assert a["clocks"]["take"]["state"] == "withdrawn"
         b = (await clients["editor"].get(f"/api/noc/cases/{owned}")).json()
         assert b["status"] == "validate" and b["owner"]["you"] is True
+        # The feed says why in words, never the Broker's code (ADR #476).
+        feed = (await clients["editor"].get(f"/api/noc/cases/{owned}/feed")).json()["posts"]
+        said = next(p["body"] for p in feed if p["body"].startswith("The situation resolved"))
+        assert "every alarm cleared" in said and "self_cleared" not in said
     finally:
         await _close(clients)
 
@@ -372,3 +384,100 @@ async def test_a_case_outside_the_callers_scope_does_not_exist(store: Store) -> 
 async def _audit(store: Store) -> list[dict[str, Any]]:
     async with store.reading():
         return await store.audit_all()
+
+
+def test_the_pending_statuses_an_agent_reads_are_the_ones_accepted() -> None:
+    """The schema lists exactly the statuses a case may wait in, so an agent reading the tool over
+    MCP picks one instead of learning the vocabulary from a refusal (ADR #476)."""
+    schema = StatusIn.model_json_schema()["properties"]["status"]
+    assert set(schema["enum"]) == set(cases.PENDING)
+    assert "carrier" in schema["description"]
+
+
+async def _alarm_events(client: httpx.AsyncClient, sid: int) -> list[str]:
+    posts = (await client.get(f"/api/noc/cases/{sid}/feed")).json()["posts"]
+    return [p["body"] for p in posts if p["body"].startswith("Its alarms on the Broker")]
+
+
+async def test_a_case_hears_its_alarms_and_a_pending_one_comes_back(store: Store) -> None:
+    sid = await _open_situation(store, devices=("10.0.0.1", "10.0.0.2"))
+    await case_loop.tick(store)
+    _app, clients = await _clients(store)
+    editor = clients["editor"]
+    try:
+        await editor.post(f"/api/noc/cases/{sid}/take")
+        when = time.time() + 3600
+        await editor.post(f"/api/noc/cases/{sid}", json={**COMPLETE, "next_update_at": when})
+        pend = await editor.post(
+            f"/api/noc/cases/{sid}/status", json={"status": "pending_fiber_provider"}
+        )
+        assert pend.status_code == 200, pend.text
+        await case_loop.tick(store)
+        assert await _alarm_events(editor, sid) == [], "the first look is a baseline"
+
+        async with store.lock:
+            cur = await store.conn.execute(
+                "SELECT a.id FROM alarm a JOIN ne n ON n.id = a.ne_id WHERE n.ip = ?",
+                ("10.0.0.1",),
+            )
+            row = await cur.fetchone()
+            assert row is not None
+            first = int(row[0])
+            await store.conn.execute(
+                "UPDATE alarm SET status = 'cleared', cleared_at = now() WHERE id = ?", (first,)
+            )
+            await store.commit()
+        moved = await case_loop.tick(store)
+        assert moved["told"] == 1 and moved["requeued"] == 0, "a clear is told, not requeued"
+        said = await _alarm_events(editor, sid)
+        assert len(said) == 1 and "cleared: " in said[0] and "10.0.0.1 (0)" in said[0]
+        case = (await editor.get(f"/api/noc/cases/{sid}")).json()
+        assert case["status"] == "pending_fiber_provider"
+
+        # The fault comes back while the case waits on the provider: back in the NOC queue.
+        async with store.lock:
+            await store.ingest(util.event(device="10.0.0.1", instance="0"))
+            await store.commit()
+        moved = await case_loop.tick(store)
+        assert moved["requeued"] == 1
+        said = await _alarm_events(editor, sid)
+        assert len(said) == 2 and "raised again: " in said[0], said
+        case = (await editor.get(f"/api/noc/cases/{sid}")).json()
+        assert case["status"] == "queue" and case["cycles"][-1]["reason"] == "alarm"
+        assert case["cycles"][-1]["reason_label"].startswith("An alarm of its situation")
+
+        # Worked, a new alarm joins: the owner is told and keeps the case.
+        await editor.post(f"/api/noc/cases/{sid}/take")
+        async with store.lock:
+            alarm = await store.ingest(util.event(device="10.0.0.3", instance="7"))
+            await store.add_alarm_to_situation(sid, alarm.alarm_id)
+            await store.commit()
+        moved = await case_loop.tick(store)
+        assert moved["told"] == 1 and moved["requeued"] == 0
+        said = await _alarm_events(editor, sid)
+        assert "joined: " in said[0] and "10.0.0.3 (7)" in said[0]
+        assert (await editor.get(f"/api/noc/cases/{sid}")).json()["status"] == "working"
+        assert (await case_loop.tick(store))["told"] == 0, "nothing new, nothing said"
+
+        # A flap between two looks — raised and cleared again before the loop read it — is heard
+        # by the alarm's count, not lost because it was off at both looks.
+        async def clear(alarm_id: int) -> None:
+            await store.conn.execute(
+                "UPDATE alarm SET status = 'cleared', cleared_at = now() WHERE id = ?", (alarm_id,)
+            )
+
+        async with store.lock:
+            await clear(alarm.alarm_id)
+            await store.commit()
+        assert (await case_loop.tick(store))["told"] == 1
+        async with store.lock:
+            await store.ingest(util.event(device="10.0.0.3", instance="7"))
+            await clear(alarm.alarm_id)
+            await store.commit()
+        assert (await case_loop.tick(store))["told"] == 1
+        said = await _alarm_events(editor, sid)
+        assert "raised again: " in said[0] and "cleared since" in said[0], said[0]
+        # The case's own history: the NOC's, like every event — never a customer's to read.
+        assert await _alarm_events(clients["viewer"], sid) == []
+    finally:
+        await _close(clients)

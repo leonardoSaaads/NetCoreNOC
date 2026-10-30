@@ -96,6 +96,8 @@ def register(app: FastAPI, ctx: AppContext) -> None:
                 # stream, so a badge that appeared on one and not the other would read as the
                 # situation having changed rather than as the transport disagreeing with itself.
                 sits = await store.with_idle_active(sits, time.time() - IDLE_CLOSE_S)
+                # ADR #476: each row names its probable root, as the polled list does.
+                sits = await store.with_roots(sits, None if scope.unrestricted else scope.ne_ids)
                 members = (
                     {}
                     if scope.unrestricted

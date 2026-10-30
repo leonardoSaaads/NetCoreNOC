@@ -12,7 +12,10 @@ Every few seconds, off the ingest path (#454): read what is due on a reader, the
 * a case **resolved** a day ago is closed;
 * a live case whose priority is still the appliance's is **raised** when a worse alarm joined its
   situation (`case_ops.reprioritize`, ADR #464) — every `REPRIORITIZE_EVERY` passes, since it reads
-  each such case's members.
+  each such case's members;
+* a live case **hears its alarms** on the same passes (`hearing`, ADR #474): what joined, raised
+  again or cleared since it last looked is an event on its feed, and a pending case whose fault
+  came back or grew is back in the queue.
 
 A person posting on a pending case requeues it too, but that is the post's own request
 (`api/routes/case_feed.py`), not a sweep: it should not wait five seconds to be seen.
@@ -25,17 +28,28 @@ import time
 from collections.abc import Awaitable, Callable
 from typing import TYPE_CHECKING
 
-from netcorenoc.engine.noc import case_ops, cases, kpi
+from netcorenoc.engine.noc import case_ops, cases, hearing, kpi
 
 if TYPE_CHECKING:
     from netcorenoc.store import Store
 
-__all__ = ["LOOK_EVERY_S", "REPRIORITIZE_EVERY", "Automation", "case_loop", "tick"]
+__all__ = ["LOOK_EVERY_S", "REPRIORITIZE_EVERY", "WHY_RESOLVED", "Automation", "case_loop", "tick"]
 
 #: How often the loop looks. The NOC's shortest clock is 25 minutes; five seconds is invisible.
 LOOK_EVERY_S = 5.0
 #: Every how many passes the priorities are re-derived (30 s).
 REPRIORITIZE_EVERY = 6
+
+#: Why the Broker's situation left, in the words the console uses (`ui/app/views/parts/
+#: lifecycle.js`): a case's feed said `(self_cleared)` until ADR #476.
+WHY_RESOLVED: dict[str, str] = {
+    "operator": "an operator closed it",
+    "self_cleared": "every alarm cleared, the network fixed it",
+    "idle": "it went quiet and timed out",
+    "merged": "it was merged into another situation",
+    "manual_clear": "an operator hand-cleared the last active alarm",
+    "unattributed": "it closed before this appliance recorded why",
+}
 
 #: Decides, under the lock, whether a new case starts with automated checks (ADR #463).
 Automation = Callable[["Store", int], Awaitable[bool]]
@@ -56,6 +70,7 @@ async def tick(
         "resolved": 0,
         "closed": 0,
         "raised": 0,
+        "told": 0,
     }
     at = now()
     async with store.reading():
@@ -64,15 +79,24 @@ async def tick(
         orphaned = await store.noc_cases_orphaned()
         stale = await store.noc_cases_resolved_before(at - kpi.CLOSE_AFTER_S)
         rising = await store.noc_cases_auto_priority() if reprioritize else []
+        states = await store.noc_case_alarm_states() if reprioritize else {}
+        heard = await store.noc_case_heard(states)
     fresh_set = set(fresh)
     rising = [sid for sid in rising if sid not in fresh_set]  # dispatch derives those itself
-    if not (fresh or due or orphaned or stale or rising):
+    news = hearing.plan(states, heard)
+    if not (fresh or due or orphaned or stale or rising or news):
         return counts
     async with store.lock:
         at = now()
         for sid in rising:
             if await case_ops.reprioritize(store, sid, at) is not None:
                 counts["raised"] += 1
+        for sid, found in news.items():
+            told = await hearing.apply(store, sid, found, at)
+            if told == "requeued":
+                counts["requeued"] += 1
+            elif told == "told":
+                counts["told"] += 1
         for sid in fresh:
             case = await store.noc_case(sid)
             if case is None or case["status"] != "new":
@@ -92,7 +116,8 @@ async def tick(
             case = await store.noc_case(sid)
             if case is None or case["status"] in ("resolved", "closed", "validate"):
                 continue
-            why = f"the situation resolved: {row['resolution'] or 'closed'}"
+            said = WHY_RESOLVED.get(str(row["resolution"]), str(row["resolution"] or "closed"))
+            why = f"the situation resolved: {said}"
             if row["resolution"] == "merged":
                 await case_ops.auto_resolve(store, sid, at, "merged", "its situation was merged")
                 counts["resolved"] += 1
@@ -100,7 +125,7 @@ async def tick(
                 await case_ops.auto_resolve(store, sid, at, "cleared", why)
                 counts["resolved"] += 1
             else:
-                await case_ops.validate(store, sid, at, str(row["resolution"] or "closed"))
+                await case_ops.validate(store, sid, at, said)
                 counts["validate"] += 1
         for sid in stale:
             case = await store.noc_case(sid)

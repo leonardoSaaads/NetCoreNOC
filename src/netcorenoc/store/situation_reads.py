@@ -56,8 +56,11 @@ class SituationReadsMixin(GovernanceMixin, SituationEventMixin):
         """
         oid = str(row["class_oid"])
         declared = row.pop("class_severity_label", None)
+        varbinds = row.pop("varbinds", None)
         return {
             **row,
+            # ADR #476: the interface's name when the trap carried one for its ifIndex instance.
+            "port": known_oids.port_name(str(row.get("instance") or ""), varbinds),
             "class_name": known_oids.trap_name(oid),
             "class_vendor": known_oids.vendor_of(oid),
             "declared_severity": declared,
@@ -297,7 +300,7 @@ class SituationReadsMixin(GovernanceMixin, SituationEventMixin):
             # v0.16.4 (F105, DECISIONS #292): `device_vendor` is gone. It was served on every
             # alarm row of every situation detail and rendered by **nothing** — F84's shape with
             # the arrow reversed, and a column no writer fills either way.
-            "a.last_seen, a.severity, a.severity_rank, a.ne_id, d.ip AS device_ip, "
+            "a.last_seen, a.severity, a.severity_rank, a.ne_id, d.ip AS device_ip, a.varbinds, "
             # v0.21.0 (`0021`): which window's ledger surfaced this alarm, or NULL. The console
             # draws a different badge for it, because *"raised during maintenance, still active"*
             # is a different sentence from *"unplaced"* — the appliance did not fail to place a

@@ -184,3 +184,71 @@ def object_name(oid: str) -> str | None:
         if at < len(keys) and keys[at] == head:
             return names[at]
     return None
+
+
+#: How a recovery's name becomes its fault's within one MIB module (ADR #475): `hwPortPhysicalUp` →
+#: `hwPortPhysicalDown`, `cienaCesPortNotificationPortSignalDegradeClear` → `…Set`,
+#: `hwOpticalInvalidResume` → `hwOpticalInvalid`, `hwIfControlFlapResume` → `…Suppress`. Each is a
+#: `(recovery's last word, fault's last word)`; the first whose fault the module declares wins.
+CLEAR_SWAPS: tuple[tuple[str, str], ...] = (
+    ("Up", "Down"),
+    ("Clear", "Set"),
+    ("Clear", "Raise"),
+    ("Resume", "Rising"),
+    ("Resume", "Suppress"),
+    ("Clear", "RisingAlarm"),
+    ("Clear", "Alarm"),
+    ("Clear", ""),
+    ("Cleared", ""),
+    ("Resume", ""),
+    ("Resumed", ""),
+    ("Recover", ""),
+    ("Recovered", ""),
+    ("Restore", ""),
+    ("Restored", ""),
+    ("Deassert", "Assert"),
+    ("Normal", "Abnormal"),
+    ("Online", "Offline"),
+    ("Insert", "Remove"),
+    ("Inserted", "Removed"),
+    ("Present", "Absent"),
+    ("Clr", ""),
+)
+
+
+@cache
+def clear_pairs() -> dict[str, str]:
+    """``{fault OID: recovery OID}``, read from the vendors' own names — the shipped half of what
+    the appliance otherwise learns from two alternations on one port (ADR #475).
+
+    Kept only when unambiguous: the recovery is graded `cleared` and the fault is not, both are
+    declared by the same module, and no other recovery of that module names the same fault (Huawei's
+    `hwCssLinkDown` has two, `hwCssLinkUp` and `hwCssLinkDownResume`: left to alternation). Measured
+    on this pack: about 1 400 pairs, built once per process (~35 ms) on the first trap, as the
+    pack itself is. `known_oids.clear_of` puts the standard ones first.
+    """
+    notifications = pack().notifications
+    by_module: dict[str, dict[str, str]] = {}
+    for entry in notifications.values():
+        by_module.setdefault(entry.module, {})[entry.name] = entry.oid
+    found: dict[str, list[str]] = {}
+    for entry in notifications.values():
+        if entry.severity != "cleared":
+            continue
+        names = by_module[entry.module]
+        for tail, head in CLEAR_SWAPS:
+            if len(entry.name) <= len(tail) or not entry.name.endswith(tail):
+                continue
+            fault = names.get(entry.name[: -len(tail)] + head)
+            if fault is None or fault == entry.oid:
+                continue
+            if notifications[fault].severity != "cleared":
+                found.setdefault(fault, []).append(entry.oid)
+            break
+    return {fault: clears[0] for fault, clears in found.items() if len(clears) == 1}
+
+
+@cache
+def fault_pairs() -> dict[str, str]:
+    """``{recovery OID: fault OID}`` — `clear_pairs` read the other way."""
+    return {clear: fault for fault, clear in clear_pairs().items()}

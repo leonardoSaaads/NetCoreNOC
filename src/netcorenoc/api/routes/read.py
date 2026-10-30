@@ -164,6 +164,7 @@ def register(app: FastAPI, ctx: AppContext) -> None:
                 match_addresses=shaping.sees_raw_addresses(principal.role),
             )
             rows = await store.with_idle_active(rows, stale_cutoff)
+            rows = await store.with_roots(rows, None if scope.unrestricted else scope.ne_ids)
             # IV.3 on the situation list. **Read once, and free when no window is in force**: an
             # appliance with nothing planned gets one empty query and takes neither branch below,
             # so the member lookup this needs is paid only by an estate that actually has planned

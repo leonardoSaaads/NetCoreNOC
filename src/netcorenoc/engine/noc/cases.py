@@ -64,8 +64,8 @@ class CaseError(ValueError):
         self.status = status
 
 
-#: Every status, with its label. `migrations/0034_noc_cases.sql` holds the same set in a CHECK,
-#: asserted by `tests/noc/test_cases.py`.
+#: Every status, with its label. `migrations/0034_noc_cases.sql` holds the same set in a CHECK
+#: (0040 adds `pending_monitoring`), asserted by `tests/lifecycle/test_noc_case_rules.py`.
 STATUSES: dict[str, str] = {
     "new": "New",
     "auto": "Automated checks",
@@ -81,6 +81,7 @@ STATUSES: dict[str, str] = {
     "pending_site_access": "Pending site access approval",
     "pending_field_tech": "Pending field technician on site",
     "pending_rca": "Pending root cause analysis",
+    "pending_monitoring": "Pending monitoring (watching for stability)",
     "validate": "Validate resolution",
     "resolved": "Resolved",
     "closed": "Closed",
@@ -104,6 +105,7 @@ CYCLE_REASONS: dict[str, str] = {
     "next_update": "Its next update came",
     "released": "Its owner put it back",
     "escalated": "Escalated past the agents to the NOC team",
+    "alarm": "An alarm of its situation raised again or joined while it was pending",
 }
 
 #: How a case came to be resolved.

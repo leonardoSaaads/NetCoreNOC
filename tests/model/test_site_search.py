@@ -95,11 +95,34 @@ async def _open_run(store: Store, **budget: float) -> int:
 
 
 async def _tick(runner: Runner, engine: Engine) -> float:
-    started = time.perf_counter()
-    async with engine.store.lock:
-        await runner.tick(engine, time.time())
-        await engine.store.commit()
-    return time.perf_counter() - started
+    """How long one tick HELD the event loop: the widest gap a 5 ms heartbeat saw while it ran.
+
+    Not its wall time, which counts the awaited database round trips — those never hold the loop,
+    and on a loaded CI runner they once added up to 0.53 s and failed a tick that blocked nothing
+    (ADR #476). An inline fit holds the loop for the whole fit, and the heartbeat sees all of it.
+    """
+    held = 0.0
+    done = asyncio.Event()
+
+    async def heartbeat() -> None:
+        nonlocal held
+        last = time.perf_counter()
+        while not done.is_set():
+            await asyncio.sleep(0.005)
+            now = time.perf_counter()
+            held = max(held, now - last - 0.005)
+            last = now
+
+    beat = asyncio.create_task(heartbeat())
+    await asyncio.sleep(0)
+    try:
+        async with engine.store.lock:
+            await runner.tick(engine, time.time())
+            await engine.store.commit()
+    finally:
+        done.set()
+        await beat
+    return held
 
 
 async def _until_finished(runner: Runner, engine: Engine, limit_s: float = 120.0) -> list[float]:
@@ -134,9 +157,10 @@ async def test_the_search_runs_out_of_process_and_never_blocks_a_tick(
     every tick — the only thing the event loop does for the search — returns in milliseconds."""
     engine = Engine(store, asyncio.Queue())
     await engine.start()
-    # Big enough that the fit takes seconds: an inline fit would hold a tick that long.
-    _feed(monkeypatch, store, 400)
-    run_id = await _open_run(store, trials=4, max_rounds=90, min_rounds=30)
+    # Big enough that an inline fit holds the loop for seconds — 4.7 s measured, nine times the
+    # limit below; at 400 bags it was 0.67 s, too near the limit to tell a fault from a slow host.
+    _feed(monkeypatch, store, 1600)
+    run_id = await _open_run(store, trials=6, max_rounds=160, min_rounds=30)
     runner = Runner()
     first = await _tick(runner, engine)
     assert first < 0.5, f"starting the search held the event loop for {first:.2f}s"

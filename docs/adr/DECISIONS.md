@@ -6743,3 +6743,62 @@ From this release an entry is about six lines: decision, reason, release.*
   (Akamai and TIM Brasil in the example), its instructions, workbook, additional documents and
   circuits — the circuits as the customer keeps them, client port to line port, ODF to ODF — for
   the agents to read over MCP and to keep their memory of as they work.
+
+## 474. A case hears its alarms, and may wait while the NOC watches (unreleased)
+
+- **Decision** (`engine/noc/hearing.py`, `store/noc_hearing.py`, `engine/noc/case_loop.py`,
+  migration 0040): every half minute the case loop reads each live case's alarms beside what the
+  case heard last (`noc_case_alarm`: active or not, and the alarm's count) and tells the case what
+  changed in one event on its feed — an alarm that **joined** its situation, one that **raised
+  again** after it had cleared (read from the count, so a port that went down and up between two
+  looks is heard: "raised again, cleared since"), one that **cleared**. A **pending** case whose
+  fault came back or grew returns to the NOC queue (cycle reason `alarm`); a case being worked is
+  told and stays with its owner. The first look at a case is its baseline and says nothing, so an
+  opening, a restart or this release never floods a feed with old news. Only what moved is
+  written. A new pending status, **`pending_monitoring`** ("watching for stability"), says what the
+  NOC does after a flap, a restore or a repair. The status an agent sets pending is now a closed
+  vocabulary in the tool's schema, so an agent picks one over MCP instead of learning it from a
+  400; and a case asked to validate a resolution says why in words ("every alarm cleared, the
+  network fixed it"), not the Broker's code.
+- **Reason**: the round's lab (Huawei, MikroTik and Ciena elements, hours of flaps, cuts, optical
+  degrades and lost management, worked by agents over MCP and by people in the console) found a
+  case pending on the field team whose trunk failed again when a switch lost power: its alarm
+  raised again at 19:13:56 and the case said nothing for 51 minutes, until its next update.
+
+## 475. The bundled pack pairs a vendor's fault with its recovery (unreleased)
+
+- **Decision** (`ingest/trappack.py`, `ingest/known_oids.py`, `engine/operate/engine.py`): the
+  vendors' own notification names in the bundled pack pair a fault with the recovery that clears
+  it, inside one MIB module — `hwPortPhysicalDown` / `hwPortPhysicalUp`,
+  `cienaCesPortNotificationPortSignalDegradeSet` / `…Clear`, `hwOpticalInvalid` / `…Resume`,
+  `hwIfControlFlapSuppress` / `…Resume`: a recovery graded `cleared` whose name, with its last word
+  swapped (`Up`→`Down`, `Clear`→`Set`, `Resume`→`` ``, `Resume`→`Suppress`…), names a fault of
+  the same module that is not itself a recovery. Kept only when unambiguous (a fault two
+  recoveries name — Huawei's `hwCssLinkDown` — is left to alternation): 1 437 pairs. They are
+  registered as the standards' `linkDown` / `linkUp` already were, the first time either side is
+  seen, after the standards; everything else is still learned from two alternations on one port.
+- **Reason**: in the lab every vendor recovery became an **active alarm of its own**, graded
+  `cleared`, beside the fault it ended, until that port had alternated twice — a Ciena port's
+  `PortUp` sat on the Broker as an active "CLEARED" alarm and its situation stayed live. The names
+  are public data the appliance already ships, as the standards' pair is.
+
+## 476. The operators' review round: what the console said too little of (unreleased)
+
+- **Decision**: from the same lab, worked as a Broker operator and a NOC operator for hours:
+  **the NOC Overview shows equipment reachability** — the elements whose monitored management
+  endpoint stopped answering, worst and longest first, from the vault's checks (a switch that loses
+  power or its management path sends no trap, so no case ever said it); an address only to a role
+  that sees addresses, the credential only to a custodian, the elements of the reader's scope only;
+  **an element is named and put in its customer from its own page** on Entities (`label.write`,
+  `organizations.write`), which the Customers screen already promised; **a situation's list row
+  and the merge picker name its probable root** ("linkDown on tim-rjo-barra-crs326"), scoped as the
+  row is; **a member reads its port** (`ether5`, from the trap's own ifName or ifDescr) where it
+  read its ifIndex; a gesture on a new situation says it opens its NOC case; the decision bar's
+  buttons no longer inherit a health panel's margins, and the member table's actions cell stays a
+  table cell; Secrets says its status counts in words; a 24-hour chart's gridlines are whole
+  counts; SNMP's grey light no longer promises a check that never runs. **Every stop of the
+  appliance is clean**: uvicorn is told to exit and given time to, where a SIGTERM cancelled it
+  mid-serve and logged "Task was destroyed but it is pending!" with a traceback. The search test
+  that failed Dependabot's PR measures how long a tick holds the event loop, not its wall time.
+- **Reason**: the owner asked for a review of alignment, UI/UX and explanations, tested on an
+  environment close to theirs with long runs, focused on people using both planes.

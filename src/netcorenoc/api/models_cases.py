@@ -55,12 +55,37 @@ class CaseFieldsIn(BaseModel):
     _when = field_validator("next_update_at")(_instant)
 
 
+#: The pending statuses, spelled out so the schema an agent reads over MCP lists them: with a bare
+#: string an agent learnt the vocabulary only from the 400 its first guess earned (ADR #474).
+#: `tests/api/test_noc_cases.py` holds this equal to `engine.noc.cases.PENDING`.
+PendingStatus = Literal[
+    "pending_customer",
+    "pending_fiber_provider",
+    "pending_maintenance",
+    "pending_dispatch",
+    "pending_device_access",
+    "pending_connectivity",
+    "pending_vendor",
+    "pending_site_access",
+    "pending_field_tech",
+    "pending_rca",
+    "pending_monitoring",
+]
+
+
 class StatusIn(BaseModel):
     """Move a case to a pending status — with its next update, if not already set."""
 
     model_config = ConfigDict(extra="forbid")
 
-    status: str = Field(min_length=1, max_length=40)
+    status: PendingStatus = Field(
+        description=(
+            "What the case waits on: the customer, the carrier or fibre provider, a maintenance "
+            "window, a dispatch, access to the device, connectivity (no ping, SNMP or SSH), the "
+            "equipment vendor, site access, a technician on site, a root cause analysis — or "
+            "monitoring: the fault is quiet and the NOC watches it for stability."
+        )
+    )
     next_update_at: float | datetime | None = None
     note: str = Field(default="", max_length=2000)
     version: int | None = Field(default=None, ge=1)
