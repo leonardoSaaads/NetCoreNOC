@@ -122,3 +122,21 @@ answer, so an agent that logs in after a cut sees the port down and the optical 
 is in [`docs/simulate.md`](../../docs/simulate.md#two-devices-the-noc-can-log-in-to-adr-469);
 `test_noc_devices.py` drives both devices with the appliance's own executor.
 
+
+## An estate of three vendors, broken for hours (ADR #476)
+
+`noc_estate.py` is the round that reviewed the console as its operators use it: six elements of
+two customers on five links — a Huawei S6730 and NE40E (VRP), a MikroTik CRS326 and CCR2004
+(RouterOS) and a Ciena 3930 and 5164 (SAOS 10) — each answering SSH and SNMP at its own loopback
+address with its vendor's read-only commands (`noc_estate_cli.py`) and sending its vendor's traps.
+A driver breaks and mends them as a network does: flaps (a Huawei end suppresses the port), CRC
+errors, light that fades then a cut, management lost (an iptables DROP when run as root), power
+lost, a hot CCR. `--soak 6h` runs incidents at random for six hours; every change and every trap
+is a line of `state/truth.jsonl`, to compare with what the appliance shows.
+
+    python tests/lab/noc_estate.py serve --password 'lab-Passw0rd!2026' --target 127.0.0.1:1162 \
+        --soak 6h --seed 7
+    python tests/lab/noc_estate.py ctl cut L3        # or flap L1 6, isolate 127.0.40.1, status…
+
+Store each element's SSH password and SNMP community (`nocLab`) in *NOC → Secrets* with agent use
+on. `test_noc_estate.py` drives a cut and its repair through the appliance's own executor.
