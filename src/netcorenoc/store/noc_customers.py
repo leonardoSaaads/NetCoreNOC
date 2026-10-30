@@ -48,7 +48,7 @@ class NocCustomerMixin(StoreBase):
             "COALESCE(length(m.instructions), 0) AS instructions_chars, "
             "COALESCE(length(m.memory), 0) AS memory_chars, m.updated_at, m.memory_at "
             "FROM organization o LEFT JOIN noc_customer m ON m.organization_id = o.id "
-            f"WHERE NOT o.is_default{where} ORDER BY o.name, o.id",
+            f"WHERE NOT o.is_default AND o.ended_at IS NULL{where} ORDER BY o.name, o.id",
             args,
         )
         return [dict(r) for r in await cur.fetchall()]
@@ -65,7 +65,7 @@ class NocCustomerMixin(StoreBase):
             "m.updated_at, m.updated_by, m.memory_at, "
             "m.memory_by FROM organization o "
             "LEFT JOIN noc_customer m ON m.organization_id = o.id "
-            "WHERE o.id = ? AND NOT o.is_default",
+            "WHERE o.id = ? AND NOT o.is_default AND o.ended_at IS NULL",
             (organization_id,),
         )
         row = await cur.fetchone()

@@ -3106,7 +3106,7 @@ table.data.league-table td, table.data.league-table th { white-space: nowrap; }
 
 .badge-ok { color: var(--quiet); border-color: var(--quiet); }
 .check-row { display: flex; align-items: flex-start; gap: var(--space-2); margin: var(--space-2) 0; color: var(--fg); }
-.check-row input { flex: none; }
+.check-row input { flex: none; margin-left: 0; }
 /* A password field inside a settings grid labels itself like the fields beside it. */
 .email-grid .pw-field > label, .snmp-user-grid .pw-field > label {
   font-size: var(--fs-xs); color: var(--fg-muted); text-transform: uppercase; letter-spacing: 0.05em;
@@ -3398,6 +3398,18 @@ table.secrets-table td { vertical-align: middle; }
 .ai-models h4 { margin: var(--space-4) 0 var(--space-2); }
 .model-chips { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: var(--space-1); max-height: 12rem; overflow: auto; }
 .model-chips li { padding: 1px var(--space-2); border: 1px solid var(--line); border-radius: 999px; font-size: var(--fs-xs); }
+/* A local Ollama's models (ADR #477): which can work a case, said as a word and an icon. */
+.ai-local-hint code { white-space: nowrap; }
+.ollama-advice p { margin: 0 0 var(--space-2); }
+.ollama-reco { display: flex; gap: var(--space-2); align-items: baseline; }
+.ollama-models td { vertical-align: middle; }
+.ollama-size { white-space: nowrap; font-size: var(--fs-sm); }
+.ollama-caps { display: inline-flex; flex-wrap: wrap; gap: 4px; }
+.ollama-fit { display: inline-flex; align-items: center; gap: 4px; white-space: nowrap; font-weight: 600; font-size: var(--fs-sm); }
+.ollama-fit-agents { color: var(--quiet); }
+.ollama-fit-chat, .ollama-fit-embedding { color: var(--warn); }
+.ollama-fit-unknown { color: var(--fg-muted); }
+.run-models { margin: 0 0 var(--space-3); }
 /* The hiring form's "how it runs" (ADR #471): a card per AI provider with its logo, then the two
  * ways an agent runs elsewhere; the key by name, the model from the provider's own list. */
 .run-groups { display: grid; gap: var(--space-2); margin-bottom: var(--space-3); }
@@ -3913,10 +3925,16 @@ a.btn-link.primary, a.btn-link.primary:hover { background: var(--accent); border
 .agent-form-head { display: flex; align-items: center; gap: var(--space-3); }
 .agent-form-head h2, .agent-form-head p { margin: 0; }
 .form-section {
-  margin: 0; padding: var(--space-3) var(--space-4) var(--space-4); display: grid; gap: var(--space-3);
+  margin: 0; padding: var(--space-4); display: grid; gap: var(--space-3);
   border: 1px solid var(--line); border-radius: var(--radius-2); background: var(--bg-raised);
 }
-.form-section legend { padding: 0 var(--space-1); font-weight: 700; }
+/* The section's title sits INSIDE its card, aligned with the fields below it. A rendered <legend>
+   straddles the fieldset's top border — the hiring form's titles read as floating above their
+   cards; floated, it is laid out as the card's first row instead (a grid item, full width). */
+.form-section legend {
+  float: left; width: 100%; margin: 0; padding: 0 0 var(--space-2); border-bottom: 1px solid var(--line);
+  font-size: var(--fs-md); font-weight: 700; line-height: 1.3; color: var(--fg);
+}
 .agent-form textarea, .agent-form select, .agent-form input[type="text"], .agent-form input:not([type]),
 .agent-form input[type="url"], .agent-form input[type="number"] { width: 100%; }
 .icon-pick { display: flex; flex-wrap: wrap; gap: var(--space-2); }
@@ -3977,6 +3995,22 @@ button.org-card:hover:not(:disabled) { background: var(--bg-raised); border-colo
 .org-people .org-card-text > .muted { white-space: normal; }
 .org-card-facts { display: flex; flex-wrap: wrap; gap: var(--space-1) var(--space-2); align-items: center; margin-top: 2px; font-size: var(--fs-xs); }
 .org-card-facts .agent-state { font-size: var(--fs-xs); }
+/* Moving an agent by dragging it (ADR #477): where it may land is outlined, where it may not is
+   dimmed, and the card under the pointer says so — by outline AND opacity, never colour alone. */
+.org-card[draggable="true"] { cursor: grab; }
+.org-card.dragging { opacity: 0.45; }
+.org-dragging .org-card.drop-ok { outline: 2px dashed var(--accent); outline-offset: 2px; }
+.org-dragging .org-card.drop-no { opacity: 0.5; }
+.org-dragging .org-card.drop-here { outline-style: solid; background: color-mix(in srgb, var(--accent) 14%, var(--bg-raised)); }
+.org-note { margin: 0 0 var(--space-2); }
+dialog.org-move {
+  max-width: 32rem; width: calc(100% - 2rem); padding: var(--space-4); border: 1px solid var(--line-strong);
+  border-radius: var(--radius-2); background: var(--bg-raised); color: var(--fg); box-shadow: var(--shadow-1);
+}
+dialog.org-move::backdrop { background: rgb(0 0 0 / 55%); }
+.org-move-head { display: flex; align-items: center; gap: var(--space-3); margin-bottom: var(--space-2); }
+.org-move-head h3 { margin: 0; font-size: var(--fs-lg); text-transform: none; letter-spacing: normal; color: var(--fg); }
+.org-move-tier { max-width: 10rem; margin: var(--space-3) 0; }
 .org-place { position: sticky; top: var(--space-3); margin: 0; }
 .org-place-head { display: flex; align-items: center; gap: var(--space-2); margin-bottom: var(--space-3); }
 .org-place-head > div { flex: 1; min-width: 0; }
@@ -4023,6 +4057,18 @@ button.org-card:hover:not(:disabled) { background: var(--bg-raised); border-colo
 .customer-record > *, .ckt-detail > *, .circuits > *, .ckt-lower > * { min-width: 0; }
 .customer-record > .linkish { justify-self: start; }
 .cust-head-note { margin: 0; font-size: var(--fs-sm); }
+/* Ending a customer (ADR #477): the button at the record's right, the card below the header. */
+.cust-end-open { margin-left: auto; }
+.cust-end { display: grid; gap: var(--space-2); }
+.cust-end .destructive { margin: 0; }
+.cust-end > .linkish { justify-self: start; }
+.cust-end-facts { display: grid; gap: var(--space-2); margin: 0 0 var(--space-3); }
+.cust-end-facts div { display: grid; grid-template-columns: 6rem 1fr; gap: var(--space-2); }
+.cust-end-facts dt { font-weight: 700; }
+.cust-end-facts dd { margin: 0; }
+.cust-end-name { max-width: 24rem; margin-bottom: var(--space-3); }
+td.ckt-acts { white-space: nowrap; }
+td.ckt-acts .linkish + .linkish { margin-left: var(--space-3); }
 .customer-record .tab-line { display: inline-flex; align-items: center; gap: var(--space-1); }
 
 .book { display: grid; gap: var(--space-3); }

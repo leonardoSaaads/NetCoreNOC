@@ -384,6 +384,26 @@ const scenarios = {
     return { out, proof: proofOf(env) };
   },
 
+  /** Call the pure functions one module exports (ADR #477): `{module, calls: {name: {fn, args}}}`,
+   * the module found in the graph the console really evaluated. A `Set` comes back sorted. */
+  async moduleCalls(params) {
+    const env = await boot(params);
+    const found = [...env.modules.entries()].find(([file]) => file.endsWith(params.module));
+    if (!found) throw new Error(`${params.module} was not in the evaluated module graph`);
+    const m = found[1].namespace;
+    const out = {};
+    for (const [name, call] of Object.entries(params.calls ?? {})) {
+      if (typeof m[call.fn] !== "function") {
+        throw new Error(`${params.module} exports no function ${JSON.stringify(call.fn)}`);
+      }
+      const value = m[call.fn](...(call.args ?? []));
+      // The module runs in the harness's own realm, where `instanceof Set` is false.
+      const isSet = Object.prototype.toString.call(value) === "[object Set]";
+      out[name] = isSet ? [...value].sort((a, b) => a - b) : value;
+    }
+    return { out, proof: proofOf(env) };
+  },
+
   /** Boot, optionally navigate, and dump the DOM. The gate documents quote `dump`. */
   async render(params) {
     const env = await boot(params);

@@ -72,5 +72,8 @@ NOC_ACTIONS: frozenset[str] = frozenset(
         "noc.circuit.notes",
         "noc.circuit.delete",
         "noc.circuit.import",
+        # ADR #477: an admin stopped serving a customer — its book deleted, its elements back in
+        # the default organization; the row names what went, by kind, and who confirmed it.
+        "noc.customer.end",
     }
 )

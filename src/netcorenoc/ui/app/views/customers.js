@@ -11,11 +11,17 @@
  *   * **Circuits** — each circuit and its path, hop by hop.
  *
  * What a caller may change comes from the server (`actions`); a customer is an organization, which
- * an admin adds here (`organizations.write`) and puts elements in from each element's page.
+ * an admin adds here (`organizations.write`) and puts elements in from each element's page — and
+ * **ends** here the day the NOC stops serving it (ADR #477): what goes and what stays is shown
+ * first, its name is typed again and the admin confirms who they are; its elements return to the
+ * default organization, its cases and the audit log keep their history. Adding it again
+ * reinstates it, its book empty.
  */
 
 import { html, Component, cx } from "../dom.js";
 import { get, post } from "../api.js";
+import { Destructive } from "../destructive.js";
+import { StepUpFields, stepupBody } from "./parts/stepup.js";
 import { Loader, Empty } from "../widgets.js";
 import { can } from "../session.js";
 import { plural, relative, timeTitle } from "../format.js";
@@ -119,11 +125,45 @@ class AddCustomer extends Component {
   }
 }
 
+/** An admin's: stop serving a customer — what goes, what stays, its name typed, a step-up. */
+class EndService extends Component {
+  constructor(props) {
+    super(props);
+    this.typed = "";
+    this.stepup = { username: "", password: "", otp: "" };
+  }
+
+  render({ c, onEnded, onCancel }) {
+    const contacts = c.workbook.reduce((n, p) => n + p.contacts.length, 0);
+    return html`<div class="cust-end">
+      <${Destructive} title=${`Stop serving ${c.name}`} previewLabel="Show what goes and what stays"
+        confirmLabel=${`End service with ${c.name}`}
+        consequence=${`Its book is deleted: the NOC keeps no copy of the customer's material. Agents stop reading it at once.`}
+        preview=${async () => ({ measured: true })}
+        renderPreview=${() => html`<dl class="cust-end-facts">
+            <div><dt>Deleted</dt><dd>its instructions and the NOC's memory · ${plural(contacts, "contact")} ·
+              ${" "}${plural(c.docs.length, "document")} · ${plural(c.circuits, "circuit")}</dd></div>
+            <div><dt>Kept</dt><dd>its ${plural(c.element_count, "element")}, back in the default organization ·
+              its cases${c.open_cases ? ` (${c.open_cases} still open)` : ""} and their history · its maintenance
+              windows · the audit log</dd></div>
+          </dl>
+          <div class="pe-field cust-end-name"><label for="cust-end-name">Type <b>${c.name}</b> to confirm</label>
+            <input id="cust-end-name" autocomplete="off" spellcheck=${false}
+              onInput=${(e) => { this.typed = e.currentTarget.value; }} /></div>
+          <${StepUpFields} onChange=${(v) => { this.stepup = v; }} />`}
+        apply=${async () => post(`/api/noc/customers/${c.id}/end`,
+          { name: this.typed, stepup: stepupBody(this.stepup) })}
+        onDone=${onEnded} />
+      <button type="button" class="linkish" onClick=${onCancel}>Keep serving ${c.name}</button>
+    </div>`;
+  }
+}
+
 /** One customer, at one part of its book. */
 class CustomerRecord extends Component {
   constructor(props) {
     super(props);
-    this.state = { c: null, error: null };
+    this.state = { c: null, error: null, ending: false, ended: null };
     this.reload = this.reload.bind(this);
   }
 
@@ -151,9 +191,16 @@ class CustomerRecord extends Component {
     </dl>`;
   }
 
-  render({ part, sub, query, navigate }, { c, error }) {
+  render({ part, sub, query, navigate }, { c, error, ending, ended }) {
     const back = html`<a class="linkish" href="#/customers">← Customers</a>`;
     if (error) return html`<div>${back}<p class="err" role="alert">${error}</p></div>`;
+    if (ended) {
+      return html`<div class="customer-record">${back}<p class="ok-note" role="status"><b>${c.name} is no
+        longer a customer.</b> Deleted: ${plural(ended.contacts, "contact")}, ${plural(ended.documents, "document")},
+        ${" "}${plural(ended.circuits, "circuit")}${ended.book ? " and its instructions and memory" : ""}.
+        ${" "}${plural(ended.elements, "element")} back in the default organization. Adding ${c.name} again
+        reinstates it, its book empty.</p></div>`;
+    }
     if (!c) return html`<p class="muted">Opening the customer…</p>`;
     const go = (to) => navigate(`#/customers/${c.id}/${to}`);
     const shown = BOOK.some(([id]) => id === part) ? part : "instructions";
@@ -166,7 +213,11 @@ class CustomerRecord extends Component {
           <h2 id="cust-heading">${c.name}</h2>
         </div>
         <p class="muted cust-head-note">${plural(c.element_count, "element")} · what its agents read before acting on its network</p>
+        ${can("organizations.write") && !ending ? html`<button type="button" class="danger cust-end-open"
+          onClick=${() => this.setState({ ending: true })}>End service…</button>` : null}
       </header>
+      ${ending ? html`<${EndService} c=${c} onCancel=${() => this.setState({ ending: false })}
+        onEnded=${(result) => { this.setState({ ended: result }); refreshRoster(); }} />` : null}
       ${this.highlights(c)}
       <div class="tabs-line" role="tablist" aria-label=${`${c.name}'s book`}>
         ${BOOK.map(([id, label, icon]) => html`<button type="button" role="tab" key=${id}

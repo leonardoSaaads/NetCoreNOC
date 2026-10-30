@@ -8,7 +8,9 @@ instructions and the workbook are the customer's words, kept by people; the memo
 learned, kept by agents as much as people. Every write is one transaction and one audit row.
 
 A customer is an organization (`POST /api/organizations`, an admin's): this module adds what the
-NOC knows about it, not the customer itself.
+NOC knows about it, not the customer itself — and **ends it** (ADR #477) when the NOC stops serving
+it: an admin's act, its name typed again and a step-up, its book deleted and its elements returned
+to the default organization in one transaction, one audit row. No agent tool reaches it.
 """
 
 from __future__ import annotations
@@ -18,6 +20,7 @@ from typing import Any
 
 from fastapi import Depends, FastAPI, HTTPException, Request
 
+from netcorenoc.api import noc_gate as gate
 from netcorenoc.api.context import AppContext
 from netcorenoc.api.customer_view import (
     contact_view,
@@ -26,7 +29,7 @@ from netcorenoc.api.customer_view import (
     visible_customer,
 )
 from netcorenoc.api.declare import DeclaredRoutes
-from netcorenoc.api.models_customers import ContactIn, InstructionsIn, MemoryIn
+from netcorenoc.api.models_customers import ContactIn, CustomerEndIn, InstructionsIn, MemoryIn
 from netcorenoc.crosscutting import auth
 from netcorenoc.engine.noc import customers
 from netcorenoc.engine.noc.customers import CustomerError
@@ -286,3 +289,40 @@ def register(app: FastAPI, ctx: AppContext) -> None:
                 party=contact["party"],
             )
         return {"deleted": True, "id": contact_id}
+
+    @route.post("/api/noc/customers/{customer_id}/end")
+    async def end_customer(
+        customer_id: int,
+        body: CustomerEndIn,
+        request: Request,
+        principal: auth.Principal = Depends(security),
+    ) -> dict[str, Any]:
+        """Stop serving a customer: its book goes, its elements return to the default."""
+        async with store.reading():
+            row = await store.noc_customer(customer_id)
+        if row is None:
+            raise HTTPException(status_code=404, detail="no such customer")
+        if body.name.strip().casefold() != str(row["name"]).strip().casefold():
+            raise HTTPException(status_code=400, detail="name: type the customer's name to confirm")
+        outcome = await gate.confirm(
+            ctx,
+            request,
+            principal,
+            body.stepup,
+            action="noc.customer.end",
+            object_type="organization",
+            object_id=str(customer_id),
+        )
+        async with write_txn():
+            gone = await store.end_customer(customer_id, time.time(), principal.actor)
+            await audited(
+                request,
+                principal,
+                "noc.customer.end",
+                customer_id,
+                name=row["name"],
+                slug=row["slug"],
+                **gone,
+                **outcome.audit(),
+            )
+        return {"ended": True, "id": customer_id, **gone}

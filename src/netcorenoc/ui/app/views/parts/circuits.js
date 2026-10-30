@@ -178,7 +178,19 @@ export class Circuits extends Component {
 
   changed() { this.setState({ mode: null, list: null }); this.search(this.state.offset); this.props.onChanged(); }
 
-  render({ c, circuitId, navigate, onChanged }, { list, q, status, offset, error, mode }) {
+  /** Remove one circuit from the list itself, after a confirmation on its own row. */
+  async remove(k) {
+    this.setState({ busy: true, error: null });
+    try {
+      await post(`/api/noc/customers/${this.props.c.id}/circuits/${k.id}/delete`, {});
+      this.setState({ busy: false, removing: null });
+      this.changed();
+    } catch (error) {
+      this.setState({ busy: false, error: error.message });
+    }
+  }
+
+  render({ c, circuitId, navigate, onChanged }, { list, q, status, offset, error, mode, removing, busy }) {
     if (circuitId) {
       return html`<${CircuitDetail} key=${circuitId} c=${c} id=${circuitId} onChanged=${onChanged}
         onBack=${() => navigate(`#/customers/${c.id}/circuits`)} />`;
@@ -207,14 +219,19 @@ export class Circuits extends Component {
         <table class="ckt-table">
           <caption class="visually-hidden">${c.name}'s circuits</caption>
           <thead><tr><th scope="col">Circuit</th><th scope="col">A end → Z end</th><th scope="col">Bandwidth</th>
-            <th scope="col">Service</th><th scope="col">Status</th><th scope="col">Owner · party</th><th scope="col">Path</th></tr></thead>
+            <th scope="col">Service</th><th scope="col">Status</th><th scope="col">Owner · party</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr></thead>
           <tbody>${list.circuits.map((k) => html`<tr key=${k.id}>
             <td><a class="mono" href=${`#/customers/${c.id}/circuits/${k.id}`}>${k.designation}</a>${k.has_notes
               ? html` <span class="ckt-noted" title="The NOC has notes on it"><${Icon} name="sparkle" /></span>` : null}</td>
             <td>${k.a_end} → ${k.z_end}</td><td>${k.bandwidth}</td><td>${k.service}</td>
             <td><${Status} status=${k.status} /></td>
             <td>${[k.owner, k.provider].filter(Boolean).join(" · ") || html`<span class="muted">—</span>`}</td>
-            <td><button type="button" class="linkish" onClick=${() => this.open(k.id)}>Open</button></td>
+            <td class="ckt-acts">${removing === k.id ? html`<span class="wb-confirm">Remove ${k.designation}?${" "}
+                <button type="button" class="danger" disabled=${busy} onClick=${() => this.remove(k)}>Remove</button>
+                <button type="button" onClick=${() => this.setState({ removing: null })}>Keep</button></span>`
+              : html`<button type="button" class="linkish" onClick=${() => this.open(k.id)}>Open</button>${this.may()
+                ? html`<button type="button" class="linkish danger-link" aria-label=${`Remove ${k.designation}`}
+                    onClick=${() => this.setState({ removing: k.id })}>Remove</button>` : null}`}</td>
           </tr>`)}</tbody>
         </table></div>
         <p class="hint">${plural(list.total, "circuit")}${list.total > PAGE ? `, ${offset + 1}–${Math.min(offset + PAGE, list.total)} shown` : ""}.

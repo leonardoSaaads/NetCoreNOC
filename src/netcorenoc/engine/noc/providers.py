@@ -13,7 +13,13 @@ field is the API key, so a person adds a key by picking a logo and pasting it, n
 * **A cloud provider's endpoint is fixed**: its key works at one host, so the vault refuses to bind
   it anywhere else (:func:`check_endpoint`) — a key pasted for OpenAI cannot be pointed at another
   machine. **Ollama runs where its owner runs it** (this host, a GPU box on the LAN), so its host
-  and port are the custodian's, and it needs no key at all.
+  and port are the custodian's, and it needs no key at all: a local Ollama asks for none (ADR
+  #477). **Ollama Cloud** is the other way round: ollama.com, with the account's API key as a
+  bearer token, like any cloud provider.
+* **Ollama is asked what it has in its own words** (`ollama`): its native API lists the models
+  pulled on that machine (`GET /api/tags`), what each can do (`POST /api/show`: `tools`, `vision`,
+  `thinking`…) and which are loaded now (`GET /api/ps`), so the console can say which suit an
+  agent — one that calls the NOC's tools needs `tools`.
 
 Model names are not listed here, apart from Anthropic's (`agents.MODELS`, which carries their
 prices): a provider's catalogue moves faster than a release, so the console asks the provider
@@ -32,6 +38,7 @@ __all__ = [
     "PROVIDERS",
     "Provider",
     "ProviderError",
+    "api_root",
     "base_url",
     "by_kind",
     "check_endpoint",
@@ -63,6 +70,10 @@ class Provider:
     example_model: str
     #: False for a cloud API (one host serves it); True for one its owner runs (Ollama).
     own_host: bool = False
+    #: Speaks Ollama's native API too, which lists its models with what each can do.
+    ollama: bool = False
+    #: What its one secret field is called on the forms.
+    key_label: str = "API key"
 
     @property
     def kind(self) -> str:
@@ -154,8 +165,25 @@ PROVIDERS: dict[str, Provider] = {
             False,
             "",
             "https://ollama.com/download",
-            "llama3.1",
+            "qwen3:8b",
             own_host=True,
+            ollama=True,
+            key_label="Proxy token (only if a proxy in front of Ollama asks for one)",
+        ),
+        Provider(
+            "ollama_cloud",
+            "Ollama Cloud",
+            "cloud models",
+            "openai",
+            "ollama.com",
+            443,
+            "HTTPS",
+            "/v1",
+            True,
+            "",
+            "https://ollama.com/settings/keys",
+            "gpt-oss:120b",
+            ollama=True,
         ),
     )
 }
@@ -181,14 +209,19 @@ def check_endpoint(kind: str, host: str, port: int) -> None:
         )
 
 
-def base_url(provider: Provider, host: str, port: int, scheme: str) -> str:
-    """Where the provider's API answers, for a credential bound to ``host``:``port``."""
+def api_root(host: str, port: int, scheme: str) -> str:
+    """The server's root URL for ``host``:``port`` (Ollama's native API lives there)."""
     proto = "https" if scheme.upper() == "HTTPS" else "http"
     default = (proto == "https" and port == 443) or (proto == "http" and port == 80)
     where = host if default else f"{host}:{port}"
     if ":" in host and not host.startswith("["):
         where = f"[{host}]" if default else f"[{host}]:{port}"
-    return f"{proto}://{where}{provider.base_path}"
+    return f"{proto}://{where}"
+
+
+def base_url(provider: Provider, host: str, port: int, scheme: str) -> str:
+    """Where the provider's API answers, for a credential bound to ``host``:``port``."""
+    return api_root(host, port, scheme) + provider.base_path
 
 
 def describe() -> list[dict[str, object]]:
@@ -208,6 +241,8 @@ def describe() -> list[dict[str, object]]:
             "key_url": p.key_url,
             "example_model": p.example_model,
             "own_host": p.own_host,
+            "ollama": p.ollama,
+            "key_label": p.key_label,
             "models": list(MODELS) if p.adapter == "claude" else [],
         }
         for p in PROVIDERS.values()

@@ -178,7 +178,11 @@ KINDS: dict[str, Kind] = {
                 p.port,
                 "tcp",
                 "tcp",
-                (Field("api_key", "API key", secret=True, required=p.key_required, max_len=4096),),
+                (
+                    Field(
+                        "api_key", p.key_label, secret=True, required=p.key_required, max_len=4096
+                    ),
+                ),
                 ("HTTP", "HTTPS") if p.own_host else (p.scheme,),
                 group="ai",
             )

@@ -229,6 +229,9 @@ REFERENCE: dict[tuple[str, str], Entry] = {
     ("POST", "/api/noc/customers/{customer_id}/contacts/{contact_id}/delete"): Entry(
         CUSTOMERS, "Remove a workbook contact"
     ),
+    ("POST", "/api/noc/customers/{customer_id}/end"): Entry(
+        CUSTOMERS, "Stop serving a customer: delete its book, keep its history"
+    ),
     ("POST", "/api/noc/customers/{customer_id}/docs"): Entry(
         CUSTOMERS, "Upload a customer's document (the body)"
     ),

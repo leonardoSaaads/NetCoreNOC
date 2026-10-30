@@ -248,6 +248,9 @@ _UI_MODULES = (
     "app/views/parts/vaultui.js",
     "app/views/parts/aiproviders.js",
     "app/views/parts/agentrun.js",
+    # ADR #477: what a local Ollama has, and moving an agent in the chart.
+    "app/views/parts/ollamamodels.js",
+    "app/views/parts/orgmove.js",
     # ADR #473: the customers' books.
     "app/views/customers.js",
     "app/views/parts/custbook.js",

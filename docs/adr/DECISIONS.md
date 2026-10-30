@@ -6817,3 +6817,39 @@ From this release an entry is about six lines: decision, reason, release.*
   that failed Dependabot's PR measures how long a tick holds the event loop, not its wall time.
 - **Reason**: the owner asked for a review of alignment, UI/UX and explanations, tested on an
   environment close to theirs with long runs, focused on people using both planes.
+
+## 477. A local Ollama without a key; ending a customer; moving an agent by dragging it (unreleased)
+
+- **Decision** (`engine/noc/providers.py`, `engine/noc/ollama.py`, `engine/noc/llm_http.py`,
+  `api/routes/providers.py`, `ui/app/views/parts/{aiproviders,ollamamodels,agentrun}.js`): **a local
+  Ollama asks for no key.** Its card connects with where it runs (host, port, protocol) and no key
+  field — a proxy's token stays folded behind "A proxy in front of it asks for a token?" — and,
+  stored, it opens on **the models pulled on that machine**, asked of Ollama's native API (`GET
+  /api/tags`, `POST /api/show` for each model's `capabilities` and context length, `GET /api/ps`
+  for what is loaded now; field names from the official client, `ollama` 0.6.3, as
+  docs.ollama.com was not reachable from the build). Each model says whether it **can work a case
+  — it calls tools** — or only answers, or is an embedding model; the list is ranked so the first
+  is the one to try (tools, then loaded, then the larger), and the hiring form asks for "Ollama
+  server", lists the same table, preselects that model and warns when the one chosen cannot call
+  tools. **Ollama Cloud** is a provider of its own: ollama.com with the account's key, bound there
+  like any cloud key. An endpoint that speaks only `/v1` (a proxy) still lists its model names.
+- **Decision** (migration 0041, `store/organizations.py`, `api/routes/customers.py`,
+  `ui/app/views/customers.js`): **the NOC stops serving a customer.** An admin's act, from the
+  customer's record (*End service…*): what goes and what stays is shown first, the name is typed
+  again and the admin confirms who they are (step-up). Its book is deleted — instructions, the
+  NOC's memory, contacts, documents, circuits: the customer's material, not the NOC's to keep — its
+  elements return to the default organization, and the row stays, ended, because maintenance
+  windows and cases' summaries name it; it is on no list, picker or agent tool, and the audit row
+  says what went, by kind. Adding it again under its handle reinstates the same row, its book
+  empty. A circuit is removed from its own row in the list, not only from inside it.
+- **Decision** (`ui/app/views/org.js`, `ui/app/views/parts/orgmove.js`): **an admin moves an agent
+  by dragging its card onto its new manager** (or the NOC team). A dialog asks first — "Make Ollie a
+  Tier 2 agent?" — proposing the tier one below the new manager's, theirs to change; nothing moves
+  until it is confirmed. A drop that would make a loop, or change nothing, is not taken, and the
+  cards say which can take it by outline and opacity, not colour alone. The panel beside the chart
+  still sets the same fields with a keyboard.
+- **Decision** (`ui/style.css`): the hiring form's section titles sit **inside** their cards,
+  aligned with the fields, where a `<legend>` straddled each card's top border.
+- **Reason**: the owner's review: a local Ollama asked for a token and showed no models; a customer
+  the NOC stopped serving could not be removed; the hiring form's titles sat above their cards; and
+  the organization chart should move an agent the way a person would, with a confirmation.
