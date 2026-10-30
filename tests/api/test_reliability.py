@@ -14,7 +14,6 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
-import socket
 import time
 from pathlib import Path
 from typing import Any
@@ -355,9 +354,9 @@ async def test_a_stop_lets_the_http_server_shut_down(
     settings = Settings(
         database_url=db_url,
         http_host="127.0.0.1",
-        http_port=_free_port(socket.SOCK_STREAM),
+        http_port=util.free_port(),
         trap_host="127.0.0.1",
-        trap_port=_free_port(socket.SOCK_DGRAM),
+        trap_port=util.free_port(),
         data_dir=str(tmp_path),
         spool_dir=str(tmp_path / "spool"),
         secret_key_file=str(tmp_path / "secret.key"),
@@ -373,9 +372,3 @@ async def test_a_stop_lets_the_http_server_shut_down(
     with contextlib.suppress(asyncio.CancelledError):
         await task
     assert shut == [True], "uvicorn was cancelled mid-serve: its shutdown never ran"
-
-
-def _free_port(kind: int) -> int:
-    with socket.socket(socket.AF_INET, kind) as probe:
-        probe.bind(("127.0.0.1", 0))
-        return int(probe.getsockname()[1])

@@ -5,6 +5,8 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import json
+import random
+import socket
 import time
 from collections.abc import Awaitable, Callable
 from pathlib import Path
@@ -187,3 +189,28 @@ def imported_modules(path: Path) -> set[str]:
             )
     found.discard("netcorenoc")
     return found
+
+
+def free_port() -> int:
+    """A port free for both TCP and UDP on 127.0.0.1, **below the kernel's ephemeral range**.
+
+    Asking the kernel for port 0 hands out an ephemeral port, and between that pick and the
+    server's own bind an outbound connection — the test's database pool — may be given the same
+    one: CI's `test_main_run_serves_real_sockets` failed with "address already in use" (ADR #476).
+    A port below the range is one no outbound connection is ever given.
+    """
+    low = 32768
+    with contextlib.suppress(OSError, ValueError):
+        low = int(Path("/proc/sys/net/ipv4/ip_local_port_range").read_text().split()[0])
+    for port in random.sample(range(20000, max(20001, min(low, 32768))), 400):
+        try:
+            with (
+                socket.socket(socket.AF_INET, socket.SOCK_STREAM) as tcp,
+                socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as udp,
+            ):
+                tcp.bind(("127.0.0.1", port))
+                udp.bind(("127.0.0.1", port))
+        except OSError:
+            continue
+        return port
+    raise RuntimeError("no port free for TCP and UDP below the ephemeral range")
