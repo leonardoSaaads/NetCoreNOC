@@ -89,10 +89,17 @@ def plan(
 
 
 def _named(alarm: Mapping[str, Any]) -> str:
+    """`linkDown on tim-rjo-barra-crs326 (ether5) [flapping, cleared since]` — the qualifiers in
+    brackets, so a list of several alarms reads as a list (ADR #476's lab)."""
     where = f" ({alarm['instance']})" if alarm.get("instance") else ""
-    flap = ", flapping" if alarm.get("flapping") else ""
-    gone = ", cleared since" if alarm.get("since") else ""
-    return f"{alarm['what']} on {alarm['element']}{where}{flap}{gone}"
+    said = [
+        word
+        for word, on in (("flapping", alarm.get("flapping")), ("cleared since", alarm.get("since")))
+        if on
+    ]
+    return f"{alarm['what']} on {alarm['element']}{where}" + (
+        f" [{', '.join(said)}]" if said else ""
+    )
 
 
 def sentence(found: News) -> str:
