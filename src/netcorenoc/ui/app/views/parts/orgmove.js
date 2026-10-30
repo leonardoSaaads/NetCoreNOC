@@ -51,7 +51,7 @@ export class MoveDialog extends Component {
 
   componentDidMount() { if (this.box && this.box.showModal) this.box.showModal(); }
 
-  async confirm(event) {
+  async submit(event) {
     event.preventDefault();
     this.setState({ busy: true, error: null });
     try {
@@ -68,7 +68,7 @@ export class MoveDialog extends Component {
       : `Make ${agent.name} a Tier ${tier} agent?`;
     return html`<dialog class="org-move" ref=${(el) => { this.box = el; }} aria-labelledby="org-move-h"
         onCancel=${(e) => { e.preventDefault(); onCancel(); }}>
-      <form method="dialog" onSubmit=${(e) => this.confirm(e)}>
+      <form method="dialog" onSubmit=${(e) => this.submit(e)}>
         <header class="org-move-head"><${AgentGlyph} agent=${agent} size="md" />
           <h3 id="org-move-h">${title}</h3></header>
         <p>${agent.name} will report to <b>${to}</b>${same ? "" : html` and work as <b>Tier ${tier}</b>${" "}

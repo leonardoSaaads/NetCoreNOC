@@ -558,7 +558,7 @@ UI_HASHES: dict[str, str] = {
         "08d9d8c895c208efd4fa771b94f03f3855c7d80e58a25765c657a83105a3fae6"
     ),
     "app/views/parts/orgmove.js": (
-        "4b1c4e9c28baa7946c5f7919a356e3f0c5ffb2e965d1733bb998f27f7bc3e98d"
+        "68fd9c8f811b622c32b33224ec0487e159fc792cb5b9294f6a0f27247ee0ac25"
     ),
     "app/views/parts/people.js": "da247c7bbc83ef2db76320d39f0878efaccb08f03e9da7fd3c36842e0b51d43a",
     "app/views/parts/pipeline.js": (
@@ -753,7 +753,7 @@ UI_SIZES: dict[str, int] = {
     "app/views/parts/nocui.js": 3_495,
     "app/views/parts/oidtree.js": 6_358,
     "app/views/parts/ollamamodels.js": 3_663,
-    "app/views/parts/orgmove.js": 4_156,
+    "app/views/parts/orgmove.js": 4_154,
     "app/views/parts/people.js": 14_288,
     "app/views/parts/pipeline.js": 9_526,
     "app/views/parts/pulse.js": 5_701,
