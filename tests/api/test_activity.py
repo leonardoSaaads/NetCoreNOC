@@ -170,3 +170,36 @@ async def test_a_fault_that_keeps_firing_is_counted_as_re_reported_not_as_nothin
     assert first["total"] == 1 and first["repeated"] == 0, first
     # Scoped like every other count here.
     assert hidden["repeated"] == 0
+
+
+async def test_a_list_row_names_its_root_port_and_a_viewer_reads_no_address_in_it(
+    store: Store,
+) -> None:
+    """Two faults of one class on one router read as two (ADR #476's lab: two `hwOpticalInvalid
+    on akam-gru-pe01` rows, one per link): the row names its root's port. An instance can be an
+    address — a BGP peer's — so a viewer reads it as a network, as every address."""
+    import time
+
+    _engine, _queue, app = await authutil.make_env(store)
+    now = time.time()
+    sids: dict[str, int] = {}
+    async with store.lock:
+        for instance in ("100GE2/0/0", "192.0.2.77"):
+            sid = await store.create_situation(now, None)
+            alarm = await store.ingest(util.event(device="10.9.9.1", instance=instance, ts=now))
+            await store.add_alarm_to_situation(sid, alarm.alarm_id)
+            await store.set_root(sid, alarm.alarm_id)
+            sids[instance] = sid
+        await store.commit()
+    editor = await authutil.client_as(app, "editor")
+    viewer = await authutil.client_as(app, "viewer")
+    try:
+        rows = {int(r["id"]): r for r in (await editor.get("/api/situations")).json()}
+        assert rows[sids["100GE2/0/0"]]["root_port"] == "100GE2/0/0"
+        assert rows[sids["192.0.2.77"]]["root_port"] == "192.0.2.77"
+        seen = {int(r["id"]): r for r in (await viewer.get("/api/situations")).json()}
+        assert seen[sids["100GE2/0/0"]]["root_port"] == "100GE2/0/0"
+        assert "192.0.2.77" not in str(seen[sids["192.0.2.77"]]), "a viewer read an address"
+    finally:
+        await editor.aclose()
+        await viewer.aclose()

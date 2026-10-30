@@ -10,16 +10,22 @@
  * One read, `/api/noc/overview`, scoped as the queue is, again every fifteen seconds without the
  * loading state. A reader below editor is told the counts and not who holds them (the server
  * withholds the names, `named: false`).
+ *
+ * **Equipment reachability** (ADR #476): which elements stopped answering on management. No case
+ * says it — a switch that loses power or its management path sends no trap — so the vault's
+ * endpoint checks do, here, beside the clocks, each a link to the element (and, for a custodian,
+ * to the credential).
  */
 
 import { html, cx } from "../dom.js";
 import { get } from "../api.js";
 import { Loader } from "../widgets.js";
-import { count, plural } from "../format.js";
+import { age, count, plural } from "../format.js";
 import { Icon } from "../icons.js";
 import { Avatar } from "../avatar.js";
 import { roster } from "../roster.js";
 import { AgentGlyph } from "./parts/nocui.js";
+import { StatusLight } from "./parts/secretdetail.js";
 
 const REFRESH_MS = 15000;
 const STATES = [
@@ -172,6 +178,33 @@ function Holders({ d }) {
   </section>`;
 }
 
+/** The elements the NOC can no longer reach over management, worst and longest first. */
+function Reach({ r }) {
+  if (!r || !r.monitored) return null;
+  const down = r.trouble.filter((e) => e.state === "down").length;
+  const shaky = r.trouble.length - down;
+  return html`<section class=${cx("panel-block nov-panel nov-reach", down && "nov-reach-alert")}
+      aria-labelledby="nov-reach">
+    <h3 id="nov-reach">Equipment reachability</h3>
+    <p class="muted nov-sub">The management endpoints the vault checks every few minutes. A switch
+      that loses power or its management path sends no trap: this is where it shows.</p>
+    <p class="nov-reach-sum"><b>${count(r.answering)}</b> of ${plural(r.monitored, "element")} answer${
+      shaky ? html`${" · "}<b>${count(shaky)}</b> intermittent` : null}${
+      down ? html`${" · "}<b class="nov-reach-bad">${count(down)}</b> not answering` : null}</p>
+    ${r.trouble.length ? html`<ul class="nov-reach-list">${r.trouble.map((e) => html`<li key=${e.host}>
+      <${StatusLight} status=${{ state: e.state, reason: e.reason || "" }} />
+      <span class="nov-reach-what">
+        ${e.ne_id ? html`<a href=${`#/entities?ne=${e.ne_id}`}>${e.element || e.host}</a>`
+          : html`<b>${e.element || e.host}</b>`}
+        <span class="muted">${e.port ? `${e.host}:${e.port}` : e.host} · ${e.protocol}${
+          e.since ? ` · no answer for ${age(e.since)}`
+            : e.reason ? ` · ${e.reason.replace(/^[A-Za-z]+: /, "")}` : ""}</span>
+      </span>
+      ${e.secret_id ? html`<a class="nov-reach-cred" href=${`#/secrets/${e.secret_id}`}>Credential</a>` : null}
+    </li>`)}</ul>` : html`<p class="muted">Every monitored element answers.</p>`}
+  </section>`;
+}
+
 export class NocOverview extends Loader {
   constructor(props) {
     super(props);
@@ -203,7 +236,7 @@ export class NocOverview extends Loader {
         arrives in the queue with its take clock running.</p>`}
       <div class="nov-grid">
         <div class="nov-col-wide"><${LevelMatrix} d=${d} /><${PriorityMatrix} d=${d} /></div>
-        <div class="nov-col"><${Clocks} d=${d} /><${Holders} d=${d} /></div>
+        <div class="nov-col"><${Reach} r=${d.reachability} /><${Clocks} d=${d} /><${Holders} d=${d} /></div>
       </div>
     </div>`;
   }

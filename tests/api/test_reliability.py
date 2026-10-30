@@ -14,6 +14,9 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import time
+from pathlib import Path
+from typing import Any
 
 import asyncpg
 import pytest
@@ -323,3 +326,49 @@ async def test_the_cleanup_does_not_re_raise_a_failed_tasks_exception() -> None:
     assert isinstance(results[0], _BoomError), results
     reached_the_end = True
     assert reached_the_end
+
+
+async def test_a_stop_lets_the_http_server_shut_down(
+    db_url: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A SIGTERM cancels `run()`. Until ADR #476 the cancellation reached uvicorn mid-serve, its
+    shutdown never ran, and every stop logged "Task was destroyed but it is pending!" with a
+    traceback. The server is now told to exit and given the time to: its shutdown runs."""
+    from netcorenoc import runner
+    from netcorenoc.api import QuietServer
+    from netcorenoc.crosscutting.settings import Settings
+
+    shut: list[bool] = []
+    servers: list[Any] = []
+
+    class Watched(QuietServer):
+        def __init__(self, config: Any) -> None:
+            super().__init__(config)
+            servers.append(self)
+
+        async def shutdown(self, sockets: Any = None) -> None:
+            await super().shutdown(sockets)
+            shut.append(True)
+
+    monkeypatch.setattr(runner, "QuietServer", Watched)
+    settings = Settings(
+        database_url=db_url,
+        http_host="127.0.0.1",
+        http_port=util.free_port(),
+        trap_host="127.0.0.1",
+        trap_port=util.free_port(),
+        data_dir=str(tmp_path),
+        spool_dir=str(tmp_path / "spool"),
+        secret_key_file=str(tmp_path / "secret.key"),
+        secrets_key_file=str(tmp_path / "secrets.key"),
+    )
+    task = asyncio.create_task(runner.run(settings))
+    deadline = time.monotonic() + 30
+    while not (servers and servers[0].started):
+        assert not task.done(), task.exception() if task.done() else None
+        assert time.monotonic() < deadline, "the appliance never started serving"
+        await asyncio.sleep(0.1)
+    task.cancel()
+    with contextlib.suppress(asyncio.CancelledError):
+        await task
+    assert shut == [True], "uvicorn was cancelled mid-serve: its shutdown never ran"

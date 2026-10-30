@@ -59,6 +59,7 @@ from netcorenoc.store.noc_cases import NocCaseMixin
 from netcorenoc.store.noc_circuits import NocCircuitMixin
 from netcorenoc.store.noc_customers import NocCustomerMixin
 from netcorenoc.store.noc_feed import NocFeedMixin
+from netcorenoc.store.noc_hearing import NocHearingMixin
 from netcorenoc.store.noc_overview import NocOverviewMixin
 from netcorenoc.store.noc_playbooks import NocPlaybookMixin
 from netcorenoc.store.noc_priority import NocPriorityMixin
@@ -114,6 +115,7 @@ class Store(
     NocAccessMixin,
     NocCaseMixin,
     NocPriorityMixin,
+    NocHearingMixin,
     NocOverviewMixin,
     NocFeedMixin,
     NocPlaybookMixin,

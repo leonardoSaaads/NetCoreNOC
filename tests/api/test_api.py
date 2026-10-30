@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
-import socket
 import time
 from collections.abc import AsyncIterator
 from pathlib import Path
@@ -350,12 +349,6 @@ async def _poll_while_ingesting(
             await engine_task
 
 
-def free_port() -> int:
-    with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
-        s.bind(("127.0.0.1", 0))
-        return int(s.getsockname()[1])
-
-
 async def test_main_run_serves_real_sockets(tmp_path: Path, db_url: str) -> None:
     """Smoke test of the single-process wiring: UDP trap in, HTTP API out."""
     from netcorenoc.crosscutting import auth
@@ -364,9 +357,9 @@ async def test_main_run_serves_real_sockets(tmp_path: Path, db_url: str) -> None
         database_url=db_url,
         data_dir=str(tmp_path),  # the spool, which lived beside the SQLite file
         trap_host="127.0.0.1",
-        trap_port=free_port(),
+        trap_port=util.free_port(),
         http_host="127.0.0.1",
-        http_port=free_port(),
+        http_port=util.free_port(),
     )
     # The legacy shared token was removed in v0.3.0; pre-seed a real service token instead.
     seed = Store(db_url)

@@ -26,8 +26,9 @@ and playbooks that check a new case before the NOC is called (#462, #463) — th
 **AI agents**: an organization of them, an **MCP server** they work through, routing and escalation
 through the tiers, and the NOC plane redrawn after Paperclip and Salesforce (#464-#469) — and the
 NOC at a glance, AI providers' keys for agents on any OpenAI-compatible API, what agents cost, and
-**each customer's book** for the agents to read (#470-#473). The schema is PostgreSQL's baseline,
-**migration 0031**, which includes SQLite's 0030, **0032** to **0039** (schema 39). See
+**each customer's book** for the agents to read (#470-#473), and what an operators' review round
+on a lab like the owner's found (#474-#476). The schema is PostgreSQL's baseline,
+**migration 0031**, which includes SQLite's 0030, **0032** to **0040** (schema 40). See
 [`MIGRATION.md`](MIGRATION.md): the SQLite file is **imported once**, before the first start; the
 appliance is three processes and a spool on disk, and a container needs two CPUs. No grouping
 decision changes (`make eval` is byte-identical).
@@ -153,7 +154,41 @@ stored device credential is unreadable (#455).
   from a paste or an uploaded workbook, previewed first). Scoped by the customer's elements; eight
   new MCP tools (42 in all). Migration **0039**.
 
+### Added — from the operators' review round on a lab like the owner's (#474-#476)
+
+- **A case hears its alarms** (#474): every half minute, what joined its situation, raised again
+  (even between two looks — a port that flapped) or cleared is one event on its feed; a pending
+  case whose fault came back or grew returns to the NOC queue. An alarm just told of waits five
+  minutes, so a flapping port is a line every five minutes; one back in a newer situation is named
+  with it ("[now in situation #95]", a link). New pending status **Pending
+  monitoring (watching for stability)**. Migration **0040** (schema 40).
+- **Vendor recoveries clear their faults the first time** (#475): the bundled pack's own names pair
+  1 437 faults with their recovery in the same MIB (`hwPortPhysicalDown`/`Up`, Ciena's
+  `…SignalDegradeSet`/`Clear`, `hwOpticalInvalid`/`…Resume`…); before, a `PortUp` was an active
+  "cleared" alarm until that port had alternated twice.
+- **NOC → Overview shows equipment reachability** (#476): the elements whose management stopped
+  answering, worst and longest first — a switch that loses power sends no trap.
+- **Entities**: name an element and put it in its customer from its own page (#476).
+- **Situations**: each row and the merge picker name the probable root and its port ("linkDown
+  on tim-rjo-barra-crs326 (ether5)"); members read their port (`ether5`) where they read the
+  ifIndex; a new situation says that a gesture on it opens its NOC case (#476).
+
 ### Fixed
+- Every stop of the appliance logged "Task was destroyed but it is pending!" and a traceback:
+  uvicorn is now told to exit and given time to (#476).
+- The decision bar's buttons inherited a health panel's margins ("Close situation" stood taller),
+  and the member table's actions cell left the row's layout; Secrets' status counts were dots with
+  no words; a 24-hour chart printed gridlines "0, 1, 1"; SNMP's grey light promised a check that
+  never runs; a case asked to validate said `(self_cleared)`; the agents page wrapped a long "last
+  run"; the KPIs' missed-takes chart said "nothing taken yet" beside seven takes met (#476).
+- `noc_set_case_pending` lists its ten-plus-one statuses in its schema, so an agent picks one over
+  MCP (#474).
+- A trap's instance is no longer a scalar's number: MikroTik's `mtxrTemperatureException` carries
+  `mtxrHlTemperature.0 = 810` (81.0 °C), and each temperature opened a new alarm no trap clears; it
+  is now one alarm per device. A scalar's text and a table column's value still identify (#476).
+- `test_the_search_runs_out_of_process_and_never_blocks_a_tick` measured wall time and failed a
+  loaded CI runner at 0.53 s; it now measures how long a tick holds the event loop, against a fit
+  big enough (4.7 s inline) to tell a fault from a slow host.
 
 - **A link-down the Broker shows as critical opened a minor case, and raising it kept the minor's
   take target** (#464): a case opens at the worst severity the Broker shows for its situation, is

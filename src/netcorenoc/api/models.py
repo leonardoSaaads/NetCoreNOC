@@ -24,6 +24,7 @@ not part of building the application.
 
 from __future__ import annotations
 
+import asyncio
 import contextlib
 from collections.abc import Iterator
 from typing import Annotated, Any, Literal
@@ -423,3 +424,12 @@ class QuietServer(uvicorn.Server):
     @contextlib.contextmanager
     def capture_signals(self) -> Iterator[None]:
         yield
+
+    async def stop(self, serving: asyncio.Task[None], within_s: float = 5.0) -> None:
+        """Tell the server to exit and give it ``within_s`` to finish its own shutdown, as
+        uvicorn's signal handler would (ADR #476). ``serving`` must have been shielded from the
+        process's cancellation: cancelled mid-serve, uvicorn's lifespan never shut down and every
+        stop logged "Task was destroyed but it is pending!" and a traceback."""
+        self.should_exit = True
+        with contextlib.suppress(Exception, asyncio.CancelledError):
+            await asyncio.wait_for(asyncio.shield(serving), within_s)

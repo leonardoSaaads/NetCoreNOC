@@ -30,8 +30,8 @@ WINDOW = 5
 SLOW_MS = 2000.0
 
 _UNCHECKABLE = (
-    "Not checked: this kind runs over UDP, and an unauthenticated request gets no answer either "
-    "way. The NOC executor will check it with the credential."
+    "Not checked: this kind runs over UDP, where only a request carrying the secret is answered, "
+    "and a check never opens the seal. A read with it — an agent's lease or a playbook — proves it."
 )
 
 

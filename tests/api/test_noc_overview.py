@@ -6,13 +6,18 @@
 * the KPIs and the playbooks are an admin's, a lead's (an editor an admin named, stepped up) or an
   agent's; `/api/noc/access` says which the caller holds; a lead is a person, never a token;
 * setting a case pending with no next update ahead takes the handbook's cadence for its priority;
-* the case list narrows by priority and by tier, and carries the holder's photo digest.
+* the case list narrows by priority and by tier, and carries the holder's photo digest;
+* the equipment the NOC no longer reaches over management is on the overview, element by element,
+  from the vault's endpoint checks — an address only for a role that sees addresses, the
+  credential only for a custodian (ADR #476).
 """
 
 from __future__ import annotations
 
 import time
 from typing import Any
+
+import pytest
 
 from netcorenoc.engine.noc import case_loop, kpi, overview
 from netcorenoc.store import Store
@@ -215,6 +220,82 @@ async def test_setting_pending_takes_the_cadence_when_no_next_update_is_ahead(
         when = float(pended.json()["next_update_at"])
         cadence = kpi.UPDATE_CADENCE_S["pending"]["critical"]
         assert before + cadence - 5 <= when <= time.time() + cadence + 5
+    finally:
+        await _close(clients)
+    del app
+
+
+def test_reachability_reads_each_element_by_its_worst_endpoint() -> None:
+    def cred(i: int, kind: str, host: str, monitor: bool = True) -> dict[str, Any]:
+        return {"id": i, "kind": kind, "host": host, "port": 22, "monitor": monitor}
+
+    credentials = [
+        cred(1, "ssh_password", "10.0.0.1"),
+        cred(2, "sftp", "10.0.0.1"),
+        cred(3, "snmp_community", "10.0.0.2"),  # no check can see SNMP
+        cred(4, "ssh_password", "10.0.0.3", monitor=False),
+        cred(5, "ai_anthropic", "api.anthropic.com"),  # a provider's key, not equipment
+        cred(6, "ssh_key", "10.0.0.4"),  # never checked yet
+        cred(7, "ssh_password", "10.0.0.5"),
+    ]
+
+    def check(at: float, ok: bool) -> dict[str, Any]:
+        return {"at": at, "ok": ok, "latency_ms": 5.0, "detail": "SSH-2.0" if ok else "timeout"}
+
+    checks = {
+        1: [check(300, False), check(200, False), check(100, True)],
+        2: [check(300, True)],
+        4: [check(300, False)],
+        5: [check(300, False)],
+        7: [check(300, True), check(200, False), check(100, True)],
+    }
+    reach = overview.reachability(credentials, checks, {"10.0.0.1": {"id": 9, "label": "core-1"}})
+    assert reach["monitored"] == 2 and reach["answering"] == 0
+    down, shaky = reach["trouble"]
+    assert down["host"] == "10.0.0.1" and down["state"] == "down", (
+        "the worst endpoint is the host's"
+    )
+    assert down["element"] == "core-1" and down["ne_id"] == 9 and down["protocol"] == "SSH"
+    assert down["since"] == 200.0, "since the first failure of the unbroken run"
+    assert shaky["host"] == "10.0.0.5" and shaky["state"] == "degraded" and shaky["since"] is None
+
+
+async def test_the_overview_says_which_equipment_stopped_answering(store: Store) -> None:
+    await _open_case(store, device="10.0.0.1")
+    app, clients = await _clients(store)
+    try:
+        made = await clients["admin"].post(
+            "/api/noc/secrets",
+            json={
+                "name": "core-1 ssh",
+                "kind": "ssh_password",
+                "access_level": "view_only",
+                "host": "10.0.0.1",
+                "monitor": True,
+                "fields": {"username": "noc", "password": "a-device-password-1"},
+            },
+        )
+        assert made.status_code == 200, made.text
+        secret_id = made.json()["id"]
+        now = time.time()
+        async with store.lock:
+            for at in (now - 600, now - 300, now - 10):
+                await store.noc_record_check(secret_id, at, False, None, "timeout", "schedule")
+            await store.commit()
+        admin = (await clients["admin"].get("/api/noc/overview")).json()["reachability"]
+        assert admin["monitored"] == 1 and admin["answering"] == 0
+        lost = admin["trouble"][0]
+        assert lost["host"] == "10.0.0.1" and lost["state"] == "down"
+        assert lost["since"] == pytest.approx(now - 600) and lost["secret_id"] == secret_id
+        # An editor who is not a custodian is told the element, not the vault's row.
+        editor = (await clients["editor"].get("/api/noc/overview")).json()["reachability"]
+        assert editor["trouble"][0]["host"] == "10.0.0.1"
+        assert editor["trouble"][0]["secret_id"] is None
+        # A viewer reads a network, no port and no detail.
+        viewer = (await clients["viewer"].get("/api/noc/overview")).json()["reachability"]
+        seen = viewer["trouble"][0]
+        assert seen["host"] == "10.0.0.0/24" and seen["port"] is None and seen["reason"] is None
+        assert "10.0.0.1" not in str(viewer)
     finally:
         await _close(clients)
     del app

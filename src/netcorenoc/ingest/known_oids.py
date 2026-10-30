@@ -13,6 +13,7 @@ Neither table is user configuration.
 
 from __future__ import annotations
 
+import json
 from typing import Any
 
 from netcorenoc.ingest import trappack
@@ -158,11 +159,49 @@ WELL_KNOWN_VARBINDS: dict[str, str] = {
     "1.3.6.1.2.1.31.1.1.1.18.": "ifAlias",
 }
 
-# Universally valid raise → clear pairs; everything else is learned by alternation.
+
+def port_name(instance: str, varbinds: Any) -> str | None:
+    """The name a trap gave the interface its ``instance`` (an ifIndex) points at — `ether5` for
+    `5` — from its own ifName, else ifDescr, varbind (RFC 2863), or None. ``varbinds`` is the
+    alarm's stored list of ``{oid, value}``, or its JSON text. An operator reads `ether5`; `5` they
+    look up (ADR #476)."""
+    if isinstance(varbinds, str):
+        try:
+            varbinds = json.loads(varbinds)
+        except ValueError:
+            return None
+    if not instance.isdigit() or not isinstance(varbinds, list):
+        return None
+    wanted = [
+        prefix + instance
+        for want in ("ifName", "ifDescr")
+        for prefix, name in WELL_KNOWN_VARBINDS.items()
+        if name == want
+    ]
+    found = {vb.get("oid"): vb.get("value") for vb in varbinds if isinstance(vb, dict)}
+    return next((str(found[oid])[:64] for oid in wanted if found.get(oid)), None)
+
+
+# Universally valid raise → clear pairs: the standards'. The bundled pack's vendor pairs follow
+# them (`clear_of`, ADR #475); everything else is learned by alternation.
 CLEAR_PAIR_SEEDS: dict[str, str] = {
     "1.3.6.1.6.3.1.1.5.3": "1.3.6.1.6.3.1.1.5.4",  # linkDown → linkUp
     "1.3.6.1.2.1.16.0.1": "1.3.6.1.2.1.16.0.2",  # risingAlarm → fallingAlarm
 }
+
+
+def clear_of(oid: str) -> str | None:
+    """The notification that clears the fault ``oid``, when a standard says so or the vendor's own
+    names in the bundled pack do (`trappack.clear_pairs`): `hwPortPhysicalDown` is cleared by
+    `hwPortPhysicalUp` before either has alternated once on this estate (ADR #475)."""
+    return CLEAR_PAIR_SEEDS.get(oid) or trappack.clear_pairs().get(oid)
+
+
+def fault_of(oid: str) -> str | None:
+    """The fault the notification ``oid`` clears — `clear_of` read the other way."""
+    seeded = next((fault for fault, clear in CLEAR_PAIR_SEEDS.items() if clear == oid), None)
+    return seeded or trappack.fault_pairs().get(oid)
+
 
 # Notifications that report an **occurrence**, not a state, so no clear ever follows them (ADR
 # #433). A cold start says the device restarted; nothing later "un-restarts" it. Without this the

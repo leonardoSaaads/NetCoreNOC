@@ -1129,7 +1129,7 @@ td.sev { white-space: nowrap; }
 .sit.expanded { border-color: var(--line-strong); box-shadow: var(--shadow-1); }
 .sit-head { display: flex; align-items: center; gap: var(--space-2); padding-right: var(--space-3); }
 .sit-toggle {
-  flex: 1; display: flex; align-items: center; gap: var(--space-2);
+  flex: 1; min-width: 0; display: flex; align-items: center; gap: var(--space-2);
   background: none; border: 0; text-align: left; padding: var(--space-2) var(--space-3);
 }
 /* The chevron points right when the card is closed and down when it is open. `aria-expanded`
@@ -1138,6 +1138,13 @@ td.sev { white-space: nowrap; }
 .sit-chevron { display: inline-flex; color: var(--fg-dim); transition: transform 0.12s ease; }
 .sit-chevron.open { transform: rotate(90deg); }
 .sid { font-family: var(--mono); font-weight: 600; }
+/* ADR #476: what the situation IS, beside its name — the root's class and element. It yields
+   first when the row is narrow, and never pushes the age off the row. */
+.sit-root { font-size: var(--fs-sm); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+@media (max-width: 720px) {
+  .sit-toggle { flex-wrap: wrap; row-gap: var(--space-1); }
+  .sit-root { order: 1; flex-basis: 100%; white-space: normal; overflow-wrap: anywhere; }
+}
 .age { margin-left: auto; color: var(--fg-muted); font-size: var(--fs-xs); }
 
 /* ---------- the gesture history, and the two lines that make `.age` mean something -------
@@ -1187,6 +1194,7 @@ td.sev { white-space: nowrap; }
   margin: var(--space-3) 0;
 }
 .decide .bulkclear { margin: 0; margin-left: auto; }
+.decide-note { margin: calc(-1 * var(--space-2)) 0 var(--space-3); font-size: var(--fs-sm); }
 @media (max-width: 720px) {
   /* `margin-left: auto` on a wrapped row pushes the clear onto a line of its own, which reads
      as the separation it is rather than as a button that missed its row. */
@@ -1254,7 +1262,9 @@ td.sev { white-space: nowrap; }
  * is a different kind of statement: the declarations say what a thing IS, and the clear says an
  * ALARM was stale and asserts nothing about the grouping. Three buttons in a row that all looked
  * alike would invite the confusion `PREREGISTRATION-0.16.0.md` turns into a prohibition. */
-.row-actions { display: flex; align-items: center; gap: var(--space-1); flex-wrap: wrap; }
+/* A table cell stays a table cell (ADR #476): `display: flex` on the `<td>` took it out of the
+   row's layout, so its border and height no longer lined up with the cells beside it. */
+td.row-actions { vertical-align: middle; white-space: nowrap; }
 /* The mark column is a fixed 44 px — 28 px of control plus the cell's own padding — so the
    frozen offset below is a number this stylesheet knows rather than one it hopes for. */
 table.members th:first-child, table.members td:first-child { width: 44px; }
@@ -1915,7 +1925,10 @@ p.corr-line { cursor: default; }
    The health panel asked "is the appliance keeping up" and left four charts to be interpreted.
    This is the answer line, and the same three tones the grouping verdict already uses so that a
    reader learns one colour vocabulary rather than one per screen. */
-.verdict {
+p.verdict {
+  /* `p.`, not `.verdict` (ADR #476): the decision bar's buttons carry `verdict verdict-confirm`
+     for the DOM harness, took this margin and border too, and "Close situation" beside them
+     stretched to their height. */
   margin: 0 0 var(--space-3); padding: var(--space-2) var(--space-3);
   border-left: 3px solid var(--fg-muted); border-radius: var(--radius-1);
   background: var(--bg-raised); font-size: var(--fs-sm); color: var(--fg);
@@ -2701,7 +2714,7 @@ button.mw-row-name {
 .inv-name b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100%; }
 .inv-name code { font-size: var(--fs-sm); color: var(--fg-muted); }
 .inv-sub { flex-basis: 100%; font-size: var(--fs-sm); color: var(--fg-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.inv-load { display: grid; grid-template-columns: 3.5rem minmax(0, 1fr); gap: var(--space-2); align-items: center; }
+.inv-load { display: grid; grid-template-columns: 5.5rem minmax(0, 1fr); gap: var(--space-2); align-items: center; }
 .inv-load b, .inv-fact b { font-family: var(--mono); font-variant-numeric: tabular-nums; }
 .inv-fact { display: flex; flex-direction: column; font-size: var(--fs-sm); }
 .inv-fact span { font-size: var(--fs-xs); color: var(--fg-muted); }
@@ -2710,6 +2723,9 @@ button.mw-row-name {
 .inv-clears { margin-top: var(--space-4); }
 .inv-clears summary, .nedetail-evidence summary { cursor: pointer; min-height: var(--tap); display: flex; align-items: center; color: var(--fg-muted); }
 .nedetail { padding: 0 var(--space-2) var(--space-3); }
+.nedetail-about { display: flex; flex-wrap: wrap; align-items: flex-end; gap: var(--space-3); margin: 0 0 var(--space-3); padding-bottom: var(--space-3); border-bottom: 1px solid var(--border); }
+.nedetail-about .pe-field { min-width: 14rem; flex: 0 1 20rem; }
+.nedetail-about .err { flex-basis: 100%; margin: 0; }
 .nedetail-grid { display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr); gap: var(--space-4); }
 .nedetail-kinds { display: flex; flex-wrap: wrap; gap: var(--space-1); margin: 0 0 var(--space-2); }
 .nedetail-acts { display: flex; gap: var(--space-2); margin: var(--space-3) 0 var(--space-2); }
@@ -3647,6 +3663,15 @@ table.secrets-table td { vertical-align: middle; }
 .nov-panel { margin: 0; }
 .nov-panel h3 { margin: 0 0 var(--space-1); font-size: var(--fs-lg); }
 .nov-sub { margin: 0 0 var(--space-2); font-size: var(--fs-sm); }
+.nov-reach-alert { border-color: var(--alarm); box-shadow: inset 3px 0 0 var(--alarm); }
+.nov-reach-sum { margin: 0 0 var(--space-2); }
+.nov-reach-sum b { font-family: var(--mono); font-variant-numeric: tabular-nums; }
+.nov-reach-bad { color: var(--alarm); }
+.nov-reach-list { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--space-2); }
+.nov-reach-list li { display: grid; grid-template-columns: 7rem minmax(0, 1fr) auto; gap: var(--space-2); align-items: center; }
+.nov-reach-what { display: flex; flex-direction: column; min-width: 0; }
+.nov-reach-what .muted { font-size: var(--fs-xs); overflow-wrap: anywhere; }
+.nov-reach-cred { font-size: var(--fs-sm); }
 .nov-matrix { width: 100%; }
 .nov-matrix th[scope="row"] { font-weight: 600; white-space: nowrap; }
 .nov-matrix td.num a { font-weight: 700; }
@@ -3786,7 +3811,7 @@ a.btn-link.primary, a.btn-link.primary:hover { background: var(--accent); border
 .agent-rows { list-style: none; margin: 0 0 var(--space-4); padding: 0; display: grid; gap: var(--space-2); }
 .agent-row {
   display: grid; align-items: center; gap: var(--space-3); padding: var(--space-3); color: var(--fg); text-decoration: none;
-  grid-template-columns: auto minmax(10rem, 1.4fr) minmax(10rem, 1.2fr) 7rem 7rem 8rem minmax(9rem, 1fr);
+  grid-template-columns: auto minmax(10rem, 1.4fr) minmax(10rem, 1.2fr) 7rem 7rem 9.5rem minmax(9rem, 1fr);
   border: 1px solid var(--line); border-radius: var(--radius-2); background: var(--bg-raised);
 }
 .agent-row:hover { border-color: var(--line-strong); box-shadow: var(--shadow-1); text-decoration: none; }

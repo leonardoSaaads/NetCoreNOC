@@ -415,15 +415,15 @@ async def _serve(settings: Settings, store: Store) -> None:
             )
         ),
         *(asyncio.create_task(supervisor.run(name, loop)) for name, loop in noc.items()),
-        asyncio.create_task(_serve_http(server, url)),
+        asyncio.create_task(_serve_http(server, url)),  # last: shielded, then `server.stop`ped
     ]
     try:
-        await asyncio.gather(*tasks)
+        await asyncio.gather(*tasks[:-1], asyncio.shield(tasks[-1]))  # ADR #476
     finally:
         transport.close()  # stop accepting new datagrams
         if isinstance(transport, IngestProcess):
             await transport.wait_closed()  # what it already received is written to the spool
-        server.should_exit = True
+        await server.stop(tasks[-1])
         for task in tasks:
             task.cancel()
         if feed is not None:

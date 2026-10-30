@@ -97,12 +97,16 @@ export function Decide({
                    onAsk=${onAskClear} onGo=${onClearMany} />`
         : null}
     </div>
+    ${/* ADR #476: a merge opened a case nobody meant to open. Every gesture on a new situation
+          promotes it, and an open situation is a case in the NOC queue — said once, here. */ null}
+    ${status === "new" ? html`<p class="hint decide-note">Starting it — or confirming, correcting,
+      merging or clearing by hand — opens it, and opens its case in the NOC queue.</p>` : null}
   </div>`;
 }
 
 const PROMOTE_TITLE =
-  "Moves this to Open so the shift can see somebody has it. It records nothing about whether " +
-  "the grouping is right — Confirm is how you say that.";
+  "Moves this to Open so the shift can see somebody has it, and opens its case in the NOC " +
+  "queue. It records nothing about whether the grouping is right — Confirm is how you say that.";
 
 /* What is already on record, in the words of the gesture that recorded it.
  *

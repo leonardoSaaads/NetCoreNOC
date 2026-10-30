@@ -288,6 +288,30 @@ community (port 1161), agent access on — and the cut's situation becomes a cas
 `/interface ethernet monitor ether5 once` on the MikroTik, `show alarm list` and
 `show xcvr status port 3` on the Ciena, read only. What each answers follows the cut and the repair.
 
+### Three vendors, broken for hours (ADR #476)
+
+Six elements of two customers on five links — a Huawei S6730 (`127.0.40.1`) and NE40E
+(`127.0.40.2`) on VRP, a MikroTik CRS326 (`127.0.10.1`) and CCR2004 (`127.0.40.3`) on RouterOS, a
+Ciena 3930 (`127.0.10.2`) and 5164 (`127.0.40.4`) on SAOS 10 — each with its vendor's read-only
+commands (`display interface brief`, `display transceiver interface XGE0/0/1 verbose`,
+`display alarm active`, `display logbuffer`; `/interface ethernet monitor sfp-sfpplus1 once`,
+`/log print`; `show port`, `show xcvr status port 1/1`, `show alarm list`) and its vendor's traps:
+
+```sh
+python tests/lab/noc_estate.py serve --password 'choose-a-password' --target 127.0.0.1:1162 \
+    --soak 6h --seed 7                                  # terminal 1: six hours of incidents
+python tests/lab/noc_estate.py ctl flap L1 6           # or: cut L3, repair L3, crc L5 on,
+python tests/lab/noc_estate.py ctl isolate 127.0.40.1  #     degrade L4, power-off 127.0.40.3…
+python tests/lab/noc_estate.py ctl status
+```
+
+The soak flaps ports (a Huawei end suppresses them), raises CRC errors, fades the light then cuts
+the fibre, loses an element's management (run as root, an iptables DROP: SSH, SNMP and ping time
+out) or its power, and records every change and trap in `tests/lab/state/truth.jsonl`.
+`--speed 10` divides every wait by ten — six hours of incidents in thirty-six minutes, in the same
+order; lower the appliance's `NETCORENOC_NOC_CHECK_S` with it, or a lost management path heals
+before the vault's next check sees it.
+
 ## Limits
 
 * **Same machine.** `trap_replay.py` and `trap_sim.py` simulate devices by sending from loopback

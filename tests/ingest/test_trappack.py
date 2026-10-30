@@ -11,7 +11,10 @@ What is asserted:
 * the pack is the LOWEST rung: an operator's rule at any depth beats it, and the severity a trap
   carried beats its default;
 * end to end, a trap that carries no severity is counted in its band, with provenance `builtin`;
-* the build tool resolves a module the way the pack needs, IMPORTS and SMIv1 traps included.
+* the build tool resolves a module the way the pack needs, IMPORTS and SMIv1 traps included;
+* the vendors' own names pair a fault with its recovery in one module — `hwPortPhysicalDown` with
+  `hwPortPhysicalUp`, Ciena's `…SignalDegradeSet` with `…Clear` — only where unambiguous, and end to
+  end a Ciena port's recovery clears its fault the first time either is seen (ADR #475).
 """
 
 from __future__ import annotations
@@ -211,3 +214,67 @@ END
     first = (out / "trappack.tsv.gz").read_bytes()
     build.main(["build", str(out), str(tmp_path)])
     assert (out / "trappack.tsv.gz").read_bytes() == first
+
+
+#: (fault, its recovery) as the vendors' MIBs name them; the round's lab sends every one.
+HW = "1.3.6.1.4.1.2011.5.25."
+CIENA = "1.3.6.1.4.1.1271.2.2.2.0."
+VENDOR_PAIRS = [
+    (HW + "129.2.5.1", HW + "129.2.5.2"),  # hwPortPhysicalDown / Up
+    (HW + "219.2.4.5", HW + "219.2.4.6"),  # hwOpticalInvalid / Resume
+    (HW + "41.3.31", HW + "41.3.32"),  # hwIfControlFlapSuppress / Resume
+    (HW + "41.4.1", HW + "41.4.2"),  # hwIfMonitorCrcErrorRising / Resume
+    (CIENA + "1", CIENA + "2"),  # cienaCesPortNotificationPortDown / Up
+    (CIENA + "5", CIENA + "6"),  # …PortSignalDegradeSet / Clear
+]
+
+
+@pytest.mark.parametrize(("fault", "recovery"), VENDOR_PAIRS)
+def test_the_vendors_names_pair_a_fault_with_its_recovery(fault: str, recovery: str) -> None:
+    assert known_oids.clear_of(fault) == recovery
+    assert known_oids.fault_of(recovery) == fault
+    assert known_oids.clear_of(recovery) is None and known_oids.fault_of(fault) is None
+
+
+def test_only_unambiguous_pairs_are_kept() -> None:
+    pairs = trappack.clear_pairs()
+    names = {oid: entry.name for oid, entry in trappack.pack().notifications.items()}
+    by_name = {entry.name: oid for oid, entry in trappack.pack().notifications.items()}
+    assert len(pairs) > 1000, "the pack's vendor pairs"
+    # Huawei's stack link has two recoveries; neither is guessed, alternation decides.
+    assert by_name["hwCssLinkDown"] not in pairs
+    for fault, recovery in pairs.items():
+        assert trappack.pack().notifications[recovery].severity == "cleared", names[recovery]
+        assert trappack.pack().notifications[fault].severity != "cleared", names[fault]
+        assert (
+            trappack.pack().notifications[fault].module
+            == trappack.pack().notifications[recovery].module
+        )
+    # The standards keep their own pair, whatever a vendor module says.
+    assert known_oids.clear_of(LINK_DOWN) == "1.3.6.1.6.3.1.1.5.4"
+
+
+async def test_a_vendor_recovery_clears_its_fault_the_first_time(store: Store) -> None:
+    """Before ADR #475 a Ciena port's `PortUp` was an active alarm of its own — graded `cleared` —
+    beside the `PortDown` it ended, until two alternations on one port taught the pair."""
+    engine, queue, _app = await authutil.make_env(store)
+    down, up = VENDOR_PAIRS[4]
+    port = [Varbind(oid="1.3.6.1.4.1.1271.2.1.1.1.1", kind="str", value="3")]
+    await util.drive(
+        engine,
+        queue,
+        [
+            TrapEvent(
+                device="10.9.0.2", trap_oid=down, instance="3", ts=1_700_000_000.0, varbinds=port
+            ),
+            TrapEvent(
+                device="10.9.0.2", trap_oid=up, instance="3", ts=1_700_000_004.0, varbinds=port
+            ),
+        ],
+    )
+    async with store.lock:
+        cur = await store.conn.execute(
+            "SELECT c.oid, a.status FROM alarm a JOIN alarm_class c ON c.id = a.class_id"
+        )
+        rows = {r["oid"]: r["status"] for r in await cur.fetchall()}
+    assert rows == {down: "cleared"}, "the recovery cleared the fault and raised nothing itself"

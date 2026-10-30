@@ -13,6 +13,7 @@ from netcorenoc.engine.noc.cases import CaseError
 MIGRATIONS = Path(__file__).resolve().parents[2] / "src/netcorenoc/migrations"
 MIGRATION = (MIGRATIONS / "0034_noc_cases.sql").read_text()
 AGENTS_MIGRATION = (MIGRATIONS / "0037_noc_agents.sql").read_text()
+HEARING_MIGRATION = (MIGRATIONS / "0040_noc_case_hearing.sql").read_text()
 
 
 def _check(column: str) -> set[str]:
@@ -22,12 +23,16 @@ def _check(column: str) -> set[str]:
 
 
 def test_the_vocabularies_are_the_databases() -> None:
-    assert _check("status") == set(cases.STATUSES)
+    # ADR #474 widened the statuses and the cycle reasons again (0040 replaces both CHECKs; the
+    # last word is its, and it keeps every older one).
+    assert _check("status") | {"pending_monitoring"} == set(cases.STATUSES)
+    last = HEARING_MIGRATION.split("ADD CONSTRAINT noc_case_status_check")[1]
+    assert set(re.findall(r"'([a-z_]+)'", last)) == set(cases.STATUSES)
     assert _check("priority") == set(cases.PRIORITIES)
     assert _check("resolution") == set(cases.RESOLUTIONS)
-    # ADR #467 widened the cycle reasons (0037 replaces the CHECK; the last word is its).
-    assert _check("reason") | {"escalated"} == set(cases.CYCLE_REASONS)
-    assert "'escalated'));" in AGENTS_MIGRATION
+    # ADR #467 widened the cycle reasons (0037 replaces the CHECK), and ADR #474 again (0040).
+    assert _check("reason") | {"escalated", "alarm"} == set(cases.CYCLE_REASONS)
+    assert "'escalated'));" in AGENTS_MIGRATION and "'escalated', 'alarm'));" in HEARING_MIGRATION
     assert _check("visibility") == set(feed.VISIBILITIES)
     for name, (_label, cap) in cases.FIELD_LIMITS.items():
         assert f"length({name}) <= {cap}" in MIGRATION, name

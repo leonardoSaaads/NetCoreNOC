@@ -131,7 +131,9 @@ export function Members({
       // difference between *"the appliance could not place a severity"* and *"there was no trap
       // to place one from"* — and an operator who reads the first when the second is true will
       // go looking for a defect in the appliance.
-      instance: html`${a.instance || "—"}${" "}<${SurfacedMark} alarm=${a}
+      // ADR #476: the port's name when the trap carried one; the ifIndex stays in the title.
+      instance: html`${a.port ? html`<span title=${`instance ${a.instance}`}>${a.port}</span>`
+        : a.instance || "—"}${" "}<${SurfacedMark} alarm=${a}
         onAck=${onAck && can("alarm.acknowledge") ? onAck : null} />`,
       // A `<td class="sev">` either way, so the column reads the same for a viewer and an editor;
       // an editor's badge is simply inside the button that declares it. `SeverityCell` IS that

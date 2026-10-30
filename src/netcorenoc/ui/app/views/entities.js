@@ -121,7 +121,7 @@ export class Entities extends Component {
           class=${cx("inv-item", open === e.ne_id && "open")}>
         <${Row} e=${e} open=${open === e.ne_id}
           onToggle=${() => this.setState({ open: open === e.ne_id ? null : e.ne_id })} />
-        ${open === e.ne_id ? html`<${ElementDetail} neId=${e.ne_id} />` : null}
+        ${open === e.ne_id ? html`<${ElementDetail} neId=${e.ne_id} element=${e} onChanged=${() => this.read()} />` : null}
       </li>`)}</ul>` : html`<p class="muted">No element matches.</p>`}
       <${Clears} />
     </div>`;
@@ -137,7 +137,7 @@ function Row({ e, open, onToggle }) {
       <span class="inv-sub">${[e.organization, e.vendor].filter(Boolean).join(" · ") || "—"}</span>
     </span>
     <span class="inv-load">
-      <b>${count(e.active)}</b>
+      <span class="inv-fact"><b class=${e.active ? null : "inv-zero"}>${count(e.active)}</b><span>active alarms</span></span>
       <${SeverityMix} bands=${MIX} counts=${e.bands} />
     </span>
     <span class="inv-fact"><b class=${e.situations ? null : "inv-zero"}>${count(e.situations)}</b><span>situations</span></span>

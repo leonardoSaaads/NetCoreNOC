@@ -13,17 +13,24 @@ each the ways a NOC lead asks:
 
 Two clocks a queue cannot show sit beside them: the takes running late (nobody took the case
 within its priority's target) and the next updates overdue or due within the hour.
+
+**Reachability** (ADR #476) is the one thing here no case says: which equipment the NOC can no
+longer reach over management. A switch that loses power or its management path sends no trap —
+nothing is left to send one — so no alarm, situation or case ever names it; the vault's endpoint
+checks (`probe.py`) are what notice. `reachability` reads them per element: its worst endpoint,
+and since when the failures run.
 """
 
 from __future__ import annotations
 
-from collections.abc import Iterable, Mapping
+from collections.abc import Iterable, Mapping, Sequence
 from typing import Any
 
-from netcorenoc.engine.noc import kpi
+from netcorenoc.engine.noc import health, kpi
 from netcorenoc.engine.noc.cases import PENDING, PRIORITIES
+from netcorenoc.engine.noc.kinds import KINDS
 
-__all__ = ["LEVELS", "STATES", "level_of", "state_of", "summary"]
+__all__ = ["LEVELS", "STATES", "level_of", "reachability", "state_of", "summary"]
 
 #: The three states the overview counts, each a set of case statuses.
 STATES: dict[str, frozenset[str]] = {
@@ -144,4 +151,66 @@ def summary(
             "without_noc": int(moments.get("resolved_without_noc", 0)),
         },
         **_holders(rows),
+    }
+
+
+#: Worst first: an element is as reachable as its least reachable endpoint.
+_REACH_ORDER = {"down": 0, "degraded": 1, "up": 2}
+
+
+def _failing_since(checks: Sequence[Mapping[str, Any]]) -> float | None:
+    """When the unbroken run of failures that the newest check ends began (checks newest first)."""
+    since = None
+    for check in checks:
+        if check["ok"]:
+            break
+        since = float(check["at"])
+    return since
+
+
+def reachability(
+    credentials: Iterable[Mapping[str, Any]],
+    checks: Mapping[int, Sequence[Mapping[str, Any]]],
+    elements: Mapping[str, Mapping[str, Any]],
+) -> dict[str, Any]:
+    """Per host, the worst of its monitored device endpoints: ``monitored`` hosts, how many answer,
+    and ``trouble`` — those down (worst and longest first) or intermittent. ``elements`` maps an
+    address to its element (``id``, ``label``), so a host reads as the name the NOC gave it.
+
+    Only what a check can see counts: a device credential, monitored, of a kind with a check (SNMP
+    has none: it answers only a request carrying the secret, and a check never opens the seal).
+    """
+    worst: dict[str, dict[str, Any]] = {}
+    for row in credentials:
+        kind = KINDS.get(str(row["kind"]))
+        if kind is None or kind.group != "device" or kind.check is None or not row["monitor"]:
+            continue
+        mine = list(checks.get(int(row["id"]), ()))
+        light = health.status(mine, checkable=True, monitored=True)
+        if light["state"] not in _REACH_ORDER:
+            continue  # never checked yet: nothing known
+        host = str(row["host"])
+        element = elements.get(host) or {}
+        entry = {
+            "host": host,
+            "port": int(row["port"]),
+            "protocol": kind.check.upper(),
+            "element": element.get("label"),
+            "ne_id": element.get("id"),
+            "state": light["state"],
+            "reason": light["reason"],
+            "last_checked_at": light["last_checked_at"],
+            "since": _failing_since(mine) if light["state"] == "down" else None,
+            "secret_id": int(row["id"]),
+        }
+        held = worst.get(host)
+        if held is None or _REACH_ORDER[entry["state"]] < _REACH_ORDER[held["state"]]:
+            worst[host] = entry
+    rows = sorted(
+        worst.values(), key=lambda e: (_REACH_ORDER[e["state"]], e["since"] or 0.0, e["host"])
+    )
+    return {
+        "monitored": len(rows),
+        "answering": sum(1 for e in rows if e["state"] == "up"),
+        "trouble": [e for e in rows if e["state"] != "up"],
     }

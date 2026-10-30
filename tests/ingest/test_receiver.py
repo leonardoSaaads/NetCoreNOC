@@ -50,6 +50,20 @@ def test_instance_empty_without_payload() -> None:
     assert parse_trap("10.0.0.1", encode(), 1.0).instance == ""
 
 
+def test_a_scalar_number_is_a_reading_not_an_instance() -> None:
+    """MikroTik's `mtxrTemperatureException` carries `mtxrHlTemperature.0 = 810` (81.0 °C): as an
+    instance each temperature was a new alarm that no trap clears (ADR #476's lab)."""
+    hot = "1.3.6.1.4.1.14988.1.1.3.10.0"
+    for value in ("810", "825", "-5"):
+        wire = encode(varbinds=[{"oid": hot, "kind": "int", "value": value}])
+        assert parse_trap("10.0.0.1", wire, 1.0).instance == ""
+    # A scalar's text (an agent address, a name) and a table column's number still identify.
+    agent = encode(varbinds=[{"oid": "1.3.6.1.6.3.18.1.3.0", "kind": "str", "value": "192.0.2.1"}])
+    assert parse_trap("10.0.0.1", agent, 1.0).instance == "192.0.2.1"
+    slot = encode(varbinds=[{"oid": "1.3.6.1.4.1.2011.5.25.1.3", "kind": "int", "value": "3"}])
+    assert parse_trap("10.0.0.1", slot, 1.0).instance == "3"
+
+
 def test_garbage_is_ber_decode_failed() -> None:
     with pytest.raises(TrapParseError, match="ber-decode-failed"):
         parse_trap("10.0.0.1", b"\x99\x01\x02not-snmp", 1.0)

@@ -29,6 +29,19 @@ function Author({ author }) {
   return html`<span class="feed-avatar" aria-hidden="true">${((author && author.name) || "?").slice(0, 1).toUpperCase()}</span>`;
 }
 
+/** An event's text, its "situation #95" a link: a fault that came back after its situation
+ * resolved is a new situation on the Broker, and the case's history names it (ADR #474). */
+function Body({ post: p }) {
+  if (p.kind !== "event") return p.body;
+  const out = [];
+  let at = 0;
+  for (const m of p.body.matchAll(/situation #(\d+)/g)) {
+    out.push(p.body.slice(at, m.index), html`<a href=${`#/situations/${m[1]}`}>${m[0]}</a>`);
+    at = m.index + m[0].length;
+  }
+  return out.length ? [...out, p.body.slice(at)] : p.body;
+}
+
 export class CaseFeed extends Component {
   constructor(props) {
     super(props);
@@ -125,7 +138,7 @@ export class CaseFeed extends Component {
               ${SHORT[p.visibility]}</span>` : null}
             <span class="muted" title=${timeTitle(p.created_at)}>${relative(p.created_at)}</span>
           </div>
-          <p class="feed-body">${p.body}</p>
+          <p class="feed-body"><${Body} post=${p} /></p>
         </div>
       </li>`)}</ol>
       ${st.feed.more ? html`<p class="muted">Older posts are not shown.</p>` : null}

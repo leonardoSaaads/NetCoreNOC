@@ -5,10 +5,15 @@
  * the alarms, and where to go next. The identification evidence — which varbind the appliance
  * chose as the component key, and the scores behind it — is kept, behind one disclosure: it is
  * what an admin needs to repair a wrong decision, and nothing an operator reads to work an incident.
+ *
+ * **Its name and its organization** (round T2): an element arrives as an address, from its first
+ * trap. Naming it (`label.write`) and putting it in its customer (`organizations.write`, an
+ * admin's) are the first two things done to a new one, and the Customers screen sends people here
+ * to do the second; until now only the API could.
  */
 
 import { html, Component } from "../../dom.js";
-import { get, post } from "../../api.js";
+import { del, get, post } from "../../api.js";
 import { DataTable, Loading } from "../../widgets.js";
 import { StackedArea } from "../../stack.js";
 import { SCALE, UNPLACED, count, plural, percent, relative, score, timeTitle } from "../../format.js";
@@ -46,7 +51,7 @@ export class ElementDetail extends Component {
     catch { this.setState({ evidence: { failed: true } }); }
   }
 
-  render({ neId }, { trend, parts, evidence, errors, all }) {
+  render({ neId, element, onChanged }, { trend, parts, evidence, errors, all }) {
     const series = (trend && trend.series) || {};
     const bands = [...SCALE, UNPLACED].filter((b) => series[b.key])
       .map((b) => ({ key: b.key, label: b.label, level: b.level, values: series[b.key] }));
@@ -55,6 +60,7 @@ export class ElementDetail extends Component {
     const rows = parts ? (all ? parts.components : parts.components.slice(0, SHOWN)) : [];
     const kinds = parts ? Object.entries(parts.kinds) : [];
     return html`<div class="nedetail">
+      ${element ? html`<${About} element=${element} onChanged=${onChanged} />` : null}
       <div class="nedetail-grid">
         <div class="nedetail-trend">
           ${errors.trend ? html`<p class="hint">Could not read its alarm history.</p>` : null}
@@ -65,8 +71,8 @@ export class ElementDetail extends Component {
         <div class="nedetail-parts">
           <h4 class="chart-title">Components${parts ? ` · ${count(parts.total)}` : ""}</h4>
           ${errors.parts ? html`<p class="hint">Could not read its components.</p>` : null}
-          ${parts && !parts.total ? html`<p class="muted">None learned: the traps carry no
-              per-port or per-slot key.</p>` : null}
+          ${parts && !parts.total ? html`<p class="muted">None learned yet: a port or a slot becomes a
+              component once its traps have named it often enough to tell it apart.</p>` : null}
           ${kinds.length ? html`<p class="nedetail-kinds">${kinds.map(([k, n]) =>
               html`<span key=${k} class="badge">${plural(n, k)}</span>`)}</p>` : null}
           ${rows.length ? html`<${DataTable} kind="compact" columns=${[
@@ -96,6 +102,61 @@ export class ElementDetail extends Component {
           : html`<${Loading} label="Reading the evidence" />`}
       </details>
     </div>`;
+  }
+}
+
+/** Its name and its organization, for whoever may change either; nothing for anyone else. */
+class About extends Component {
+  constructor(props) {
+    super(props);
+    const e = props.element;
+    this.state = { name: e.label || "", org: e.organization_id == null ? "" : String(e.organization_id),
+      orgs: null, busy: false, error: null, saved: false };
+  }
+
+  async componentDidMount() {
+    if (!can("organizations.write")) return;
+    try { this.setState({ orgs: (await get("/api/organizations")).organizations }); }
+    catch { this.setState({ orgs: [] }); }
+  }
+
+  async save(event) {
+    event.preventDefault();
+    const e = this.props.element;
+    const name = this.state.name.trim();
+    this.setState({ busy: true, error: null, saved: false });
+    try {
+      if (can("label.write") && name !== (e.label || "")) {
+        if (name) await post("/api/labels", { kind: "ne", id: e.ne_id, label: name });
+        else await del(`/api/labels/ne/${e.ne_id}`);
+      }
+      if (this.state.orgs && this.state.org && this.state.org !== String(e.organization_id)) {
+        await post(`/api/entities/${e.ne_id}/organization`, { organization_id: Number(this.state.org) });
+      }
+      this.setState({ busy: false, saved: true });
+      if (this.props.onChanged) this.props.onChanged();
+    } catch (error) {
+      this.setState({ busy: false, error: error.message });
+    }
+  }
+
+  render({ element }, { name, org, orgs, busy, error, saved }) {
+    const naming = can("label.write");
+    const moving = Boolean(orgs && orgs.length);
+    if (!naming && !moving) return null;
+    const id = `ne-${element.ne_id}`;
+    return html`<form class="nedetail-about" onSubmit=${(e) => this.save(e)}>
+      ${naming ? html`<div class="pe-field"><label for=${`${id}-name`}>Name</label>
+        <input id=${`${id}-name`} value=${name} maxlength="120" placeholder=${element.ip}
+          onInput=${(e) => this.setState({ name: e.currentTarget.value, saved: false })} /></div>` : null}
+      ${moving ? html`<div class="pe-field"><label for=${`${id}-org`}>Organization — its customer</label>
+        <select id=${`${id}-org`} value=${org}
+          onChange=${(e) => this.setState({ org: e.currentTarget.value, saved: false })}>
+          ${orgs.map((o) => html`<option key=${o.id} value=${String(o.id)}>${o.name}</option>`)}</select></div>` : null}
+      <button type="submit" class="primary" disabled=${busy}>${busy ? "Saving…" : "Save"}</button>
+      ${saved ? html`<span class="muted" role="status">Saved.</span>` : null}
+      ${error ? html`<p class="err" role="alert">${error}</p>` : null}
+    </form>`;
   }
 }
 

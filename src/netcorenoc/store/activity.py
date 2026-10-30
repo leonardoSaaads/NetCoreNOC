@@ -263,6 +263,48 @@ class ActivityMixin(ClassRuleMixin, TimelineMixin):
         )
         return {int(r[0]): str(r[1]) for r in await cur.fetchall()}
 
+    async def with_roots(
+        self, rows: list[dict[str, Any]], ne_ids: frozenset[int] | None
+    ) -> list[dict[str, Any]]:
+        """Each listed situation with its probable root as its card says it — ``root_class``, the
+        root's element as ``device_label`` (its name, else its address) and its port as
+        ``root_port`` (the trap's interface name, else its instance) — so a list row, and the merge
+        picker, say what a situation is without opening it, and two faults of one class on one
+        router read as two (ADR #476). ``ne_ids`` is the reader's scope: a root on an element
+        outside it is not named (every key None, as for a situation with no root). One query for
+        the page."""
+        none = {"root_class": None, "device_label": None, "root_port": None}
+        ids = sorted({int(r["root_alarm_id"]) for r in rows if r.get("root_alarm_id")})
+        if not ids:
+            return [{**row, **none} for row in rows]
+        marks = ",".join("?" * len(ids))
+        cur = await self.conn.execute(
+            "SELECT a.id, a.ne_id, a.class_id, a.instance, a.varbinds, host(n.ip) AS ip, "  # nosec B608
+            "l.label FROM alarm a "
+            "JOIN ne n ON n.id = a.ne_id "
+            + self._label_join("l", "ne", "n.id")
+            + f"WHERE a.id IN ({marks})",
+            tuple(ids),
+        )
+        roots = {int(r["id"]): dict(r) for r in await cur.fetchall()}
+        names = await self._class_names([int(r["class_id"]) for r in roots.values()])
+        out = []
+        for row in rows:
+            root = roots.get(int(row.get("root_alarm_id") or 0))
+            if root is None or (ne_ids is not None and int(root["ne_id"]) not in ne_ids):
+                out.append({**row, **none})
+                continue
+            port = known_oids.port_name(root["instance"], root["varbinds"]) or root["instance"]
+            out.append(
+                {
+                    **row,
+                    "root_class": names[int(root["class_id"])]["class"],
+                    "device_label": root["label"] or root["ip"],
+                    "root_port": port or None,
+                }
+            )
+        return out
+
     async def _class_names(self, class_ids: list[int]) -> dict[int, dict[str, Any]]:
         """`{class_id: {class, class_oid, class_named}}` — the name if anything gives one.
 

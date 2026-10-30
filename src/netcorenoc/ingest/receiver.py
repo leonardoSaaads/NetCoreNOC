@@ -325,19 +325,19 @@ def quarantine_packet(source: str, data: bytes, reason: str, ts: float) -> Quara
 
 
 def _instance_of(varbinds: list[Varbind]) -> str:
-    """Instance heuristic: ifIndex when present, else the first payload varbind value that is not
-    an X.733 severity word.
+    """Instance heuristic: ifIndex when present, else the first payload varbind value that is
+    neither an X.733 severity word nor a scalar's number.
 
-    **A severity is never an instance** (v0.28.0, ADR #432). A vendor that sends its severity
-    first gave its raise the instance `major` and its clear the instance `cleared`: two alarm rows
-    for one fault, and a clear that could never find its raise — not even after the state field was
-    learned, because the learner's slot is keyed on the instance too. One dictionary lookup per
-    varbind already iterated; nothing else changes on this path.
+    A vendor that sends its severity first made its raise `major` and its clear `cleared`: two rows
+    for one fault (v0.28.0, ADR #432). A scalar (`.0`) holds the device's one value, and a number
+    there is a reading — MikroTik's `mtxrHlTemperature.0 = 810` made each temperature a new alarm
+    that no trap clears (ADR #476); a scalar's text (an address) still identifies.
     """
     for vb in varbinds:
         if vb.oid.startswith(known_oids.IF_INDEX_PREFIX):
             return vb.value[:MAX_INSTANCE_CHARS]
     payload = [vb for vb in varbinds if vb.oid not in _SKIP_FOR_INSTANCE]
+    payload = [vb for vb in payload if not (vb.oid[-2:] == ".0" and vb.value.lstrip("-").isdigit())]
     for vb in payload:
         if known_oids.severity_rank(vb.value) is None:
             return vb.value[:MAX_INSTANCE_CHARS]
