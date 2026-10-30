@@ -89,6 +89,8 @@ NOC_ROUTE_PERMISSIONS: dict[tuple[str, str], str] = {
     ("POST", "/api/noc/customers/{customer_id}/contacts"): "cases.work",
     ("POST", "/api/noc/customers/{customer_id}/contacts/{contact_id}"): "cases.work",
     ("POST", "/api/noc/customers/{customer_id}/contacts/{contact_id}/delete"): "cases.work",
+    # ADR #477: ending a customer is inventory structure, as creating it is: an admin's.
+    ("POST", "/api/noc/customers/{customer_id}/end"): "organizations.write",
     ("POST", "/api/noc/customers/{customer_id}/docs"): "cases.work",
     ("GET", "/api/noc/customers/{customer_id}/docs/{doc_id}"): "cases.read",
     ("GET", "/api/noc/customers/{customer_id}/docs/{doc_id}/file"): "cases.read",
@@ -202,6 +204,7 @@ NOC_ROUTE_SCOPE: dict[tuple[str, str], Literal["scoped", "unscoped", "admin_only
     ("POST", "/api/noc/customers/{customer_id}/contacts"): "scoped",
     ("POST", "/api/noc/customers/{customer_id}/contacts/{contact_id}"): "scoped",
     ("POST", "/api/noc/customers/{customer_id}/contacts/{contact_id}/delete"): "scoped",
+    ("POST", "/api/noc/customers/{customer_id}/end"): "admin_only",
     ("POST", "/api/noc/customers/{customer_id}/docs"): "scoped",
     ("GET", "/api/noc/customers/{customer_id}/docs/{doc_id}"): "scoped",
     ("GET", "/api/noc/customers/{customer_id}/docs/{doc_id}/file"): "scoped",

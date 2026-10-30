@@ -7,7 +7,9 @@ API and a case routed to one of them by the real agent loop:
   roster only from a principal who may read it;
 * the agents page and one agent's page render what the server sent; hiring is offered to an admin
   and to nobody else;
-* the organization chart puts the NOC team on top of the agents;
+* the organization chart puts the NOC team on top of the agents, and tells an admin — only an
+  admin — that an agent is moved by dragging it onto its new manager; the drop rules refuse a loop
+  and a move to where it already reports, and propose the tier one below the new manager's;
 * a routed case shows its milestones — the climb to the next tier among them — and who holds it.
 """
 
@@ -109,3 +111,39 @@ async def test_a_routed_case_shows_its_milestones_and_who_holds_it(store: Store)
     assert ".assignment" in dump and '"Vega"' in dump and '"With NOC Tier 1"' in dump
     queue = _render(tables["editor"], "#/cases")
     assert ".holder" in queue["dump"] and '"Vega"' in queue["dump"], "the queue says who holds it"
+
+
+@dom_test
+async def test_an_admin_moves_an_agent_by_dragging_it_and_no_loop_is_offered(store: Store) -> None:
+    tables, ids, _sid = await _routes(store)
+    hint = "Drag an agent onto its new manager to move it."
+    assert hint in _render(tables["admin"], "#/org")["dump"]
+    assert hint not in _render(tables["editor"], "#/org")["dump"], "moving agents is an admin's"
+    atlas, vega = ids["Atlas"], ids["Vega"]
+    agents = [
+        {"id": atlas, "reports_to": None, "tier": 3},
+        {"id": vega, "reports_to": atlas, "tier": 1},
+        {"id": 99, "reports_to": vega, "tier": 1},
+        {"id": 7, "reports_to": None, "tier": 1},
+    ]
+    calls = {
+        "below_atlas": {"fn": "below", "args": [agents, atlas]},
+        "atlas_onto_its_report": {"fn": "droppable", "args": [agents, atlas, 99]},
+        "vega_onto_atlas": {"fn": "droppable", "args": [agents, vega, atlas]},
+        "vega_onto_the_team": {"fn": "droppable", "args": [agents, vega, 0]},
+        "seven_onto_vega": {"fn": "droppable", "args": [agents, 7, vega]},
+        "seven_onto_the_team": {"fn": "droppable", "args": [agents, 7, 0]},
+        "tier_under_atlas": {"fn": "proposedTier", "args": [agents[3], agents[0]]},
+        "tier_under_vega": {"fn": "proposedTier", "args": [agents[3], agents[1]]},
+        "tier_at_the_top": {"fn": "proposedTier", "args": [agents[1], None]},
+    }
+    out = domdriver.run_scenario(
+        "moduleCalls",
+        {"routes": tables["admin"], "module": "app/views/parts/orgmove.js", "calls": calls},
+    )["out"]
+    assert out["below_atlas"] == sorted([vega, 99])
+    assert out["atlas_onto_its_report"] is False, "a manager onto its own report is a loop"
+    assert out["vega_onto_atlas"] is False, "onto where it already reports changes nothing"
+    assert out["vega_onto_the_team"] is True and out["seven_onto_vega"] is True
+    assert out["seven_onto_the_team"] is False
+    assert (out["tier_under_atlas"], out["tier_under_vega"], out["tier_at_the_top"]) == (2, 1, 1)

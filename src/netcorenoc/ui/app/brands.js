@@ -67,6 +67,10 @@ const BRANDS = {
   },
 };
 
+/* Ollama Cloud (ADR #477) is Ollama's own mark, inverted: the same llama, on the cloud's dark tile,
+ * so a local server and the cloud read apart at a glance. */
+BRANDS.ollama_cloud = { ...BRANDS.ollama, label: "Ollama Cloud", tile: "#000000", ink: "#ffffff" };
+
 /** Every provider this module can draw. Read by tests, never for dispatch. */
 export const BRAND_NAMES = Object.keys(BRANDS);
 

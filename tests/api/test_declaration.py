@@ -707,11 +707,13 @@ async def test_f43_every_path_served_today_still_registers(store: Store) -> None
     # Unreleased: 302 -> 335 and 165 -> 187 — the NOC's overview, its grants and an AI key's
     # models (ADRs #470, #471: three /api pairs, five UI modules), and the customers' books (ADR
     # #473: nineteen /api pairs, six UI modules).
-    assert len(served) == 335, f"the served surface moved: {len(served)} method/path pairs"
+    # Unreleased: 335 -> 338 and 187 -> 188 — ending a customer (ADR #477: one /api pair) and two
+    # UI modules (a local Ollama's models; moving an agent in the chart).
+    assert len(served) == 338, f"the served surface moved: {len(served)} method/path pairs"
     api_pairs = {(method, path) for method, path in served if path.startswith("/api")}
     # **v0.19.0: 53 -> 55.** `GET /api/models` and `POST /api/models/register`: what the
     # models are doing, and turning one of this appliance's own fits into an artefact.
-    assert len(api_pairs) == 187, (
+    assert len(api_pairs) == 188, (
         f"the /api surface moved: {len(api_pairs)} pairs. v0.16.0 adds exactly five — the "
         f"operator's five gestures — v0.16.2 adds exactly one, `POST …/promote` (DECISIONS #273), "
         f"v0.16.5 adds exactly one, `POST /api/alarms/clear` (DECISIONS #301), "
@@ -893,11 +895,13 @@ async def test_f42_every_path_served_today_still_registers(store: Store) -> None
     # Unreleased: 302 -> 335 and 165 -> 187 — the NOC's overview, its grants and an AI key's
     # models (ADRs #470, #471: three /api pairs, five UI modules), and the customers' books (ADR
     # #473: nineteen /api pairs, six UI modules).
-    assert len(served) == 335, f"the served surface moved: {len(served)} method/path pairs"
+    # Unreleased: 335 -> 338 and 187 -> 188 — ending a customer (ADR #477: one /api pair) and two
+    # UI modules (a local Ollama's models; moving an agent in the chart).
+    assert len(served) == 338, f"the served surface moved: {len(served)} method/path pairs"
     api_pairs = {(method, path) for method, path in served if path.startswith("/api")}
     # **v0.19.0: 53 -> 55.** `GET /api/models` and `POST /api/models/register`: what the
     # models are doing, and turning one of this appliance's own fits into an artefact.
-    assert len(api_pairs) == 187, (
+    assert len(api_pairs) == 188, (
         f"the /api surface moved: {len(api_pairs)} pairs. v0.16.0 adds exactly five — the "
         f"operator's five gestures — v0.16.2 adds exactly one, `POST …/promote` (DECISIONS #273), "
         f"v0.16.5 adds exactly one, `POST /api/alarms/clear` (DECISIONS #301), "
@@ -1175,7 +1179,8 @@ def test_the_three_postures_are_all_populated() -> None:
     # matching case across every scope, so reading and writing one is `playbooks.*`, admin.
     # ADRs #465-#467: 51 -> 50. The playbook routes leave (`playbooks.*` is editor now, the write
     # gated by the agent grant); hiring, changing, terminating an agent and its key arrive.
-    assert len(ADMIN_ONLY) == 50, len(ADMIN_ONLY)
+    # ADR #477: 50 -> 51. Ending a customer is inventory structure, as creating one is.
+    assert len(ADMIN_ONLY) == 51, len(ADMIN_ONLY)
     # v0.18.0: 6 -> 7. `GET /api/correlation` is `unscoped` for `GET /api/scorer`'s reason
     # — counters over the scorer's own decisions are a statement about arithmetic and
     # name no network element (Part II).
@@ -1431,7 +1436,12 @@ SCOPED_TARGETED = [
     ("POST", "/api/noc/cases/{sid}/escalate"),
     # ADR #473: every route naming one customer — its book, a contact, a document, a circuit —
     # 404s on a customer none of whose elements the caller can see, as on one that does not exist.
-    *[(m, p) for (m, p) in rbac.ROUTE_SCOPE if p.startswith("/api/noc/customers/{customer_id}")],
+    # Ending one (ADR #477) is an admin's act, `admin_only`, and so not in this list.
+    *[
+        (m, p)
+        for (m, p), posture in rbac.ROUTE_SCOPE.items()
+        if p.startswith("/api/noc/customers/{customer_id}") and posture == "scoped"
+    ],
 ]
 SCOPED_COLLECTION = [r for r in SCOPED if r not in SCOPED_TARGETED]
 

@@ -388,6 +388,9 @@ const HANDLER_EVENTS = [
   "wheel", "pointerdown", "pointermove", "pointerup", "pointercancel", "toggle",
   // v0.25.0: a profile photo falls back to initials when it fails to load (ADR #402).
   "error",
+  // ADR #477: an admin drags an agent onto its new manager in the organization chart, and the
+  // confirmation is a <dialog> whose Esc (`cancel`) closes it the console's way.
+  "dragstart", "dragend", "dragover", "dragleave", "drop", "cancel",
 ];
 for (const type of HANDLER_EVENTS) {
   Object.defineProperty(Element.prototype, `on${type}`, {

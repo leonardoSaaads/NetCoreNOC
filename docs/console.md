@@ -126,6 +126,12 @@ sidebar:
 A case names the customers whose equipment it touches: *Its customers* on the case record opens each
 one's book.
 
+The day the NOC stops serving a customer, an admin ends it from its record (**End service…**, ADR
+#477): what goes (its instructions and memory, contacts, documents, circuits) and what stays (its
+elements, back in the default organization; its cases and their history; its maintenance windows;
+the audit log) is shown first, its name is typed again and the admin confirms who they are. Adding
+it again reinstates it, its book empty. A circuit is removed from its own row in the list.
+
 ## NOC — Agents
 
 | View | The question it answers |
@@ -149,8 +155,8 @@ one's book.
 
 | View | The question it answers |
 |---|---|
-| **Organization** | Who reports to whom. A chart, the **NOC team** — the people — on top, then each agent as a card: its mark, name, role, tier, state and open cases. Choosing a card opens its place beside the chart: its manager, role, tier, whether cases start with it, and its instructions — which an admin changes there. A case climbs one level of this chart each time it is not concluded in time, and past the top comes to the NOC team |
-| **Secrets** | Which credentials reach which equipment, whether each endpoint answers, and who did what with them. A list a custodian scans in seconds — a status light (green answers, yellow intermittent or slow, red does not answer, grey not checked), the name, where it works, what it grants, whether agents may use it — and one credential opened below it: its facts, **Check now**, **Reveal…**, **Change…**, agent access, its leases and its own audit history. A tab of **AI providers** (ADR #471) — Anthropic, OpenAI, Google AI Studio, xAI, Meta and a local Ollama, each a card with its mark — keeps the keys the NOC's agents think with; a cloud key goes only to its own API, and a custodian lists the models it may use. A last tab, **People & agents**, is for admins: custodians, NOC leads (who read the KPIs and the playbooks) and agents |
+| **Organization** | Who reports to whom. A chart, the **NOC team** — the people — on top, then each agent as a card: its mark, name, role, tier, state and open cases. Choosing a card opens its place beside the chart: its manager, role, tier, whether cases start with it, and its instructions — which an admin changes there. An admin can also **drag an agent onto its new manager** (or the NOC team): a dialog proposes the tier one below that manager's and nothing moves until it is confirmed; a drop that would make a loop is not taken (ADR #477). A case climbs one level of this chart each time it is not concluded in time, and past the top comes to the NOC team |
+| **Secrets** | Which credentials reach which equipment, whether each endpoint answers, and who did what with them. A list a custodian scans in seconds — a status light (green answers, yellow intermittent or slow, red does not answer, grey not checked), the name, where it works, what it grants, whether agents may use it — and one credential opened below it: its facts, **Check now**, **Reveal…**, **Change…**, agent access, its leases and its own audit history. A tab of **AI providers** (ADR #471) — Anthropic, OpenAI, Google AI Studio, xAI, Meta, a local Ollama and Ollama Cloud, each a card with its mark — keeps the keys the NOC's agents think with; a cloud key goes only to its own API, and a custodian lists the models it may use. **A local Ollama takes no key** (ADR #477): it is connected by where it runs, and opens on the models pulled there — which can call tools, and so work a case, the one to try first named. A last tab, **People & agents**, is for admins: custodians, NOC leads (who read the KPIs and the playbooks) and agents |
 
 * **Only custodians see the vault**: every admin, and each editor an admin names under
   *Custodians & agents*. Anyone else who opens Secrets is told why and shown nothing.

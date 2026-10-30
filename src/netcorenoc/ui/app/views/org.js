@@ -4,7 +4,9 @@
  * reports to them, and a case that climbs past the last agent comes to them. Each card is an
  * agent's mark, name, role, tier, state and open cases. Choosing one opens its place in the NOC
  * beside the chart: its manager, its tier, whether cases start with it, and its instructions —
- * which an admin changes there, without leaving the chart.
+ * which an admin changes there, without leaving the chart. **An admin can also drag an agent onto
+ * its new manager** (ADR #477): a dialog proposes the tier one below that manager's and nothing
+ * moves until it is confirmed (`parts/orgmove.js`).
  */
 
 import { html, Component, cx } from "../dom.js";
@@ -14,10 +16,28 @@ import { can } from "../session.js";
 import { Icon } from "../icons.js";
 import { refreshRoster } from "../roster.js";
 import { AgentGlyph, AgentState, Tier } from "./parts/nocui.js";
+import { MoveDialog, droppable } from "./parts/orgmove.js";
 
-function Card({ node, selected, onPick }) {
-  return html`<button type="button" class=${cx("org-card", `role-${node.role}`, selected && "on")}
-      aria-pressed=${selected ? "true" : "false"} onClick=${() => onPick(node.id)}>
+/** The drag-and-drop handlers a card takes: dragged (an admin's), and a place to drop on. */
+function dnd(node, drag) {
+  if (!drag) return {};
+  const target = node ? node.id : 0;
+  return {
+    draggable: node ? "true" : undefined,
+    onDragStart: node ? (e) => { e.dataTransfer.setData("text/plain", String(node.id));
+      e.dataTransfer.effectAllowed = "move"; drag.start(node.id); } : undefined,
+    onDragEnd: () => drag.end(),
+    onDragOver: (e) => { if (drag.may(target)) { e.preventDefault(); e.dataTransfer.dropEffect = "move"; drag.over(target); } },
+    onDragLeave: () => drag.over(null),
+    onDrop: (e) => { e.preventDefault(); drag.drop(target); },
+  };
+}
+
+function Card({ node, selected, onPick, drag }) {
+  const zone = drag && drag.dragging != null ? (drag.may(node.id) ? "drop-ok" : "drop-no") : null;
+  return html`<button type="button" class=${cx("org-card", `role-${node.role}`, selected && "on", zone,
+      drag && drag.target === node.id && "drop-here", drag && drag.dragging === node.id && "dragging")}
+      aria-pressed=${selected ? "true" : "false"} onClick=${() => onPick(node.id)} ...${dnd(node, drag)}>
     <${AgentGlyph} agent=${node} size="md" />
     <span class="org-card-text">
       <b>${node.name}</b>
@@ -30,11 +50,11 @@ function Card({ node, selected, onPick }) {
   </button>`;
 }
 
-function Branch({ nodes, picked, onPick }) {
+function Branch({ nodes, picked, onPick, drag }) {
   if (!nodes.length) return null;
   return html`<ul class="org-level">${nodes.map((node) => html`<li key=${node.id} class="org-node">
-    <${Card} node=${node} selected=${picked === node.id} onPick=${onPick} />
-    <${Branch} nodes=${node.reports} picked=${picked} onPick=${onPick} />
+    <${Card} node=${node} selected=${picked === node.id} onPick=${onPick} drag=${drag} />
+    <${Branch} nodes=${node.reports} picked=${picked} onPick=${onPick} drag=${drag} />
   </li>`)}</ul>`;
 }
 
@@ -146,6 +166,32 @@ export class Org extends Loader {
 
   pick(id) { this.props.navigate(id === this.picked() || id == null ? "#/org" : `#/org/${id}`); }
 
+  /** What the chart's cards need to be dragged and dropped on, for an admin; null otherwise. */
+  drag(live) {
+    if (!can("agents.manage")) return null;
+    const { dragging = null, target = null } = this.state;
+    return {
+      dragging,
+      target,
+      may: (to) => dragging != null && droppable(live, dragging, to),
+      start: (id) => this.setState({ dragging: id, target: null }),
+      end: () => this.setState({ dragging: null, target: null }),
+      over: (to) => { if (to !== this.state.target) this.setState({ target: to }); },
+      drop: (to) => this.setState({ dragging: null, target: null,
+        moving: { agent: live.find((a) => a.id === dragging), manager: live.find((a) => a.id === to) || null } }),
+    };
+  }
+
+  async move(agent, manager, tier) {
+    const fresh = (await get(`/api/noc/agents/${agent.id}?days=1`)).agent;
+    const body = { version: fresh.version, reports_to: manager ? manager.id : 0 };
+    if (tier !== fresh.tier) body.tier = tier;
+    await post(`/api/noc/agents/${agent.id}`, body);
+    this.setState({ moving: null, note: `${agent.name} now reports to ${manager ? manager.name : "the NOC team"}, at Tier ${tier}.` });
+    refreshRoster();
+    await this.refresh();
+  }
+
   view(data) {
     const live = data.agents.filter((a) => a.status !== "terminated");
     if (!live.length) {
@@ -156,24 +202,32 @@ export class Org extends Loader {
     }
     const picked = this.picked();
     const entries = live.filter((a) => a.entry).length;
+    const drag = this.drag(live);
+    const { moving, note } = this.state;
+    const team = drag && drag.dragging != null ? (drag.may(0) ? "drop-ok" : "drop-no") : null;
     return html`<div class="org">
       <div class="noc-toolbar">
         <p class="muted">${live.length} agent${live.length === 1 ? "" : "s"} · ${entries} entry
-          point${entries === 1 ? "" : "s"} · a case climbs one level each time it is not concluded in time.</p>
+          point${entries === 1 ? "" : "s"} · a case climbs one level each time it is not concluded in time.${drag
+            ? " Drag an agent onto its new manager to move it." : ""}</p>
         <div class="noc-toolbar-end">
           <a class="btn-ghost" href="#/agents">All agents</a>
           ${can("agents.manage") ? html`<a class="primary btn-link" href="#/agents?hire=1">Hire an agent</a>` : null}
         </div>
       </div>
+      ${note ? html`<p class="hint org-note" role="status">${note}</p>` : null}
+      ${moving ? html`<${MoveDialog} agent=${moving.agent} manager=${moving.manager}
+        onConfirm=${(tier) => this.move(moving.agent, moving.manager, tier)}
+        onCancel=${() => this.setState({ moving: null })} />` : null}
       <div class=${cx("org-layout", picked && "with-place")}>
-        <div class="org-chart" role="group" aria-label="Organization chart">
+        <div class=${cx("org-chart", drag && drag.dragging != null && "org-dragging")} role="group" aria-label="Organization chart">
           <ul class="org-level org-root"><li class="org-node">
-            <div class="org-card org-people">
+            <div class=${cx("org-card org-people", team, drag && drag.target === 0 && "drop-here")} ...${dnd(null, drag)}>
               <span class="agent-glyph glyph-md role-people"><${Icon} name="users" /></span>
               <span class="org-card-text"><b>The NOC team</b>
                 <span class="muted">People: editors and admins. Every case past the agents comes here.</span></span>
             </div>
-            <${Branch} nodes=${data.org} picked=${picked} onPick=${(id) => this.pick(id)} />
+            <${Branch} nodes=${data.org} picked=${picked} onPick=${(id) => this.pick(id)} drag=${drag} />
           </li></ul>
         </div>
         ${picked ? html`<${Place} key=${picked} id=${picked} catalogue=${data}

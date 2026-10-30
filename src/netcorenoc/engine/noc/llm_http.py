@@ -22,9 +22,14 @@ import urllib.request
 from typing import Any
 from urllib.parse import urlsplit
 
+from netcorenoc.engine.noc import ollama
 from netcorenoc.engine.noc.providers import Provider
 
-__all__ = ["MAX_BODY", "ProviderCallError", "chat", "headers_for", "list_models"]
+__all__ = ["MAX_BODY", "ProviderCallError", "chat", "headers_for", "list_models", "ollama_models"]
+
+#: The most models `ollama_models` asks `/api/show` about, and how many at once.
+SHOW_AT_MOST = 40
+SHOW_AT_ONCE = 4
 
 #: The most of one answer read: a chat turn with tool calls is kilobytes, a model list less.
 MAX_BODY = 4 * 1024 * 1024
@@ -106,6 +111,47 @@ async def list_models(
     if not isinstance(rows, list):
         raise ProviderCallError("the model list has no `data`")
     return sorted({str(r["id"]) for r in rows if isinstance(r, dict) and r.get("id")})
+
+
+async def ollama_models(
+    provider: Provider, root: str, key: str, *, timeout: float = 15.0
+) -> list[dict[str, Any]]:
+    """What an Ollama server has, ranked (`engine/noc/ollama.py`): its models (`GET /api/tags`),
+    what each can do (`POST /api/show`, at most `SHOW_AT_MOST`) and, on one's own machine, which
+    are loaded now (`GET /api/ps`). A model `/api/show` cannot describe is listed without it."""
+    headers = headers_for(provider, key)
+    tags = await asyncio.to_thread(_call, f"{root}/api/tags", headers, None, timeout)
+    if not isinstance(tags.get("models"), list):
+        raise ProviderCallError("the model list has no `models`")
+    rows = [r for r in tags["models"][:500] if isinstance(r, dict)]
+    loaded: set[str] = set()
+    if provider.own_host:
+        try:
+            ps = await asyncio.to_thread(_call, f"{root}/api/ps", headers, None, timeout)
+            loaded = {
+                str(m.get("model") or m.get("name"))
+                for m in ps.get("models") or []
+                if isinstance(m, dict)
+            }
+        except ProviderCallError:
+            pass  # which are loaded is a nicety; the list stands without it
+    gate = asyncio.Semaphore(SHOW_AT_ONCE)
+
+    async def show(name: str) -> dict[str, Any] | None:
+        async with gate:
+            try:
+                return await asyncio.to_thread(
+                    _call, f"{root}/api/show", headers, {"model": name}, timeout
+                )
+            except ProviderCallError:
+                return None
+
+    names = [str(r.get("model") or r.get("name") or "") for r in rows]
+    asked = [n for n in names if n][:SHOW_AT_MOST]
+    found = dict(zip(asked, await asyncio.gather(*(show(n) for n in asked)), strict=True))
+    return ollama.rank(
+        [ollama.row(r, found.get(n), n in loaded) for r, n in zip(rows, names, strict=True)]
+    )
 
 
 async def chat(

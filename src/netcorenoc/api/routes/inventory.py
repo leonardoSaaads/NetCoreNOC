@@ -67,15 +67,22 @@ def register(app: FastAPI, ctx: AppContext) -> None:
         request: Request,
         principal: auth.Principal = Depends(security),
     ) -> dict[str, Any]:
-        """Add an organization. Admin, because it is inventory structure rather than operation."""
+        """Add an organization. Admin, because it is inventory structure rather than operation.
+
+        A customer whose service ended (ADR #477) is **reinstated** by adding it again under its
+        handle: the same row, so its history still names it, its book empty."""
         now = time.time()
         async with write_txn():
-            existing = {o["slug"] for o in await store.list_organizations()}
-            if body.slug in existing:
+            found = await store.organization_by_slug(body.slug)
+            if found is not None and found["ended_at"] is None:
                 raise HTTPException(
                     status_code=409, detail=f"an organization with slug {body.slug!r} exists"
                 )
-            organization_id = await store.create_organization(body.name, body.slug, now)
+            if found is not None:
+                organization_id = int(found["id"])
+                await store.reinstate_organization(organization_id, body.name)
+            else:
+                organization_id = await store.create_organization(body.name, body.slug, now)
             await audit_row(
                 request,
                 principal,
@@ -83,9 +90,9 @@ def register(app: FastAPI, ctx: AppContext) -> None:
                 "ok",
                 object_type="organization",
                 object_id=str(organization_id),
-                details={"slug": body.slug},
+                details={"slug": body.slug, "reinstated": found is not None},
             )
-        return {"created": True, "id": organization_id}
+        return {"created": True, "id": organization_id, "reinstated": found is not None}
 
     @route.post("/api/entities/{ne_id}/organization")
     async def set_ne_organization(

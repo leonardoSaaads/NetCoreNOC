@@ -154,6 +154,20 @@ stored device credential is unreadable (#455).
   from a paste or an uploaded workbook, previewed first). Scoped by the customer's elements; eight
   new MCP tools (42 in all). Migration **0039**.
 
+### Added — the owner's adjustments (#477)
+
+- **A local Ollama needs no key**: connect it by where it runs, and it lists the models pulled on
+  that machine — size, quantization, context, what each can do and whether it **can work a case
+  (calls tools)**, the one to try first named; the hiring form asks for the Ollama server, lists
+  the same and warns when a model cannot call tools. **Ollama Cloud** (ollama.com, with a key) is
+  a provider of its own.
+- **End service with a customer** (an admin's, with a step-up and its name typed): its book is
+  deleted, its elements return to the default organization, its history stays; adding it again
+  reinstates it. Migration **0041** (schema 41). A circuit is removed from its row in the list.
+- **Organization**: an admin drags an agent onto its new manager; a dialog confirms the move and
+  its tier ("Make Ollie a Tier 2 agent?") before anything changes.
+- The hiring form's section titles sit inside their cards.
+
 ### Added — from the operators' review round on a lab like the owner's (#474-#476)
 
 - **A case hears its alarms** (#474): every half minute, what joined its situation, raised again

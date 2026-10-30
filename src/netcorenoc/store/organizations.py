@@ -48,7 +48,7 @@ class OrganizationMixin(StoreBase):
             "(SELECT COUNT(*) FROM ne WHERE COALESCE(ne.organization_id, "
             "(SELECT id FROM organization WHERE is_default ORDER BY id LIMIT 1)) = o.id) "
             "AS ne_count "
-            "FROM organization o ORDER BY o.is_default DESC, o.name"
+            "FROM organization o WHERE o.ended_at IS NULL ORDER BY o.is_default DESC, o.name"
         )
         return [
             {
@@ -78,8 +78,55 @@ class OrganizationMixin(StoreBase):
         return int(row[0]) if row is not None else 1
 
     async def organization_exists(self, organization_id: int) -> bool:
-        cur = await self.conn.execute("SELECT 1 FROM organization WHERE id=?", (organization_id,))
+        """A live organization: one whose service ended takes no element and no window."""
+        cur = await self.conn.execute(
+            "SELECT 1 FROM organization WHERE id=? AND ended_at IS NULL", (organization_id,)
+        )
         return await cur.fetchone() is not None
+
+    async def organization_by_slug(self, slug: str) -> dict[str, Any] | None:
+        """The organization with ``slug``, ended or not — adding an ended customer reinstates it."""
+        cur = await self.conn.execute(
+            "SELECT id, name, slug, is_default, ended_at FROM organization WHERE slug=?", (slug,)
+        )
+        row = await cur.fetchone()
+        return dict(row) if row else None
+
+    async def reinstate_organization(self, organization_id: int, name: str) -> None:
+        """Serve an ended customer again, under ``name``; its book starts empty (ADR #477)."""
+        await self.conn.execute(
+            "UPDATE organization SET ended_at=NULL, ended_by=NULL, name=? WHERE id=?",
+            (name[:MAX_ORGANIZATION_NAME], organization_id),
+        )
+
+    async def end_customer(self, organization_id: int, now: float, actor: str) -> dict[str, int]:
+        """Stop serving a customer (ADR #477): its book is deleted — instructions, the NOC's
+        memory, contacts, documents, circuits — its elements go back to the default organization,
+        and the row is marked ended, kept for the windows and case summaries that name it. One
+        transaction, the caller's. Returns what went, by kind."""
+        gone: dict[str, int] = {}
+        for kind, table in (
+            ("contacts", "noc_contact"),
+            ("documents", "noc_customer_doc"),
+            ("circuits", "noc_circuit"),
+            ("book", "noc_customer"),
+        ):
+            cur = await self.conn.execute(
+                f"DELETE FROM {table} WHERE organization_id = ?",  # nosec B608 - fixed names
+                (organization_id,),
+            )
+            gone[kind] = int(cur.rowcount or 0)
+        cur = await self.conn.execute(
+            "UPDATE ne SET organization_id=(SELECT id FROM organization WHERE is_default "
+            "ORDER BY id LIMIT 1) WHERE organization_id = ?",
+            (organization_id,),
+        )
+        gone["elements"] = int(cur.rowcount or 0)
+        await self.conn.execute(
+            "UPDATE organization SET ended_at=?, ended_by=? WHERE id=? AND NOT is_default",
+            (now, actor[:160], organization_id),
+        )
+        return gone
 
     async def create_organization(self, name: str, slug: str, now: float) -> int:
         """Add an organization. The caller owns the transaction, as every write path here does."""

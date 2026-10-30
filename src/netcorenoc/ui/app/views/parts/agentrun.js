@@ -6,13 +6,17 @@
  * running on its own machine, woken by a signed webhook or coming over MCP when it decides to.
  * **With which key, and which model?** The key is one a custodian stored under Secrets → AI
  * providers and let agents use — offered by name, never shown; with none yet, the form says where
- * to add one. The model is the provider's own list, asked of it with that key, or typed.
+ * to add one. The model is the provider's own list, asked of it with that key, or typed. **A local
+ * Ollama has no key** (ADR #477): the form asks which Ollama server, lists the models pulled there
+ * as soon as one is chosen, and says when the model picked cannot call tools — and so cannot work
+ * a case.
  */
 
 import { html, Component, cx } from "../../dom.js";
 import { get, post } from "../../api.js";
 import { BrandMark } from "../../brands.js";
 import { Icon } from "../../icons.js";
+import { OllamaModels } from "./ollamamodels.js";
 
 /** How an agent elsewhere is reached -> its mark: a signed POST is sent; MCP is a link. */
 const ELSEWHERE_ICON = { webhook: "send", external: "link" };
@@ -32,14 +36,18 @@ export function providerFor(st) {
 export class RunSettings extends Component {
   constructor(props) {
     super(props);
-    this.state = { keys: null, models: null, asking: false, error: null };
+    this.state = { keys: null, models: null, details: null, asking: false, error: null };
   }
 
   componentDidMount() { if (providerFor(this.props.st)) this.readKeys(); }
 
   componentDidUpdate(previous) {
-    if (providerFor(previous.st) !== providerFor(this.props.st)) this.setState({ models: null, error: null });
-    if (providerFor(this.props.st) && this.state.keys === null) this.readKeys();
+    const { st, catalogue } = this.props;
+    if (providerFor(previous.st) !== providerFor(st)) this.setState({ models: null, details: null, error: null });
+    if (providerFor(st) && this.state.keys === null) this.readKeys();
+    // A local Ollama is asked for its models as soon as it is chosen: nothing but its list is asked.
+    const local = (catalogue.providers || []).find((x) => x.id === providerFor(st) && x.own_host);
+    if (local && st.secret_id && st.secret_id !== previous.st.secret_id) this.ask();
   }
 
   /** The provider keys agents may use — read once; filtered per provider when drawn. */
@@ -59,7 +67,9 @@ export class RunSettings extends Component {
     this.setState({ asking: true, error: null });
     try {
       const answer = await post(`/api/noc/secrets/${Number(st.secret_id)}/models`);
-      this.setState({ asking: false, models: answer.models });
+      this.setState({ asking: false, models: answer.models,
+        details: answer.details && answer.details.length ? answer : null });
+      if (answer.recommended && !st.model) this.props.onChange({ model: answer.recommended });
     } catch (error) {
       this.setState({ asking: false, error: error.message });
     }
@@ -91,24 +101,29 @@ export class RunSettings extends Component {
     </div>`;
   }
 
-  render({ st, catalogue, field, set }, { keys, models, asking, error }) {
+  render({ st, catalogue, field, set }, { keys, models, details, asking, error }) {
     const p = "agent-form";
     const providers = catalogue.providers || [];
     const pid = providerFor(st);
     const provider = providers.find((x) => x.id === pid);
     const mine = (keys || []).filter((k) => k.kind === `ai_${pid}` || (pid === "anthropic" && k.kind === "api_token"));
+    const local = provider && provider.own_host;
+    const what = local ? `${provider.label} server` : `${provider ? provider.label : ""} key`;
+    const chosen = details && details.details.find((m) => m.name === st.model);
     return html`<div class="run-settings">
       ${this.cards(st, providers)}
       ${provider ? html`<div class="pe-fields">
-        ${field(`${p}-key`, `${provider.label} key`, keys === null
+        ${field(`${p}-key`, what, keys === null
           ? html`<p class="muted" id=${`${p}-key`}>Reading the vault…</p>`
           : mine.length ? html`<select id=${`${p}-key`} required value=${st.secret_id} onChange=${set("secret_id")}>
-              <option value="">Choose a key…</option>
-              ${mine.map((k) => html`<option key=${k.id} value=${k.id}>${k.name}</option>`)}
+              <option value="">${local ? "Choose a server…" : "Choose a key…"}</option>
+              ${mine.map((k) => html`<option key=${k.id} value=${k.id}>${local ? `${k.name} — ${k.host}:${k.port}` : k.name}</option>`)}
             </select>`
-          : html`<p class="warnbox" id=${`${p}-key`}>No ${provider.label} key agents may use yet.${" "}
-              <a href="#/secrets?tab=ai">Connect ${provider.label} under Secrets → AI providers</a>.</p>`,
-          "The appliance unseals it for each run and calls the provider; the agent never sees it.")}
+          : html`<p class="warnbox" id=${`${p}-key`}>No ${what} agents may use yet.${" "}
+              <a href="#/secrets?tab=ai">Connect ${provider.label} under Secrets → AI providers</a>${local
+                ? " — no key: only where it runs" : ""}.</p>`,
+          local ? "The appliance calls it for each run; it needs no key."
+            : "The appliance unseals it for each run and calls the provider; the agent never sees it.")}
         ${field(`${p}-model`, "Model", provider.adapter === "claude"
           ? html`<select id=${`${p}-model`} value=${st.model} onChange=${set("model")}>
               ${catalogue.models.map((m) => html`<option key=${m} value=${m}>${m}</option>`)}</select>`
@@ -119,13 +134,18 @@ export class RunSettings extends Component {
               <button type="button" disabled=${!st.secret_id || asking} onClick=${() => this.ask()}>
                 ${asking ? "Asking…" : models ? `${models.length} models` : `Ask ${provider.label}`}</button>
             </div>`,
-          error || (provider.adapter === "claude" ? null : "As the provider names it; ask it for its list once a key is chosen."))}
+          error || (provider.adapter === "claude" ? null : chosen && chosen.fit !== "agents"
+            ? html`<span class="warn-text">${chosen.name}: ${chosen.why}.</span>`
+            : local ? "Its models are listed below once a server is chosen; pick one that calls tools."
+            : "As the provider names it; ask it for its list once a key is chosen."))}
         ${provider.adapter === "claude" ? field(`${p}-effort`, "Effort", html`<select id=${`${p}-effort`} value=${st.effort}
           onChange=${set("effort")}>${catalogue.efforts.map((m) => html`<option key=${m} value=${m}>${m}</option>`)}</select>`,
           "How hard it thinks before acting: higher is slower and costs more.") : null}
         ${field(`${p}-turns`, "Most steps per run", html`<input id=${`${p}-turns`} type="number"
           min="1" max="60" value=${st.max_turns} onInput=${set("max_turns")} />`)}
       </div>
+      ${details ? html`<div class="run-models"><${OllamaModels} answer=${details} provider=${provider}
+        picked=${st.model} onPick=${(model) => this.props.onChange({ model })} /></div>` : null}
       ${provider.adapter === "claude" ? html`<p class="hint">Priced at Anthropic's published rates;
         its monthly budget, below, pauses it when reached.</p>` : html`<div class="pe-fields">
         ${field(`${p}-price-in`, "Price per 1M input tokens (US$)", html`<input id=${`${p}-price-in`}

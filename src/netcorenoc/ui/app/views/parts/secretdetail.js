@@ -10,7 +10,9 @@
  *   which agent leased and used it.
  * * **An AI provider's key** shows what a device credential does not need — the models it may use,
  *   asked of the provider with the key, on request — and leaves out what it does not have: an
- *   access level, an SSH host key.
+ *   access level, an SSH host key. **A local Ollama** lists its models as soon as it opens (no key
+ *   leaves anywhere: the appliance asks the machine it already checks), with what each can do and
+ *   which can work a case (ADR #477).
  */
 
 import { html, Component, cx } from "../../dom.js";
@@ -21,6 +23,7 @@ import { relative, timeTitle } from "../../format.js";
 import { StepUp, StepUpFields, stepupBody } from "./stepup.js";
 import { SecretForm } from "./secretform.js";
 import { KindMark, providerOf } from "./vaultui.js";
+import { ModelAdvice, OllamaModels } from "./ollamamodels.js";
 
 const LIGHT = {
   up: ["green", "Reachable"],
@@ -51,8 +54,14 @@ const ACTION = {
   "noc.secret.use": "used it for",
 };
 
-/** What an AI provider's key may run, asked of the provider when the custodian wants to know. */
+/** What an AI provider's key may run, asked of the provider when the custodian wants to know —
+ * at once for a local Ollama, which is asked nothing but its own list. */
 class Models extends Component {
+  componentDidMount() {
+    const { provider } = this.props;
+    if (provider && provider.own_host) this.ask();
+  }
+
   async ask() {
     this.setState({ busy: true, error: null });
     try {
@@ -62,14 +71,21 @@ class Models extends Component {
     }
   }
 
-  render(_props, { busy, answer, error }) {
+  render({ provider }, { busy, answer, error }) {
+    const local = provider && provider.own_host;
+    const rich = answer && answer.details && answer.details.length;
     return html`<section class="ai-models">
-      <h4>Models this key may use</h4>
-      ${answer ? html`<p class="muted">${answer.count} model${answer.count === 1 ? "" : "s"}.</p>
-        <ul class="model-chips">${answer.models.map((m) => html`<li key=${m}><code>${m}</code></li>`)}</ul>`
+      <h4>${local ? "Models on this Ollama" : "Models this key may use"}</h4>
+      ${rich ? html`<${ModelAdvice} answer=${answer} provider=${provider} />
+          <${OllamaModels} answer=${answer} provider=${provider} />`
+        : answer ? html`<p class="muted">${answer.count} model${answer.count === 1 ? "" : "s"}.</p>
+          <ul class="model-chips">${answer.models.map((m) => html`<li key=${m}><code>${m}</code></li>`)}</ul>`
         : html`<button type="button" disabled=${busy} onClick=${() => this.ask()}>
-          ${busy ? "Asking…" : "Ask the provider"}</button>`}
-      ${error ? html`<p class="err" role="alert">${error}</p>` : null}
+          ${busy ? "Asking…" : local ? "List its models" : "Ask the provider"}</button>`}
+      ${answer ? html`<button type="button" class="linkish" disabled=${busy} onClick=${() => this.ask()}>
+        ${busy ? "Asking…" : "Ask again"}</button>` : null}
+      ${error ? html`<p class="err" role="alert">${error}${local
+        ? " Is Ollama running there, and listening beyond its own machine (OLLAMA_HOST=0.0.0.0)?" : ""}</p>` : null}
     </section>`;
   }
 }
@@ -198,7 +214,7 @@ export class SecretDetail extends Component {
       onHide=${() => this.setState({ revealed: null })} />` : null;
   }
 
-  render({ onClose, secondFactor }, { detail: d, error, busy, note }) {
+  render({ onClose, secondFactor, catalogue }, { detail: d, error, busy, note }) {
     if (error) return html`<div class="panel-block"><p class="err" role="alert">${error}</p></div>`;
     if (!d) return html`<div class="panel-block muted">Reading the credential…</div>`;
     const writable = can("secrets.write");
@@ -239,7 +255,8 @@ export class SecretDetail extends Component {
       </div>
       ${note ? html`<p class="err" role="alert">${note}</p>` : null}
       ${this.body(d)}
-      ${ai ? html`<${Models} id=${d.id} />` : null}
+      ${ai ? html`<${Models} id=${d.id} provider=${(catalogue.providers || [])
+        .find((p) => p.id === providerOf(d.kind))} />` : null}
       ${writable ? html`<${Destructive} compact title=${`Delete ${d.name}`} previewLabel="Delete…"
         confirmLabel=${`Delete ${d.name}`}
         consequence=${"The credential, its checks and its leases are destroyed; an agent holding a lease loses it at once. Its audit history stays."}

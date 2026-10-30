@@ -100,7 +100,7 @@ IN_PROCESS = frozenset({"claude", "openai"})
 _MODEL = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:/|@+-]{0,199}$")
 #: The providers the `openai` adapter drives (`providers.py`; kept here as names, not imported,
 #: since `providers.py` reads this module's model prices).
-OPENAI_PROVIDERS: tuple[str, ...] = ("openai", "google", "xai", "meta", "ollama")
+OPENAI_PROVIDERS: tuple[str, ...] = ("openai", "google", "xai", "meta", "ollama", "ollama_cloud")
 STATUSES: dict[str, str] = {
     "idle": "Idle",
     "running": "Running",

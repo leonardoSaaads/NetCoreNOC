@@ -540,6 +540,8 @@ ROUTE_ORDER_BASELINE: list[tuple[str, str]] = [
     ("GET", "/app/views/parts/vaultui.js"),
     ("GET", "/app/views/parts/aiproviders.js"),
     ("GET", "/app/views/parts/agentrun.js"),
+    ("GET", "/app/views/parts/ollamamodels.js"),
+    ("GET", "/app/views/parts/orgmove.js"),
     ("GET", "/app/views/customers.js"),
     ("GET", "/app/views/parts/custbook.js"),
     ("GET", "/app/views/parts/custcontacts.js"),
@@ -730,6 +732,7 @@ ROUTE_ORDER_BASELINE: list[tuple[str, str]] = [
     ("POST", "/api/noc/customers/{customer_id}/contacts"),
     ("POST", "/api/noc/customers/{customer_id}/contacts/{contact_id}"),
     ("POST", "/api/noc/customers/{customer_id}/contacts/{contact_id}/delete"),
+    ("POST", "/api/noc/customers/{customer_id}/end"),
     ("POST", "/api/noc/customers/{customer_id}/docs"),
     ("GET", "/api/noc/customers/{customer_id}/docs/{doc_id}"),
     ("GET", "/api/noc/customers/{customer_id}/docs/{doc_id}/file"),
@@ -865,7 +868,9 @@ async def test_the_api_route_order_is_unchanged_by_the_ui_rewrite(store: Store) 
     # #473), one able to shadow another and ordered against it: `POST …/circuits/import` is a
     # concrete segment where `POST …/circuits/{circuit_id}` has a template, so it is registered
     # first; every other is a concrete segment below its id, and `/api/noc/circuits` is new.
-    assert len(live) == 187, (
+    # **ADR #477: 187 -> 188.** `POST …/customers/{customer_id}/end`, a concrete segment below
+    # the customer's id, shadowing nothing.
+    assert len(live) == 188, (
         f"the /api surface is {len(live)} pairs; v0.16.0 adds exactly five, v0.16.2 exactly one, "
         f"v0.16.3 exactly one, v0.16.5 exactly one — `POST /api/alarms/clear` — v0.18.0 exactly "
         f"one, `GET /api/correlation`, and v0.21.0 exactly thirteen for maintenance windows, "
@@ -1513,8 +1518,8 @@ def test_the_queue_put_on_the_hot_path_is_non_blocking() -> None:
 #: `engine/noc/` `commands`, `executor`, `playbook` and `runbook`, `store/noc_playbooks.py`,
 #: migration `0035_noc_automation.sql`, the `noc_exec` and `playbooks` routes, and the
 #: `views/playbooks` console module.
-SRC_TREE_DIGEST = "bfc5975d9256a223a2db65cef85eb3cbab665bb1860e74fc4843af21e935cae6"
-SRC_FILE_COUNT = 497
+SRC_TREE_DIGEST = "071dc5267c97ddf08c280bf064ca8bc19fb09a3556093396c584a6b36f79f81c"
+SRC_FILE_COUNT = 501
 SRC_VERSION_FILE = "src/netcorenoc/__init__.py"
 
 

@@ -10,11 +10,14 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from netcorenoc.api.models_noc import StepUpIn
+
 __all__ = [
     "CircuitImportIn",
     "CircuitIn",
     "CircuitNotesIn",
     "ContactIn",
+    "CustomerEndIn",
     "HopIn",
     "InstructionsIn",
     "MemoryIn",
@@ -115,3 +118,12 @@ class CircuitImportIn(BaseModel):
     doc_id: int | None = Field(default=None, ge=1)
     sheet: int = Field(default=0, ge=0, le=200)
     apply: bool = False
+
+
+class CustomerEndIn(BaseModel):
+    """Stop serving a customer (ADR #477): its name typed again, and the admin's step-up."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    name: str = Field(min_length=1, max_length=120)
+    stepup: StepUpIn

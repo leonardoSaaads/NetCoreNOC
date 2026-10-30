@@ -6,6 +6,10 @@ vault's gate — a custodian, signed in as a person — because it opens the key
 because nothing comes back but the provider's public model names, and the key goes only to the
 host the credential is bound to (`engine/noc/llm_http.py`). Every call is a `noc.secret.use` audit
 row naming who asked.
+
+**Ollama answers in its own words** (ADR #477): the models pulled on that machine, what each can
+do, which are loaded now, ranked so the first suits an agent (`details`, `recommended`). Should an
+Ollama endpoint not speak its native API (a proxy that passes only `/v1`), the OpenAI list stands.
 """
 
 from __future__ import annotations
@@ -67,8 +71,29 @@ def register(app: FastAPI, ctx: AppContext) -> None:
                 object_id=str(secret_id),
                 details={"provider": provider.id, "for": "models"},
             )
+        key = str(fields.get("api_key") or "")
+        details: list[dict[str, Any]] = []
         try:
-            models = await llm_http.list_models(provider, base, str(fields.get("api_key") or ""))
+            if provider.ollama:
+                root = providers.api_root(
+                    str(secret["host"]), int(secret["port"]), str(secret["protocol_version"])
+                )
+                try:
+                    details = await llm_http.ollama_models(provider, root, key)
+                except ProviderCallError:
+                    details = []
+            models = (
+                [d["name"] for d in details]
+                if details
+                else await llm_http.list_models(provider, base, key)
+            )
         except ProviderCallError as exc:
             raise HTTPException(status_code=502, detail=f"{provider.label}: {exc}") from exc
-        return {"provider": provider.id, "models": models[:500], "count": len(models)}
+        fit = next((d["name"] for d in details if d["fit"] == "agents"), None)
+        return {
+            "provider": provider.id,
+            "models": models[:500],
+            "count": len(models),
+            "details": details[:500],
+            "recommended": fit,
+        }

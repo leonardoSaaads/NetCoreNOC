@@ -80,6 +80,14 @@ Two rules that have held since v0.1.0 and are not going to change:
 
 *(This table has no rows for v0.17.0 or v0.18.0: neither release wrote one, and inventing upgrade notes for a release somebody else built would be describing an upgrade nobody tested.)*
 
+## Unreleased — the owner's adjustments (#477)
+
+Nothing to do: migration **0041** (when a customer's service ended, and who ended it) applies at
+start and is additive. A local Ollama stored with a key keeps it (it is now the "proxy token");
+`POST /api/noc/secrets/{id}/models` answers `details` and `recommended` beside `models` for an
+Ollama endpoint; `/api/organizations` and `/api/noc/customers` leave out a customer whose service
+ended, and adding it again (`POST /api/organizations`, its slug) reinstates it.
+
 ## Unreleased — the operators' review round (#474-#476)
 
 Nothing to do: migration **0040** (what each case heard of its alarms, the cycle reason `alarm`,
