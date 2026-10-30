@@ -308,6 +308,9 @@ python tests/lab/noc_estate.py ctl status
 The soak flaps ports (a Huawei end suppresses them), raises CRC errors, fades the light then cuts
 the fibre, loses an element's management (run as root, an iptables DROP: SSH, SNMP and ping time
 out) or its power, and records every change and trap in `tests/lab/state/truth.jsonl`.
+`--speed 10` divides every wait by ten — six hours of incidents in thirty-six minutes, in the same
+order; lower the appliance's `NETCORENOC_NOC_CHECK_S` with it, or a lost management path heals
+before the vault's next check sees it.
 
 ## Limits
 

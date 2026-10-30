@@ -21,7 +21,7 @@ change of state and each trap is one JSON line of `truth.jsonl`, so what the app
 checked against what happened.
 
     python tests/lab/noc_estate.py serve --password 'lab-Passw0rd!2026' --target 127.0.0.1:1162 \\
-        [--soak 6h --seed 7]
+        [--soak 6h --seed 7 --speed 10]   # six hours of incidents, in 36 minutes at --speed 10
     python tests/lab/noc_estate.py ctl flap L1 6 | cut L3 | repair L3 | crc L1 on | degrade L4
     python tests/lab/noc_estate.py ctl isolate 127.0.40.1 | restore 127.0.40.1 | status
     python tests/lab/noc_estate.py ctl power-off 127.0.40.3 | power-on 127.0.40.3
@@ -276,8 +276,10 @@ class Estate:
         *,
         seed: int | None = None,
         firewall: bool = False,
+        speed: float = 1.0,
     ) -> None:
         self.rng = random.Random(seed)
+        self.speed = max(speed, 0.01)
         elements, self.links = build()
         self.by_addr = {e.address: e for e in elements}
         self.by_key = {e.key: e for e in elements}
@@ -301,6 +303,11 @@ class Estate:
                 await server.wait_closed()
         self.sender.close()
         self.truth.close()
+
+    async def pause(self, low: float, high: float) -> None:
+        """A wait of ``low`` to ``high`` seconds of the estate's time, divided by its ``speed``: at
+        ``speed=10`` six hours of incidents happen in thirty-six minutes, in the same order."""
+        await asyncio.sleep(self.rng.uniform(low, high) / self.speed)
 
     # -- the record and the traps --------------------------------------------------------------
 
@@ -436,7 +443,7 @@ class Estate:
             for el, p in self.ends(lid):
                 if not el.port(p)["suppressed"]:
                     self.port_change(el, p, False, "flap")
-            await asyncio.sleep(self.rng.uniform(1.5, 6))
+            await self.pause(1.5, 6)
             for el, p in self.ends(lid):
                 if el.power and not el.port(p)["suppressed"]:
                     self.port_change(el, p, True, "flap")
@@ -444,7 +451,7 @@ class Estate:
             for el, p in self.ends(lid):
                 if el.vendor == "huawei" and len(hits) >= 4 and not el.port(p)["suppressed"]:
                     self.suppress(el, p)
-            await asyncio.sleep(self.rng.uniform(*gap))
+            await self.pause(*gap)
 
     def _flap_trap(self, el: Element, name: str, oid: str, what: str) -> None:
         p = el.find(name)
@@ -459,7 +466,7 @@ class Estate:
         self._flap_trap(el, name, HW_FLAP_SUPPRESS, f"hwIfControlFlapSuppress {name}")
 
         async def release() -> None:
-            await asyncio.sleep(self.rng.uniform(*hold))
+            await self.pause(*hold)
             el.port(name)["suppressed"] = False
             el.clear_alarm(f"cf:{name}")
             self.note("unsuppress", el=el.name, port=name)
@@ -495,14 +502,14 @@ class Estate:
             for step in range(4):  # light fades over a minute or two
                 rx += (target - rx) / (4 - step)
                 self.optics(el, name, rx)
-                await asyncio.sleep(self.rng.uniform(*step_s))
+                await self.pause(*step_s)
 
     async def cut(self, lid: str) -> None:
         self.links[lid]["state"] = "cut"
         self.note("scenario", name="cut", link=lid, what=self.links[lid]["what"])
         for el, name in self.ends(lid):
             self.optics(el, name, -40.0)
-        await asyncio.sleep(self.rng.uniform(0.2, 1.5))
+        await self.pause(0.2, 1.5)
         for el, name in self.ends(lid):
             self.port_change(el, name, False, "LOS")
             if el.vendor == "ciena":
@@ -521,7 +528,7 @@ class Estate:
             if p is not None and p.optical:
                 self.optics(el, name, p.rx_nominal + self.rng.uniform(-0.8, 0.4))
             el.clear_alarm(f"los:{name}")
-        await asyncio.sleep(self.rng.uniform(0.5, 2))
+        await self.pause(0.5, 2)
         for el, name in self.ends(lid):
             if el.power:
                 self.port_change(el, name, True, "repaired")
@@ -568,7 +575,7 @@ class Estate:
         self._drop(address, True)
         for port, peer, peer_port in self._neighbours_of(el):
             el.port(port)["oper"] = "down"
-            await asyncio.sleep(self.rng.uniform(0.05, 0.6))
+            await self.pause(0.05, 0.6)
             self.port_change(peer, peer_port, False, f"peer {el.name} lost power")
 
     async def power_on(self, address: str, boot_s: tuple[float, float] = (2, 6)) -> None:
@@ -578,7 +585,7 @@ class Estate:
         el.alarms.clear()
         self._drop(address, False)
         self.trap(el, COLD_START, [{"oid": "1.3.6.1.2.1.1.5.0", "value": el.name}], "coldStart")
-        await asyncio.sleep(self.rng.uniform(*boot_s))
+        await self.pause(*boot_s)
         for port, peer, peer_port in self._neighbours_of(el):
             self.port_change(el, port, True, "boot")
             self.port_change(peer, peer_port, True, f"peer {el.name} back")
@@ -628,9 +635,9 @@ class Estate:
 
             async def dirty() -> None:
                 await self.crc(lid, True)
-                await asyncio.sleep(r.uniform(60, 300))
+                await self.pause(60, 300)
                 await self.flap(lid, r.randint(4, 8))
-                await asyncio.sleep(r.uniform(300, 900))
+                await self.pause(300, 900)
                 await self.crc(lid, False)
 
             await self._hold((lid,), dirty)
@@ -640,10 +647,10 @@ class Estate:
             async def fibre() -> None:
                 if kind == "degrade" or r.random() < 0.6:
                     await self.degrade(lid)
-                    await asyncio.sleep(r.uniform(30, 240))
+                    await self.pause(30, 240)
                 if kind == "cut":
                     await self.cut(lid)
-                await asyncio.sleep(r.uniform(900, 2700))
+                await self.pause(900, 2700)
                 await self.repair(lid)
 
             await self._hold((lid,), fibre)
@@ -652,7 +659,7 @@ class Estate:
 
             async def lost() -> None:
                 await self.isolate(address)
-                await asyncio.sleep(r.uniform(240, 1200))
+                await self.pause(240, 1200)
                 await self.restore(address)
 
             await self._hold((address,), lost)
@@ -661,7 +668,7 @@ class Estate:
 
             async def power() -> None:
                 await self.power_off(address)
-                await asyncio.sleep(r.uniform(180, 900))
+                await self.pause(180, 900)
                 await self.power_on(address)
 
             await self._hold((address, lid), power)
@@ -670,19 +677,19 @@ class Estate:
 
             async def hot() -> None:
                 await self.temp(address, True)
-                await asyncio.sleep(r.uniform(300, 1200))
+                await self.pause(300, 1200)
                 await self.temp(address, False)
 
             await self._hold((address + "/temp",), hot)
 
     async def soak(self, seconds: float, every: tuple[float, float] = (180, 720)) -> None:
         """Incidents at random for ``seconds``, a new one every three to twelve minutes."""
-        end = time.time() + seconds
+        end = time.time() + seconds / self.speed
         self.note("soak", seconds=seconds)
         kinds = ["flap"] * 4 + ["dirty", "cut"] * 2 + ["degrade", "power", "temp"] + ["isolate"] * 2
         while time.time() < end:
             self.spawn(self.incident(self.rng.choice(kinds)))
-            await asyncio.sleep(self.rng.uniform(*every))
+            await self.pause(*every)
         self.note("soak-end")
 
     # -- the control port ------------------------------------------------------------------------
@@ -907,7 +914,12 @@ def _seconds(text: str) -> float:
 
 async def _serve_forever(args: argparse.Namespace) -> None:
     estate = Estate(
-        args.target, args.community, args.state_dir / "truth.jsonl", seed=args.seed, firewall=True
+        args.target,
+        args.community,
+        args.state_dir / "truth.jsonl",
+        seed=args.seed,
+        firewall=True,
+        speed=args.speed,
     )
     ports = await serve(
         estate, args.password, args.state_dir, ssh_port=args.ssh_port, snmp_port=args.snmp_port
@@ -946,6 +958,7 @@ def main() -> int:
     serve_cmd.add_argument("--snmp-port", type=int, default=1161)
     serve_cmd.add_argument("--soak", type=_seconds, default=0.0)
     serve_cmd.add_argument("--seed", type=int, default=None)
+    serve_cmd.add_argument("--speed", type=float, default=1.0, help="10: six hours in 36 minutes")
     serve_cmd.add_argument("--state-dir", type=Path, default=STATE_DIR)
     for cmd in (serve_cmd, ctl := sub.add_parser("ctl")):
         cmd.add_argument("--ctl-port", type=int, default=8099)
