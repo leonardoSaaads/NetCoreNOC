@@ -6755,15 +6755,24 @@ From this release an entry is about six lines: decision, reason, release.*
   fault came back or grew returns to the NOC queue (cycle reason `alarm`); a case being worked is
   told and stays with its owner. The first look at a case is its baseline and says nothing, so an
   opening, a restart or this release never floods a feed with old news. Only what moved is
-  written. A new pending status, **`pending_monitoring`** ("watching for stability"), says what the
-  NOC does after a flap, a restore or a repair. The status an agent sets pending is now a closed
+  written. An alarm the case was told of less than five minutes ago (`told_at`) waits, its changes
+  adding up, so a port flapping for an hour is a line every five minutes, not one every half
+  minute; a new alarm joining is never held, nor a fault back on a pending case, which returns to
+  the queue at once. An alarm that a newer live situation also holds is named with it ("[now in
+  situation #95]", a link in the console): a fault back hours after its situation resolved is a new
+  situation on the Broker, and the case still validating the old one is where its owner looks. A
+  new pending status, **`pending_monitoring`** ("watching for stability"), says what the NOC does
+  after a flap, a restore or a repair. The status an agent sets pending is now a closed
   vocabulary in the tool's schema, so an agent picks one over MCP instead of learning it from a
   400; and a case asked to validate a resolution says why in words ("every alarm cleared, the
   network fixed it"), not the Broker's code.
 - **Reason**: the round's lab (Huawei, MikroTik and Ciena elements, hours of flaps, cuts, optical
   degrades and lost management, worked by agents over MCP and by people in the console) found a
   case pending on the field team whose trunk failed again when a switch lost power: its alarm
-  raised again at 19:13:56 and the case said nothing for 51 minutes, until its next update.
+  raised again at 19:13:56 and the case said nothing for 51 minutes, until its next update. Then,
+  hearing, one case took six lines in two and a half minutes of a flap; and a case validating an
+  optical cut's repair heard the cut come back without being told the Broker had opened it again as
+  two new situations.
 
 ## 475. The bundled pack pairs a vendor's fault with its recovery (unreleased)
 
@@ -6791,12 +6800,18 @@ From this release an entry is about six lines: decision, reason, release.*
   that sees addresses, the credential only to a custodian, the elements of the reader's scope only;
   **an element is named and put in its customer from its own page** on Entities (`label.write`,
   `organizations.write`), which the Customers screen already promised; **a situation's list row
-  and the merge picker name its probable root** ("linkDown on tim-rjo-barra-crs326"), scoped as the
-  row is; **a member reads its port** (`ether5`, from the trap's own ifName or ifDescr) where it
-  read its ifIndex; a gesture on a new situation says it opens its NOC case; the decision bar's
-  buttons no longer inherit a health panel's margins, and the member table's actions cell stays a
-  table cell; Secrets says its status counts in words; a 24-hour chart's gridlines are whole
-  counts; SNMP's grey light no longer promises a check that never runs. **Every stop of the
+  and the merge picker name its probable root** ("linkDown on tim-rjo-barra-crs326 (ether5)" —
+  the port too, so two faults of one class on one router read as two), scoped as the row is, the
+  port coarsened for a viewer when it is an address; **a member reads its port** (`ether5`, from
+  the trap's own ifName or ifDescr) where it read its ifIndex; a gesture on a new situation says it
+  opens its NOC case; the decision bar's buttons no longer inherit a health panel's margins, and
+  the member table's actions cell stays a table cell; Secrets says its status counts in words; a
+  24-hour chart's gridlines are whole counts; SNMP's grey light no longer promises a check that
+  never runs. **A scalar's number is a reading, not an instance** (`ingest/receiver.py`): the
+  instance heuristic skips a varbind whose OID ends in `.0` when its value is a number — MikroTik's
+  `mtxrHlTemperature.0 = 810` made each temperature a new alarm that no trap clears; a scalar's text
+  (the DWDM corpus's `snmpTrapAddress.0`) still identifies, and `make eval` is unchanged to the
+  byte (skipping every scalar moved two DWDM scenarios' entity accuracy, so it was not done). **Every stop of the
   appliance is clean**: uvicorn is told to exit and given time to, where a SIGTERM cancelled it
   mid-serve and logged "Task was destroyed but it is pending!" with a traceback. The search test
   that failed Dependabot's PR measures how long a tick holds the event loop, not its wall time.

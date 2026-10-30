@@ -60,7 +60,8 @@ export function SituationCard({ situation, onToggle, onChanged }) {
                  >${situation.resolution.replace("_", " ")}<//>` : null}
         <${Badge}>${plural(situation.alarm_count, "alarm")}<//>
         ${situation.root_class ? html`<span class="sit-root muted" title="Its probable root"
-          >${situation.root_class} on ${situation.device_label}</span>` : null}
+          >${situation.root_class} on ${situation.device_label}${
+            situation.root_port ? ` (${situation.root_port})` : ""}</span>` : null}
         ${situation.stale ? html`<${Badge} tone="stale" title=${STALE_TITLE}>stale<//>` : null}
         ${/* **IV.3.** At least one member element is under planned work, so this situation's
               alarm counts may be incomplete — and an operator reading it is entitled to know

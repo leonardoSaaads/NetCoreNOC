@@ -240,7 +240,8 @@ function Destinations({ sid, kind, filter, busy, marked, everything, onFilter, o
           <b>#${s.id}</b>${" "}
           <span>${s.operator_name || s.model_name || s.derived_name || "unnamed"}</span>${" "}
           <span class="muted">${plural(s.alarm_count, "alarm")}${
-            s.root_class ? ` · ${s.root_class} on ${s.device_label}` : ""}</span>${" "}
+            s.root_class ? ` · ${s.root_class} on ${s.device_label}${
+              s.root_port ? ` (${s.root_port})` : ""}` : ""}</span>${" "}
           <span class="age" title=${timeTitle(s.updated_at)}>${age(s.updated_at)}</span>
         </button>
       </li>`)}

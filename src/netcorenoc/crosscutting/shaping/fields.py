@@ -87,6 +87,9 @@ FIELD_RULES: dict[str, tuple[str, str]] = {
     # values — an `ifIndex`, a slot — and `coarsen_ip` returns anything that is not an address
     # unchanged, so this rule bites exactly at the level where the key IS an address.
     "key": ("editor", _COARSEN),
+    # ADR #476: a situation row's root port is the root alarm's interface name, else its instance
+    # — and an instance can be an address (a BGP peer's), so it takes the rule `key` has.
+    "root_port": ("editor", _COARSEN),
     # v0.16.1: the gesture history's actor, resolved to a username. The `actor` reference beside
     # it is unshaped and stays — it is the record, and it is what a viewer sees instead. Dropped
     # rather than coarsened because half a username is not a weaker fact, it is a puzzle; and

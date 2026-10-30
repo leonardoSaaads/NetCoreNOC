@@ -83,7 +83,7 @@ async def tick(
         heard = await store.noc_case_heard(states)
     fresh_set = set(fresh)
     rising = [sid for sid in rising if sid not in fresh_set]  # dispatch derives those itself
-    news = hearing.plan(states, heard)
+    news = hearing.plan(states, heard, at)
     if not (fresh or due or orphaned or stale or rising or news):
         return counts
     async with store.lock:

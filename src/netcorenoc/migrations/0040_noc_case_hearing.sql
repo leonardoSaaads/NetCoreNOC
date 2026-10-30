@@ -10,7 +10,10 @@
 --    and a pending case whose fault came back or grew returns to the NOC queue (`alarm`, below).
 --    Until 0040 a pending case heard nothing: a cut fibre that failed again an hour after its
 --    repair waited for the next update, and the NOC learnt of it from the customer.
---    The first read of a case is its baseline and says nothing.
+--    The first read of a case is its baseline and says nothing. `told_at` is when the case was
+--    last told of the alarm: one told less than five minutes ago waits, its changes adding up, so
+--    a port flapping for an hour is a line every five minutes on the feed, not one every half
+--    minute.
 --
 -- 2. The cycle reason `alarm`: back in the queue because an alarm joined or raised again while the
 --    case was pending.
@@ -24,6 +27,7 @@ CREATE TABLE noc_case_alarm (
     alarm_id     bigint  NOT NULL REFERENCES alarm (id) ON DELETE CASCADE,
     active       boolean NOT NULL,
     raised       integer NOT NULL CHECK (raised >= 0),
+    told_at      timestamptz,
     PRIMARY KEY (situation_id, alarm_id)
 );
 CREATE INDEX idx_noc_case_alarm_alarm ON noc_case_alarm (alarm_id);

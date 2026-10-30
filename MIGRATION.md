@@ -87,8 +87,10 @@ the pending status `pending_monitoring`) applies at start and is additive. Behav
 notice: a **pending case returns to the NOC queue** when an alarm of its situation raises again or
 joins; a vendor's recovery trap (a Huawei `…Up`, a Ciena `…Clear`) **clears its fault the first
 time** instead of standing as an active "cleared" alarm — alarms already standing that way stay
-until cleared by hand (*Clear all* on the situation). `GET /api/situations` rows carry
-`root_class` and `device_label`; `GET /api/noc/overview` carries `reachability`.
+until cleared by hand (*Clear all* on the situation). A trap whose only identifying varbind is a
+scalar's number (MikroTik's temperature) is now **one alarm per device**, not one per reading:
+alarms already standing per reading stay until cleared by hand. `GET /api/situations` rows carry
+`root_class`, `device_label` and `root_port`; `GET /api/noc/overview` carries `reachability`.
 
 ## Unreleased — the NOC at a glance, AI providers and customers (#470-#473)
 

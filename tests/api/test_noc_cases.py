@@ -26,7 +26,7 @@ from typing import Any
 import httpx
 
 from netcorenoc.api.models_cases import StatusIn
-from netcorenoc.engine.noc import case_loop, cases
+from netcorenoc.engine.noc import case_loop, cases, hearing
 from netcorenoc.store import Store
 
 import authutil
@@ -459,25 +459,66 @@ async def test_a_case_hears_its_alarms_and_a_pending_one_comes_back(store: Store
         assert (await editor.get(f"/api/noc/cases/{sid}")).json()["status"] == "working"
         assert (await case_loop.tick(store))["told"] == 0, "nothing new, nothing said"
 
-        # A flap between two looks — raised and cleared again before the loop read it — is heard
-        # by the alarm's count, not lost because it was off at both looks.
+        # An alarm just told of waits five minutes, its changes adding up: a flapping port is a
+        # line every five minutes, not one every half minute.
         async def clear(alarm_id: int) -> None:
             await store.conn.execute(
                 "UPDATE alarm SET status = 'cleared', cleared_at = now() WHERE id = ?", (alarm_id,)
             )
 
+        later = time.time() + hearing.QUIET_S
         async with store.lock:
             await clear(alarm.alarm_id)
             await store.commit()
-        assert (await case_loop.tick(store))["told"] == 1
+        assert (await case_loop.tick(store))["told"] == 0, "just told of: it waits"
+        assert (await case_loop.tick(store, now=lambda: later + 1))["told"] == 1
+        assert "cleared: " in (await _alarm_events(editor, sid))[0]
+        # A flap between two looks — raised and cleared again before the loop read it — is heard
+        # by the alarm's count, not lost because it was off at both looks.
         async with store.lock:
             await store.ingest(util.event(device="10.0.0.3", instance="7"))
             await clear(alarm.alarm_id)
             await store.commit()
-        assert (await case_loop.tick(store))["told"] == 1
+        assert (await case_loop.tick(store, now=lambda: later + 2))["told"] == 0
+        assert (await case_loop.tick(store, now=lambda: later + hearing.QUIET_S + 2))["told"] == 1
         said = await _alarm_events(editor, sid)
-        assert "raised again: " in said[0] and "cleared since" in said[0], said[0]
+        assert "raised again: " in said[0] and "[cleared since]" in said[0], said[0]
         # The case's own history: the NOC's, like every event — never a customer's to read.
         assert await _alarm_events(clients["viewer"], sid) == []
+    finally:
+        await _close(clients)
+
+
+async def test_a_fault_back_in_a_new_situation_is_named_on_the_case_validating_it(
+    store: Store,
+) -> None:
+    sid = await _open_situation(store, devices=("10.0.2.1",))
+    await case_loop.tick(store)
+    _app, clients = await _clients(store)
+    editor = clients["editor"]
+    try:
+        await editor.post(f"/api/noc/cases/{sid}/take")
+        await case_loop.tick(store)  # the baseline
+        async with store.lock:
+            await store.conn.execute(
+                "UPDATE alarm SET status = 'cleared', cleared_at = now() WHERE id IN "
+                "(SELECT alarm_id FROM situation_alarm WHERE situation_id = ?)",
+                (sid,),
+            )
+            await store.resolve_situation(sid, "self_cleared", time.time())
+            await store.commit()
+        assert (await case_loop.tick(store))["validate"] == 1
+        # Hours later the fault is back; the Broker groups it as a new occurrence.
+        async with store.lock:
+            alarm = await store.ingest(util.event(device="10.0.2.1", instance="0"))
+            again = await store.create_situation(time.time(), None)
+            await store.add_alarm_to_situation(again, alarm.alarm_id)
+            await store.commit()
+        # Told of its clear a moment ago, the alarm waits out the quiet before this news.
+        moved = await case_loop.tick(store, now=lambda: time.time() + hearing.QUIET_S + 1)
+        assert moved["told"] == 1
+        said = await _alarm_events(editor, sid)
+        assert "raised again: " in said[0] and f"[now in situation #{again}]" in said[0], said[0]
+        assert (await editor.get(f"/api/noc/cases/{sid}")).json()["status"] == "validate"
     finally:
         await _close(clients)

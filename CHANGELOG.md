@@ -158,7 +158,9 @@ stored device credential is unreadable (#455).
 
 - **A case hears its alarms** (#474): every half minute, what joined its situation, raised again
   (even between two looks — a port that flapped) or cleared is one event on its feed; a pending
-  case whose fault came back or grew returns to the NOC queue. New pending status **Pending
+  case whose fault came back or grew returns to the NOC queue. An alarm just told of waits five
+  minutes, so a flapping port is a line every five minutes; one back in a newer situation is named
+  with it ("[now in situation #95]", a link). New pending status **Pending
   monitoring (watching for stability)**. Migration **0040** (schema 40).
 - **Vendor recoveries clear their faults the first time** (#475): the bundled pack's own names pair
   1 437 faults with their recovery in the same MIB (`hwPortPhysicalDown`/`Up`, Ciena's
@@ -167,9 +169,9 @@ stored device credential is unreadable (#455).
 - **NOC → Overview shows equipment reachability** (#476): the elements whose management stopped
   answering, worst and longest first — a switch that loses power sends no trap.
 - **Entities**: name an element and put it in its customer from its own page (#476).
-- **Situations**: each row and the merge picker name the probable root ("linkDown on
-  tim-rjo-barra-crs326"); members read their port (`ether5`) where they read the ifIndex; a new
-  situation says that a gesture on it opens its NOC case (#476).
+- **Situations**: each row and the merge picker name the probable root and its port ("linkDown
+  on tim-rjo-barra-crs326 (ether5)"); members read their port (`ether5`) where they read the
+  ifIndex; a new situation says that a gesture on it opens its NOC case (#476).
 
 ### Fixed
 - Every stop of the appliance logged "Task was destroyed but it is pending!" and a traceback:
@@ -181,6 +183,9 @@ stored device credential is unreadable (#455).
   run"; the KPIs' missed-takes chart said "nothing taken yet" beside seven takes met (#476).
 - `noc_set_case_pending` lists its ten-plus-one statuses in its schema, so an agent picks one over
   MCP (#474).
+- A trap's instance is no longer a scalar's number: MikroTik's `mtxrTemperatureException` carries
+  `mtxrHlTemperature.0 = 810` (81.0 °C), and each temperature opened a new alarm no trap clears; it
+  is now one alarm per device. A scalar's text and a table column's value still identify (#476).
 - `test_the_search_runs_out_of_process_and_never_blocks_a_tick` measured wall time and failed a
   loaded CI runner at 0.53 s; it now measures how long a tick holds the event loop, against a fit
   big enough (4.7 s inline) to tell a fault from a slow host.

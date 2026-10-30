@@ -444,7 +444,7 @@ UI_HASHES: dict[str, str] = {
     "app/views/parts/capgrid.js": (
         "d169361f4ffa0d98c5e9a9cfacea71d1ef6c17089c19de048b57e74003f4baf3"
     ),
-    "app/views/parts/card.js": "ed2ab30a35c804f044b4c428ad69d229caccd4ac6582f180b823fa7d0ab055be",
+    "app/views/parts/card.js": "b61bd4e3c81c2c5e84d4a27b15d94b9f9c82c74e13e344628b034134a1a8a211",
     "app/views/parts/caseacts.js": (
         "bb7a6f7ed2c22c252830be556f4a0f3e229cdf3bce8b6285d0fabeb373bf986a"
     ),
@@ -458,7 +458,7 @@ UI_HASHES: dict[str, str] = {
         "69c382c1f3a18135b49bb8916865647689ebd9d8721ce930c8035c3b41a99c63"
     ),
     "app/views/parts/casefeed.js": (
-        "9b4e8ec0369b8a84f5730b37734c8729831e6640891b7aa6cf7361e346f870d2"
+        "cac9f9d3503ee2f8cba10b31992f8fe51867a469ef7207d4e09a9bc73bd651bb"
     ),
     "app/views/parts/caseform.js": (
         "b0b2631da0acb7f18053cbb5a99f271e077394b02f487a617ea210a1192e21ad"
@@ -560,7 +560,7 @@ UI_HASHES: dict[str, str] = {
     ),
     "app/views/parts/pulse.js": "91658b65ace8f128a65367a16017015fc457cc84eea7f671d7e2d8372dc04d3f",
     "app/views/parts/restructure.js": (
-        "4503c387354793e89fdbed6a539538b65daed76d3ddfd720e917f8ea55ebec49"
+        "d2f47178f96665ec0437ae36e969b097ac1254e5adc7f4740f09e639df29b54e"
     ),
     "app/views/parts/retention.js": (
         "62ca72d9e442b7159b1823e5dac84b3c97c0cbccda364a6ed9e2501682918168"
@@ -700,12 +700,12 @@ UI_SIZES: dict[str, int] = {
     "app/views/parts/autonomy.js": 10_549,
     "app/views/parts/bulkclear.js": 3_374,
     "app/views/parts/capgrid.js": 6_766,
-    "app/views/parts/card.js": 9_640,
+    "app/views/parts/card.js": 9_710,
     "app/views/parts/caseacts.js": 6_406,
     "app/views/parts/caseassign.js": 5_930,
     "app/views/parts/caseclock.js": 2_590,
     "app/views/parts/casedetail.js": 11_495,
-    "app/views/parts/casefeed.js": 6_344,
+    "app/views/parts/casefeed.js": 6_893,
     "app/views/parts/caseform.js": 9_592,
     "app/views/parts/casemilestones.js": 4_913,
     "app/views/parts/circuitedit.js": 8_338,
@@ -749,7 +749,7 @@ UI_SIZES: dict[str, int] = {
     "app/views/parts/people.js": 14_288,
     "app/views/parts/pipeline.js": 9_526,
     "app/views/parts/pulse.js": 5_701,
-    "app/views/parts/restructure.js": 13_626,
+    "app/views/parts/restructure.js": 13_682,
     "app/views/parts/retention.js": 5_092,
     "app/views/parts/roles.js": 4_973,
     "app/views/parts/scopeexamples.js": 3_471,
