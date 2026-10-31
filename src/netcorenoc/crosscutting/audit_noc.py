@@ -33,6 +33,7 @@ NOC_ACTIONS: frozenset[str] = frozenset(
         "noc.case.status",
         "noc.case.resolve",
         "noc.case.post",
+        "noc.case.send_update",
         # The executor and playbooks (ADRs #462, #463): every act on a device — by an agent's
         # lease or by a playbook — with what kind of act, how it ended, never the command's
         # output; who stored or changed a playbook; and how each run ended.

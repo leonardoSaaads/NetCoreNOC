@@ -21,6 +21,7 @@ from collections.abc import Mapping
 from typing import TYPE_CHECKING, Any
 
 from netcorenoc.engine.noc import case_ops
+from netcorenoc.engine.noc.agents import WORKING
 from netcorenoc.engine.noc.case_ops import Actor
 from netcorenoc.engine.noc.cases import CaseError
 
@@ -28,9 +29,6 @@ if TYPE_CHECKING:
     from netcorenoc.store import Store
 
 __all__ = ["WORKING", "assign", "escalate", "pick_entry", "tier_label", "with_people"]
-
-#: An agent who can still be given work.
-WORKING = frozenset({"idle", "running", "error"})
 
 
 async def assign(

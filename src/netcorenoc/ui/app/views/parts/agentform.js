@@ -82,10 +82,18 @@ function choices(pairs, value) {
   return list.map(([v, label]) => html`<option key=${v} value=${v}>${label}</option>`);
 }
 
+/** A new hire starts ready to work (ADR #478): told its job in the server's words, and the entry
+ * point while the NOC has none — with no entry point, no case from the queue reaches an agent. */
+function firstHire({ agent, agents, catalogue }) {
+  if (agent) return {};
+  const live = (agents || []).filter((a) => a.status !== "terminated");
+  return { instructions: catalogue.default_instructions || "", entry: !live.some((a) => a.entry) };
+}
+
 export class AgentForm extends Component {
   constructor(props) {
     super(props);
-    this.state = { ...initial(props.agent), busy: false, error: null };
+    this.state = { ...initial(props.agent), ...firstHire(props), busy: false, error: null };
   }
 
   set(key) {
@@ -159,6 +167,9 @@ export class AgentForm extends Component {
         </div>
         <label class="check-row"><input type="checkbox" checked=${st.entry} onChange=${this.set("entry")} />
           Entry point: cases from the queue start with it, at Tier 1</label>
+        ${!st.entry && !(agents || []).some((a) => a.entry && a.status !== "terminated" && (!agent || a.id !== agent.id))
+          ? html`<p class="warnbox">No agent is an entry point: cases from the queue will wait for a
+            person. Tick it on at least one agent.</p>` : null}
       </fieldset>
 
       <fieldset class="form-section"><legend>How it runs</legend>
@@ -172,7 +183,7 @@ export class AgentForm extends Component {
         ${this.field(`${p}-instructions`, "Instructions", html`<textarea id=${`${p}-instructions`} rows="10"
           maxlength="65536" value=${st.instructions} onInput=${this.set("instructions")}
           placeholder="Which cases are yours, how you work one, what you check first, when you escalate."></textarea>`,
-          "Served to it as the MCP prompt noc_agent, before how the NOC works here.", true)}
+          "Prefilled with a first-line engineer's job; yours to change. Served to it as the MCP prompt noc_agent, before how the NOC works here.", true)}
         ${this.field(`${p}-caps`, "What it can do", html`<textarea id=${`${p}-caps`} rows="3" maxlength="2000"
           value=${st.capabilities} onInput=${this.set("capabilities")}
           placeholder="Ciena SAOS and MikroTik RouterOS; optical power levels; LOS and link flaps."></textarea>`,

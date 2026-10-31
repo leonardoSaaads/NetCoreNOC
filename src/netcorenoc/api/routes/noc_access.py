@@ -25,7 +25,7 @@ from netcorenoc.api.context import AppContext
 from netcorenoc.api.declare import DeclaredRoutes
 from netcorenoc.api.models_noc import GrantIn, IntrospectIn, LeaseIn
 from netcorenoc.crosscutting import auth
-from netcorenoc.engine.noc import lease
+from netcorenoc.engine.noc import kinds, lease
 
 #: The live leases one agent may hold at once: enough for a diagnosis across a dozen devices.
 MAX_LIVE_LEASES = 20
@@ -48,6 +48,13 @@ def _summary(row: Mapping[str, Any]) -> dict[str, Any]:
             "version",
         )
     }
+
+
+def _device(row: Mapping[str, Any]) -> bool:
+    """A credential an agent may lease: switched on for agents, and for a device. An AI provider's
+    key is the appliance's to call the model with (ADR #471), never a device's (ADR #478)."""
+    known = kinds.KINDS.get(str(row["kind"]))
+    return bool(row["agent_access"]) and known is not None and known.group != "ai"
 
 
 def register(app: FastAPI, ctx: AppContext) -> None:
@@ -175,7 +182,7 @@ def register(app: FastAPI, ctx: AppContext) -> None:
             return {"agent": False, "explanation": gate.NOT_AGENT, "secrets": [], "leases": []}
         assert principal.ref is not None
         async with store.reading():
-            rows = [r for r in await store.noc_list_secrets() if r["agent_access"]]
+            rows = [r for r in await store.noc_list_secrets() if _device(r)]
             leases = await store.noc_leases(subject_ref=principal.ref, limit=50)
         return {
             "agent": True,
@@ -198,7 +205,7 @@ def register(app: FastAPI, ctx: AppContext) -> None:
         async with store.reading():
             row = await store.noc_get_secret(secret_id)
             live = await store.noc_live_leases(principal.ref, now)
-        if row is None or not row["agent_access"]:
+        if row is None or not _device(row):
             # A credential agents may not use is indistinguishable from one that does not exist.
             raise HTTPException(status_code=404, detail="no such credential for agents")
         if live >= MAX_LIVE_LEASES:

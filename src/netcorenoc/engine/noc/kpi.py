@@ -10,7 +10,9 @@ Two clocks run on every **cycle** — one entry of a case into the NOC queue (`n
 
 One clock runs on the **case** (ADR #464): **Restore** — the handbook's Time to Resolve/Restore,
 from the situation opening to the case reaching `validate` or `resolved`: 4 hours critical, 24
-hours major, 72 hours minor, at the case's current priority.
+hours major, 72 hours minor, at the case's current priority. It **pauses** while the case is
+pending (ADR #478): waiting on the customer, a provider or access to the device is time nothing the
+NOC does can restore the service in, so it is not charged (`noc_case.paused_s`, `paused_at`).
 
 A cycle that ends without a take — the situation cleared, automation resolved it — is
 **withdrawn**: no clock is charged for it.
@@ -109,9 +111,17 @@ def document(cycle: Mapping[str, Any], now: float) -> dict[str, Any] | None:
 
 def restore(case: Mapping[str, Any], now: float) -> dict[str, Any]:
     """The case's restore clock: running or late until the case first reached `validate` or
-    `resolved` (`restored_at`), then met or missed."""
+    `resolved` (`restored_at`), then met or missed — less the time it spent pending, and
+    ``paused`` while it is. Its due time moves on by every wait."""
     target = RESTORE_TARGET_S[str(case["priority"])]
-    return _clock(float(case["opened_at"]), _f(case.get("restored_at")), now, target)
+    stop, since = _f(case.get("restored_at")), _f(case.get("paused_at"))
+    ongoing = max(0.0, now - since) if since is not None and stop is None else None
+    paused = float(case.get("paused_s") or 0.0) + (ongoing or 0.0)
+    out = _clock(float(case["opened_at"]) + paused, stop, now, target)
+    out["paused_s"] = round(paused, 3)
+    if ongoing is not None:
+        out["state"] = "paused"
+    return out
 
 
 def cadence(case: Mapping[str, Any], now: float) -> dict[str, Any] | None:

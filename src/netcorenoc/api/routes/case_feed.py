@@ -8,6 +8,9 @@ Posting is `cases.post`, which a viewer holds: the customer's side of the conver
 cannot read `internal` posts cannot write one either. **A person's post on a pending case sends
 it back to the NOC queue** in the same transaction — the customer has answered, and nobody should
 have to wait for the next update to read it.
+
+**Sending the customer update** (ADR #478) is `cases.work`: the saved update, complete, posted to
+everyone who may read the case — the customer included — and an event saying who sent it.
 """
 
 from __future__ import annotations
@@ -20,9 +23,10 @@ from fastapi import Depends, FastAPI, HTTPException, Request
 from netcorenoc.api.case_view import actor_of, post_view, reader_of
 from netcorenoc.api.context import AppContext
 from netcorenoc.api.declare import DeclaredRoutes
-from netcorenoc.api.models_cases import PostIn
+from netcorenoc.api.models_cases import PostIn, SendUpdateIn
 from netcorenoc.crosscutting import auth, shaping
 from netcorenoc.engine.noc import case_ops, feed
+from netcorenoc.engine.noc.cases import CaseError
 
 NO_SUCH = "no such case"
 #: The newest posts read before filtering by visibility; a page is cut from what is visible.
@@ -117,6 +121,42 @@ def register(app: FastAPI, ctx: AppContext) -> None:
                 },
             )
         return {"id": post_id, "requeued": requeued}
+
+    @route.post("/api/noc/cases/{sid}/customer-update", operation_id="noc_send_customer_update")
+    async def send_update(
+        sid: int,
+        request: Request,
+        body: SendUpdateIn | None = None,
+        principal: auth.Principal = Depends(security),
+    ) -> dict[str, Any]:
+        """Send the saved customer update to the customer: a post everyone who may read the case
+        reads. Refused while the update is incomplete; then set the case pending on whom it
+        waits."""
+        await visible_case(sid, await scope_for(principal))
+        actor = actor_of(principal)
+        async with write_txn():
+            case = await store.noc_case(sid)
+            assert case is not None
+            version = body.version if body is not None else None
+            if version is not None and version != case["version"]:
+                raise HTTPException(
+                    status_code=409,
+                    detail=f"the case changed since you read it (now version {case['version']})",
+                )
+            try:
+                post_id = await case_ops.send_update(store, case, actor, time.time())
+            except CaseError as exc:
+                raise HTTPException(status_code=exc.status, detail=str(exc)) from exc
+            await audit_row(
+                request,
+                principal,
+                "noc.case.send_update",
+                "ok",
+                object_type="noc_case",
+                object_id=str(sid),
+                details={"post": post_id, "version": case["version"]},
+            )
+        return {"id": post_id, "sent": True, "email": False}
 
     @route.get("/api/noc/people", operation_id="noc_list_people")
     async def people(principal: auth.Principal = Depends(security)) -> dict[str, Any]:

@@ -18,7 +18,8 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
-from netcorenoc.engine.noc import cases
+from netcorenoc.engine.noc import cases, feed
+from netcorenoc.engine.noc.agents import WORKING
 from netcorenoc.engine.noc.cases import CaseError
 
 if TYPE_CHECKING:
@@ -37,6 +38,7 @@ __all__ = [
     "reprioritize",
     "requeue",
     "resolve",
+    "send_update",
     "take",
     "update",
     "validate",
@@ -162,6 +164,24 @@ async def update(
     changed += ["an organization's executive summary"] * bool(summaries)
     await event(store, sid, f"{actor.name} updated the {', '.join(changed)}.", now, actor)
     return merged
+
+
+async def send_update(store: Store, case: Mapping[str, Any], actor: Actor, now: float) -> int:
+    """Send the customer update (ADR #478): the saved update, complete, posted to everyone who may
+    read the case — the customer included (`feed.customer_update`). Whoever works cases may send
+    it, as whoever works cases keeps it (ADR #470). Returns the post."""
+    sid = int(case["situation_id"])
+    if str(case["status"]) == "closed":
+        raise CaseError("a closed case sends nothing; its feed still takes posts")
+    lacking = cases.missing(case, "pending_customer", now=now)
+    if lacking:
+        raise CaseError(f"complete the customer update first: {', '.join(lacking)}")
+    body = feed.customer_update(case)
+    post = await store.noc_post(
+        sid, actor.author(), visibility="all", kind="post", body=body, now=now
+    )
+    await event(store, sid, f"{actor.name} sent the customer update to the customer.", now, actor)
+    return post
 
 
 async def pend(
@@ -309,13 +329,32 @@ async def dispatch(store: Store, sid: int, now: float, *, automate: bool = False
 
 
 async def requeue(store: Store, sid: int, reason: str, now: float, *, note: str = "") -> None:
-    """Back to the NOC queue — a pending case's next update came, a person posted on it, or
-    automation did not conclude."""
+    """Back to the NOC queue — a pending case's next update came, a person posted on it, an alarm
+    came back, access to its device was granted, or automation did not conclude. A case still
+    with an agent goes back to that agent, woken (:func:`_back_to_agent`)."""
     await reprioritize(store, sid, now)
     await store.noc_case_enqueue(sid, reason, now)
-    await event(
-        store, sid, f"Back in the NOC queue: {cases.CYCLE_REASONS[reason]}. {note}".strip(), now
-    )
+    back = await _back_to_agent(store, sid, now)
+    text = f"Back in the NOC queue: {cases.CYCLE_REASONS[reason]}. {note} {back}"
+    await event(store, sid, " ".join(text.split()), now)
+
+
+async def _back_to_agent(store: Store, sid: int, now: float) -> str:
+    """The agent a requeued case is still with works it again: its escalation clock starts over
+    — the wait was not its delay — and it is woken, as on an assignment. Without this a case that
+    came back slept with its agent until the climb sent it up a tier at once (ADR #478). A paused
+    or retired agent is the climb's to replace, and a case with the people stays theirs."""
+    case = await store.noc_case(sid)
+    if case is None or case["agent_id"] is None or case["with_people"]:
+        return ""
+    agent = await store.noc_agent(int(case["agent_id"]))
+    if agent is None or agent["status"] not in WORKING:
+        return ""
+    await store.noc_case_assign(sid, int(agent["id"]), now)
+    if agent["wake_on_assignment"] and agent["adapter"] != "external":
+        await store.noc_wake(int(agent["id"]), "assignment", sid, "system", now)
+        return f"{agent['name']} is woken to work it again."
+    return f"It is with {agent['name']} again."
 
 
 async def validate(store: Store, sid: int, now: float, why: str) -> None:

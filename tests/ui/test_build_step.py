@@ -407,7 +407,7 @@ UI_HASHES: dict[str, str] = {
     "app/views/labelling.js": "9eb665eb2996d3d98671a1d8e24feecead7a8dc3f8abd8b7c297e2bbec1443c0",
     "app/views/maintenance.js": "6f7425b764581a59176d8fb1846a7eb1d1e728d001e551e97c6277b6a5985d6f",
     "app/views/nockpis.js": "4cc9d938d79b413cd776d75278e9dacccb6a1c72ceca1aac807d863235337dfe",
-    "app/views/nocoverview.js": "f3e7228ac0916df4d13641e574f88720a025c90832d60913429cb18e37e024fa",
+    "app/views/nocoverview.js": "097c82bcd166fec49941657d862238c1219db1a4f1a2faf80411689317b2fe3e",
     "app/views/org.js": "2fa3ebd050ad0550894ce8691905065546d625343d9c69e36a5a2c9d4391bb1e",
     "app/views/overview.js": "a4fe18771a12c70d56eddfc03ba8f41d19f30c821f2cf6059dad910a8ab61660",
     "app/views/parts/agentadmin.js": (
@@ -420,7 +420,7 @@ UI_HASHES: dict[str, str] = {
         "7640b3184e1b72d4a5b00fa3059a7fd1648fbe9a78c2e699ce25e816ebaaadb0"
     ),
     "app/views/parts/agentform.js": (
-        "e5c4167e197c711985fac6ac6133f88c451676eda82f359c6a13923f9339ff75"
+        "71747977aa5de71faffe22ffbae4fd083c035a1e41a7c550e0fb8ce2589e8e41"
     ),
     "app/views/parts/agentkey.js": (
         "8d55dfb306c6c354892b35aa8e4f484f82ce0a4cd9b31f04a4b6c33979cefd7e"
@@ -432,7 +432,7 @@ UI_HASHES: dict[str, str] = {
         "35ad12a6983542b026e87560fee493b83479175c923e5a5afed0694e42039e71"
     ),
     "app/views/parts/aiproviders.js": (
-        "c0637a790739ac367673a1906f2930f035f1ece4f251a96db2b9476ecabd928f"
+        "531825e505377bc14cfbf8d676a7f8ea0e19388a833826c38f34757911b2aee4"
     ),
     "app/views/parts/apiref.js": "a9e18e1d0b0afe816f38244a9ddaefadb4ca31488376bcd9d2e083f04cd075c5",
     "app/views/parts/autonomy.js": (
@@ -452,19 +452,19 @@ UI_HASHES: dict[str, str] = {
         "add5c88ae5ad8b6ccdd2c8c443d4d905917605761d3c5363578b8770c69f76c5"
     ),
     "app/views/parts/caseclock.js": (
-        "58417271f906bc78851944921a7de9496921046c2103c4eddc280e7b19b560c5"
+        "9bce26e4e9102cbcb80419deac7c44142b17a01e4725d2896e25c8b415b2fd6f"
     ),
     "app/views/parts/casedetail.js": (
-        "69c382c1f3a18135b49bb8916865647689ebd9d8721ce930c8035c3b41a99c63"
+        "9a7f374e0599cab4e758786b221c00c9d0ae6c6283009114eae7703e8ea9b749"
     ),
     "app/views/parts/casefeed.js": (
         "cac9f9d3503ee2f8cba10b31992f8fe51867a469ef7207d4e09a9bc73bd651bb"
     ),
     "app/views/parts/caseform.js": (
-        "b0b2631da0acb7f18053cbb5a99f271e077394b02f487a617ea210a1192e21ad"
+        "a5bbaead197388d3ca7c8bbd28cf1d58c7613dd3ced7bea202c40afdb48ab9a4"
     ),
     "app/views/parts/casemilestones.js": (
-        "4cf958ea777df7c25c3b52d73e7bda6f7c4852f0df6dd5b1ae9972cea1f5b417"
+        "40dcd9b26243c8bfb3069b91fd89b55a2357f1168ce8002b22246c6dec3e3767"
     ),
     "app/views/parts/circuitedit.js": (
         "2acd46f434e7aeedd7f6ce97001fa33c740cdea4d08ffb3949e586c38f05e907"
@@ -632,7 +632,7 @@ UI_HASHES: dict[str, str] = {
     "favicon.svg": "c11ec68d389057cc4d4145b3cdf77f3ebfec40150e9f409ff35a7cf419f524b7",
     "index.html": "d057123e5cfc1ab497db465df016c598e38b049fbde26ecc9ee868eb4899fad7",
     "login-bg.svg": "5f677f3371a2828c8d21668cd83381c105ccdc1780a66dc09fc6f6bc19d211d6",
-    "style.css": "5af2130c93aea57bae0883d2b697f20ca22bf49c6d45ec7ca712436d03e90340",
+    "style.css": "e804d5ad97a020009881925baf8217b0afc16b0bdbc90afac5e5107442bd69f6",
     "vendor/CHECKSUMS.txt": "408939056400f45a215cb576dc324bfc64f1b6bfae2d1b45bfce061b508128e8",
     "vendor/htm-3.1.1.module.js": (
         "ab33dd3f38059b9be4d5f5350128eefb2356639c4e0bbe9d9e8b3ba75847e9e4"
@@ -691,17 +691,17 @@ UI_SIZES: dict[str, int] = {
     "app/views/labelling.js": 6_333,
     "app/views/maintenance.js": 10_161,
     "app/views/nockpis.js": 4_770,
-    "app/views/nocoverview.js": 12_994,
+    "app/views/nocoverview.js": 14_555,
     "app/views/org.js": 12_125,
     "app/views/overview.js": 11_191,
     "app/views/parts/agentadmin.js": 8_051,
     "app/views/parts/agentdash.js": 10_083,
     "app/views/parts/agentdetail.js": 9_427,
-    "app/views/parts/agentform.js": 11_592,
+    "app/views/parts/agentform.js": 12_410,
     "app/views/parts/agentkey.js": 4_339,
     "app/views/parts/agentrun.js": 10_518,
     "app/views/parts/agentruns.js": 4_073,
-    "app/views/parts/aiproviders.js": 12_063,
+    "app/views/parts/aiproviders.js": 12_757,
     "app/views/parts/apiref.js": 8_844,
     "app/views/parts/autonomy.js": 10_549,
     "app/views/parts/bulkclear.js": 3_374,
@@ -709,11 +709,11 @@ UI_SIZES: dict[str, int] = {
     "app/views/parts/card.js": 9_710,
     "app/views/parts/caseacts.js": 6_406,
     "app/views/parts/caseassign.js": 5_930,
-    "app/views/parts/caseclock.js": 2_590,
-    "app/views/parts/casedetail.js": 11_495,
+    "app/views/parts/caseclock.js": 2_732,
+    "app/views/parts/casedetail.js": 11_973,
     "app/views/parts/casefeed.js": 6_893,
-    "app/views/parts/caseform.js": 9_592,
-    "app/views/parts/casemilestones.js": 4_913,
+    "app/views/parts/caseform.js": 10_114,
+    "app/views/parts/casemilestones.js": 5_153,
     "app/views/parts/circuitedit.js": 8_338,
     "app/views/parts/circuits.js": 13_650,
     "app/views/parts/correlation.js": 7_762,
@@ -790,7 +790,7 @@ UI_SIZES: dict[str, int] = {
     "favicon.svg": 608,
     "index.html": 1_549,
     "login-bg.svg": 18_884,
-    "style.css": 261_212,
+    "style.css": 262_027,
     "vendor/CHECKSUMS.txt": 2_016,
     "vendor/htm-3.1.1.module.js": 1_207,
     "vendor/htm.LICENSE": 11_341,

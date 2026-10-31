@@ -14,6 +14,7 @@ MIGRATIONS = Path(__file__).resolve().parents[2] / "src/netcorenoc/migrations"
 MIGRATION = (MIGRATIONS / "0034_noc_cases.sql").read_text()
 AGENTS_MIGRATION = (MIGRATIONS / "0037_noc_agents.sql").read_text()
 HEARING_MIGRATION = (MIGRATIONS / "0040_noc_case_hearing.sql").read_text()
+PAUSE_MIGRATION = (MIGRATIONS / "0042_noc_case_pause.sql").read_text()
 
 
 def _check(column: str) -> set[str]:
@@ -30,9 +31,12 @@ def test_the_vocabularies_are_the_databases() -> None:
     assert set(re.findall(r"'([a-z_]+)'", last)) == set(cases.STATUSES)
     assert _check("priority") == set(cases.PRIORITIES)
     assert _check("resolution") == set(cases.RESOLUTIONS)
-    # ADR #467 widened the cycle reasons (0037 replaces the CHECK), and ADR #474 again (0040).
-    assert _check("reason") | {"escalated", "alarm"} == set(cases.CYCLE_REASONS)
+    # ADR #467 widened the cycle reasons (0037 replaces the CHECK), ADR #474 again (0040), and
+    # ADR #478 again (0042: `access`); the last CHECK holds every reason the engine names.
+    assert _check("reason") | {"escalated", "alarm", "access"} == set(cases.CYCLE_REASONS)
     assert "'escalated'));" in AGENTS_MIGRATION and "'escalated', 'alarm'));" in HEARING_MIGRATION
+    last_reason = PAUSE_MIGRATION.split("ADD CONSTRAINT noc_case_cycle_reason_check")[1]
+    assert set(re.findall(r"'([a-z_]+)'", last_reason)) == set(cases.CYCLE_REASONS)
     assert _check("visibility") == set(feed.VISIBILITIES)
     for name, (_label, cap) in cases.FIELD_LIMITS.items():
         assert f"length({name}) <= {cap}" in MIGRATION, name

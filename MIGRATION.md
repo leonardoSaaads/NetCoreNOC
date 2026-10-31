@@ -80,6 +80,18 @@ Two rules that have held since v0.1.0 and are not going to change:
 
 *(This table has no rows for v0.17.0 or v0.18.0: neither release wrote one, and inventing upgrade notes for a release somebody else built would be describing an upgrade nobody tested.)*
 
+## Unreleased — agents that work a case with nothing typed (#478)
+
+Nothing to do: migration **0042** (the time a case spent pending, the cycle reason `access`)
+applies at start and is additive; a case pending at the upgrade starts its pause then. Behaviour you
+will notice: a case back in the queue goes back to its agent, woken, and its escalation time starts
+over; the restore clock reads **paused** while a case is pending and its due time moves on by the
+wait; `GET /api/noc/agent` and the agent lease route leave out AI provider keys. **Compose**: the
+`netcorenoc` service gains `extra_hosts: host.docker.internal:host-gateway` — a local Ollama on the
+Docker host is `host.docker.internal` under *Secrets → AI providers → Ollama → Where it runs*
+(NetCoreNOC does not read `OLLAMA_HOST`). On NixOS, let the Docker bridge reach port 11434 (for
+example `networking.firewall.trustedInterfaces = [ "docker0" ];` or the compose network's bridge).
+
 ## Unreleased — the owner's adjustments (#477)
 
 Nothing to do: migration **0041** (when a customer's service ended, and who ended it) applies at

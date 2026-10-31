@@ -106,6 +106,7 @@ CYCLE_REASONS: dict[str, str] = {
     "released": "Its owner put it back",
     "escalated": "Escalated past the agents to the NOC team",
     "alarm": "An alarm of its situation raised again or joined while it was pending",
+    "access": "The agents were given access to one of its devices",
 }
 
 #: How a case came to be resolved.

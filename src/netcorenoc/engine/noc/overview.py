@@ -27,10 +27,11 @@ from collections.abc import Iterable, Mapping, Sequence
 from typing import Any
 
 from netcorenoc.engine.noc import health, kpi
+from netcorenoc.engine.noc.agents import WORKING
 from netcorenoc.engine.noc.cases import PENDING, PRIORITIES
 from netcorenoc.engine.noc.kinds import KINDS
 
-__all__ = ["LEVELS", "STATES", "level_of", "reachability", "state_of", "summary"]
+__all__ = ["LEVELS", "STATES", "level_of", "reachability", "setup", "state_of", "summary"]
 
 #: The three states the overview counts, each a set of case statuses.
 STATES: dict[str, frozenset[str]] = {
@@ -214,3 +215,21 @@ def reachability(
         "answering": sum(1 for e in rows if e["state"] == "up"),
         "trouble": [e for e in rows if e["state"] != "up"],
     }
+
+
+def setup(
+    agents: Iterable[Mapping[str, Any]], credentials: Iterable[Mapping[str, Any]]
+) -> dict[str, Any]:
+    """What the NOC still lacks for its agents to work a case on their own (ADR #478): an AI
+    provider's key agents may use, an agent, an entry point that can work (without one no case
+    from the queue reaches an agent), and a device credential agents may lease. The overview shows
+    the steps left; ``ready`` when none is."""
+    live = [a for a in agents if a["status"] != "terminated"]
+    usable = [c for c in credentials if c["agent_access"] and str(c["kind"]) in KINDS]
+    steps = {
+        "ai_provider": any(KINDS[str(c["kind"])].group == "ai" for c in usable),
+        "agent": bool(live),
+        "entry": any(a["entry"] and a["status"] in WORKING for a in live),
+        "device_access": any(KINDS[str(c["kind"])].group != "ai" for c in usable),
+    }
+    return {**steps, "ready": all(steps.values())}

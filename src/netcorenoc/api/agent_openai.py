@@ -20,9 +20,11 @@ import json
 import time
 from collections.abc import Awaitable, Callable, Mapping
 from typing import Any
+from urllib.parse import urlsplit
 
 from netcorenoc.api.agent_tools import (
     Usage,
+    briefing,
     call_tool,
     first_message,
     open_keys,
@@ -30,7 +32,7 @@ from netcorenoc.api.agent_tools import (
     system_prompt,
     toolbox,
 )
-from netcorenoc.engine.noc import llm_http
+from netcorenoc.engine.noc import llm_http, providers
 from netcorenoc.engine.noc.agent_loop import Outcome, Runner
 from netcorenoc.engine.noc.llm_http import ProviderCallError
 from netcorenoc.engine.noc.providers import Provider
@@ -71,8 +73,7 @@ def openai_runner(app: Any, store: Store, *, chat: Chat = llm_http.chat) -> Runn
         except PermissionError as exc:
             return Outcome("failed", error=str(exc))
         headers, tools = await toolbox(app, keys.token)
-        async with store.reading():
-            case = await store.noc_case(int(run["situation_id"])) if run["situation_id"] else None
+        case = await briefing(store, run)
         messages: list[dict[str, Any]] = [
             {"role": "system", "content": system_prompt(agent)},
             {"role": "user", "content": first_message(run, case)},
@@ -103,7 +104,9 @@ def openai_runner(app: Any, store: Store, *, chat: Chat = llm_http.chat) -> Runn
                     keys.provider, keys.base_url, keys.api_key, payload, timeout=left
                 )
             except ProviderCallError as exc:
-                return ended("failed", error=f"{keys.provider.label}: {exc}"[:500])
+                # ADR #478: a local Ollama at 127.0.0.1, called from a container, says why.
+                hint = providers.loopback_hint(urlsplit(keys.base_url).hostname or "")
+                return ended("failed", error=f"{keys.provider.label}: {exc}{hint}"[:500])
             usage = answer.get("usage") or {}
             used.fresh += int(usage.get("prompt_tokens") or 0)
             used.output += int(usage.get("completion_tokens") or 0)

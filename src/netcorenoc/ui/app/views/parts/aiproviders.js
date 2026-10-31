@@ -29,8 +29,13 @@ import { providerOf } from "./vaultui.js";
 
 let seq = 0;
 
-function draft(provider) {
-  return { name: provider.label, key: "", host: provider.host, port: String(provider.port),
+/** In a container (ADR #478), 127.0.0.1 is NetCoreNOC's own container: a local Ollama on the host
+ * is `host.docker.internal`, which docker-compose.yml maps to the host. */
+const HOST_FROM_CONTAINER = "host.docker.internal";
+
+function draft(provider, inContainer) {
+  const host = provider.own_host && inContainer ? HOST_FROM_CONTAINER : provider.host;
+  return { name: provider.label, key: "", host, port: String(provider.port),
     scheme: provider.scheme, agents: true, proxy: false };
 }
 
@@ -51,7 +56,7 @@ class Connect extends Component {
     super(props);
     seq += 1;
     this.p = `aik-${seq}`;
-    this.state = { ...draft(props.provider), busy: false, error: null, stored: null };
+    this.state = { ...draft(props.provider, props.inContainer), busy: false, error: null, stored: null };
   }
 
   async submit(event) {
@@ -119,7 +124,10 @@ class Connect extends Component {
       ${provider.own_host ? html`<p class="hint ai-local-hint"><${Icon} name="info" /> On that machine:
         ${" "}<code>ollama serve</code>, then pull a model that can call tools, e.g.${" "}
         <code>ollama pull ${provider.example_model}</code>. To reach it from this appliance, start it with
-        ${" "}<code>OLLAMA_HOST=0.0.0.0</code>.${st.proxy ? null : html`${" "}<button type="button" class="linkish"
+        ${" "}<code>OLLAMA_HOST=0.0.0.0</code>.${this.props.inContainer ? html`${" "}NetCoreNOC runs in a container
+        here: 127.0.0.1 is the container itself, so an Ollama on the same machine is${" "}
+        <code>${HOST_FROM_CONTAINER}</code> (or the machine's LAN address), and its firewall must let the
+        container reach port 11434.` : null}${st.proxy ? null : html`${" "}<button type="button" class="linkish"
           onClick=${() => set({ proxy: true })}>A proxy in front of it asks for a token?</button>`}</p>` : null}
       <label class="check-row"><input type="checkbox" checked=${st.agents}
         onChange=${(e) => this.setState({ agents: e.currentTarget.checked })} />
@@ -183,7 +191,7 @@ export class AiProviders extends Component {
       <ul class="ai-grid">${providers.map((p) => this.card(p, of(p.id)))}</ul>
       ${note ? html`<p class="hint" role="status">${note}</p>` : null}
       ${open ? html`<${Connect} key=${open.id} provider=${open} secondFactor=${data.second_factor}
-        onDone=${(saved, agents) => this.done(saved, agents, open)} onCancel=${() => this.setState({ adding: null })} />` : null}
+        inContainer=${Boolean(data.catalogue.in_container)} onDone=${(saved, agents) => this.done(saved, agents, open)} onCancel=${() => this.setState({ adding: null })} />` : null}
       <h3 class="ai-keys-h">Connected</h3>
       ${keys.length ? html`<div class="table-scroll list-view"><table class="data secrets-table">
         <thead><tr><th scope="col">Status</th><th scope="col">Name</th><th scope="col">Endpoint</th>

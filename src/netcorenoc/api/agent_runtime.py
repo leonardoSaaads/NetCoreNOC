@@ -29,6 +29,7 @@ from typing import TYPE_CHECKING, Any
 from netcorenoc.api import agent_openai
 from netcorenoc.api.agent_tools import (
     Usage,
+    briefing,
     call_tool,
     first_message,
     open_keys,
@@ -77,8 +78,7 @@ def claude_runner(
         except PermissionError as exc:
             return Outcome("failed", error=str(exc))
         headers, tools = await toolbox(app, keys.token)
-        async with store.reading():
-            case = await store.noc_case(int(run["situation_id"])) if run["situation_id"] else None
+        case = await briefing(store, run)
         system = system_prompt(agent)
         messages: list[dict[str, Any]] = [{"role": "user", "content": first_message(run, case)}]
         definitions = [

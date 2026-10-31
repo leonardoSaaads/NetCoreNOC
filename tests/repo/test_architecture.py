@@ -703,6 +703,7 @@ ROUTE_ORDER_BASELINE: list[tuple[str, str]] = [
     ("GET", "/api/noc/overview"),
     ("GET", "/api/noc/cases/{sid}/feed"),
     ("POST", "/api/noc/cases/{sid}/feed"),
+    ("POST", "/api/noc/cases/{sid}/customer-update"),
     ("GET", "/api/noc/people"),
     ("POST", "/api/noc/exec"),
     ("POST", "/api/noc/secrets/{secret_id}/hostkey"),
@@ -870,7 +871,9 @@ async def test_the_api_route_order_is_unchanged_by_the_ui_rewrite(store: Store) 
     # first; every other is a concrete segment below its id, and `/api/noc/circuits` is new.
     # **ADR #477: 187 -> 188.** `POST …/customers/{customer_id}/end`, a concrete segment below
     # the customer's id, shadowing nothing.
-    assert len(live) == 188, (
+    # **ADR #478: 188 -> 189.** `POST …/cases/{sid}/customer-update`, a concrete segment below the
+    # case's id, shadowing nothing.
+    assert len(live) == 189, (
         f"the /api surface is {len(live)} pairs; v0.16.0 adds exactly five, v0.16.2 exactly one, "
         f"v0.16.3 exactly one, v0.16.5 exactly one — `POST /api/alarms/clear` — v0.18.0 exactly "
         f"one, `GET /api/correlation`, and v0.21.0 exactly thirteen for maintenance windows, "
@@ -1518,8 +1521,8 @@ def test_the_queue_put_on_the_hot_path_is_non_blocking() -> None:
 #: `engine/noc/` `commands`, `executor`, `playbook` and `runbook`, `store/noc_playbooks.py`,
 #: migration `0035_noc_automation.sql`, the `noc_exec` and `playbooks` routes, and the
 #: `views/playbooks` console module.
-SRC_TREE_DIGEST = "4f84b5e9f9e7639e6d7e81cce761a9ead16d054e42fcff8d48ff749f6ca59635"
-SRC_FILE_COUNT = 501
+SRC_TREE_DIGEST = "aa54b8439eb433762951fa7c94706964735c70bd5964999c458869cd584739a0"
+SRC_FILE_COUNT = 503
 SRC_VERSION_FILE = "src/netcorenoc/__init__.py"
 
 

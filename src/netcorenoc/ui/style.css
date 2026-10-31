@@ -3673,6 +3673,16 @@ table.secrets-table td { vertical-align: middle; }
 .nov-grid { display: grid; grid-template-columns: minmax(0, 3fr) minmax(0, 2fr); gap: var(--space-3); align-items: start; }
 .nov-col-wide, .nov-col { min-width: 0; display: grid; gap: var(--space-3); align-content: start; }
 .nov-panel { margin: 0; }
+/* ADR #478: what the NOC still lacks for its agents to work — done or to do, in words. */
+.nov-setup { margin: 0 0 var(--space-3); border-left: 3px solid var(--accent); }
+.nov-setup h3 { margin: 0 0 var(--space-2); font-size: var(--fs-lg); }
+.nov-setup-list { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--space-2); }
+.nov-setup-step { display: flex; gap: var(--space-2); align-items: flex-start; line-height: 1.45; }
+.nov-setup-mark { flex: none; display: inline-flex; align-items: center; justify-content: center;
+  width: 22px; height: 22px; border-radius: 50%;
+  background: color-mix(in srgb, var(--accent) 16%, transparent); color: var(--accent); }
+.nov-setup-step.done .nov-setup-mark { background: var(--quiet-bg); color: var(--quiet); }
+.nov-setup-step.done b { font-weight: 500; }
 .nov-panel h3 { margin: 0 0 var(--space-1); font-size: var(--fs-lg); }
 .nov-sub { margin: 0 0 var(--space-2); font-size: var(--fs-sm); }
 .nov-reach-alert { border-color: var(--alarm); box-shadow: inset 3px 0 0 var(--alarm); }

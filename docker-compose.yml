@@ -253,6 +253,12 @@ services:
     networks:
       - backend
       - default
+    # A local Ollama on this machine (ADR #478): inside the container 127.0.0.1 is the container
+    # itself, so Secrets -> AI providers -> Ollama points at host.docker.internal, which this maps
+    # to the host (Docker 20.10+). Ollama must listen beyond loopback (OLLAMA_HOST=0.0.0.0) and the
+    # host's firewall must let the Docker bridge reach port 11434.
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
 
     # UDP 162 = SNMP trap listener; 8080 = web UI + API. To avoid binding a privileged port,
     # set NETCORENOC_TRAP_PORT=1162 in .env: the mapping below and the process both follow it

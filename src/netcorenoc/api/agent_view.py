@@ -15,6 +15,7 @@ from collections.abc import Mapping
 from datetime import UTC, datetime
 from typing import Any
 
+from netcorenoc.api import mcp
 from netcorenoc.engine.noc import agents, providers
 
 __all__ = ["agent_view", "catalogue", "org_tree", "run_view"]
@@ -38,6 +39,8 @@ def catalogue() -> dict[str, Any]:
         "escalate_every_s": agents.ESCALATE_EVERY_S,
         # ADR #471: the AI providers an agent the appliance runs may think with.
         "providers": providers.describe(),
+        # ADR #478: what a new agent is told until its admin says otherwise.
+        "default_instructions": mcp.DEFAULT_INSTRUCTIONS,
     }
 
 

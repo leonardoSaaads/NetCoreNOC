@@ -31,10 +31,15 @@ const REFRESH_MS = 15000;
 function guidance(c) {
   const take = c.clocks && c.clocks.take;
   if (c.status === "auto") return "Automated checks are running a playbook on it before the queue.";
+  // ADR #478: a case waiting on the NOC's own access to a device returns the moment it is given.
+  if (c.status === "pending_connectivity" || c.status === "pending_device_access") {
+    return "The NOC cannot reach its device yet; the restore clock is paused. It returns to its agent the "
+      + "moment a credential for the device is switched on for agents (Secrets), at its next update, or when someone posts.";
+  }
   return {
     queue: `Take it${take ? ` within ${span(take.target_s)} of entering the queue` : ""}: the take is the NOC's first promise.`,
     working: "Fill the customer update within 30 minutes of the take, and say when the next one comes.",
-    pending: "Waiting on someone outside the NOC. It returns to the queue at its next update — sooner if someone posts.",
+    pending: "Waiting on someone outside the NOC; the restore clock is paused. It returns to the queue at its next update — sooner if someone posts.",
     validate: "Its alarms cleared. Confirm the service is restored, then resolve it.",
     resolved: "It closes after a day with nothing new; a new alarm reopens it.",
     closed: "Closed.",
@@ -158,7 +163,7 @@ export class CaseDetail extends Component {
           someone: ${c.missing.map((m) => (catalogue.fields[m] ? catalogue.fields[m].label : "Next update")).join(", ")}.</p>` : null}
         <${CaseForm} c=${c} editable=${edit} fields=${catalogue.fields}
           priorities=${catalogue.priorities} cadence=${catalogue.targets && catalogue.targets.update_cadence_s}
-          onSaved=${(x) => this.done(x)} />
+          onSaved=${(x) => this.done(x)} onSent=${() => this.read()} />
       </div>` : null}
       ${tab === "history" ? this.history(c) : null}
     </section>`;

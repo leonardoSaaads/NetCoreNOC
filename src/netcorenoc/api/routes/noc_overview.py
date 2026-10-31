@@ -51,6 +51,7 @@ def register(app: FastAPI, ctx: AppContext) -> None:
             # run's first failure, which five checks a few minutes apart cut short.
             checks = await store.noc_checks([int(r["id"]) for r in credentials], per=KEEP_CHECKS)
             nes = await store.list_ne()
+            agents = await store.noc_agents()
         out = overview.summary(census, takes, moments, now)
         # Who holds what names people and agents: below editor, nobody is named (`case_view`).
         named = shaping.sees_people(principal.role)
@@ -60,6 +61,8 @@ def register(app: FastAPI, ctx: AppContext) -> None:
             **out,
             "reachability": await _reach(request, principal, scope, credentials, checks, nes),
             "named": named,
+            # ADR #478: what the NOC still lacks for its agents to work cases on their own.
+            "setup": overview.setup(agents, credentials),
             "resolved_since_s": RESOLVED_SINCE_S,
             "due_soon_s": DUE_SOON_S,
             "scoped": not scope.unrestricted,

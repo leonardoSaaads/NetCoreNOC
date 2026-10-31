@@ -58,7 +58,7 @@ its state and open cases) and **NOC** (Organization, Secrets).
 
 | View | The question it answers |
 |---|---|
-| **Overview** | The NOC now (ADR #470): the live cases as **Queue**, **Working** and **Pending**, each split by tier (an agents' tier, or the NOC team), by priority and by who holds them, and the takes running late. Each tile opens the cases it counts. Names are shown to roles that may see people. **Equipment reachability** (ADR #476) lists the elements whose management endpoint stopped answering the vault's checks — a switch that loses power sends no trap — each a link to its element and, for a custodian, its credential |
+| **Overview** | The NOC now (ADR #470): the live cases as **Queue**, **Working** and **Pending**, each split by tier (an agents' tier, or the NOC team), by priority and by who holds them, and the takes running late. Each tile opens the cases it counts. Names are shown to roles that may see people. **Equipment reachability** (ADR #476) lists the elements whose management endpoint stopped answering the vault's checks — a switch that loses power sends no trap — each a link to its element and, for a custodian, its credential. Until the agents can work on their own, **Get the NOC's agents working** (ADR #478) lists what is missing — an AI provider, an agent, an entry point, a device credential agents may use — each a link |
 | **Cases** | What the NOC has to take, what it is working, what waits on someone else, and what is over. A list view: **Queue**, **Working**, **Pending**, **Resolved**, **All**, each with its count, a filter over the rows on screen (number or words), and *Only mine*. Every row: priority (its colour on the row's edge too), the case, its status, **who holds it** — an agent at its tier, a person, the NOC team, or nobody — the **take** clock counted and drawn ("12m left", "late 15m"), the customer-update clock, the next update and when it opened. Read again every 15 s. A live case **hears its alarms** (ADR #474): what joined its situation, raised again or cleared is an event on its feed (an alarm just told of waits five minutes, so a flapping port is a line every five minutes; one back in a newer situation is named with it, a link), and a pending case whose fault came back returns to the queue |
 | **KPIs** | How fast the NOC takes a case, documents it and restores service, over 24 hours, 7 or 30 days: taken within target, median time to take, the time past target summed over every late take, customer updates within 30 minutes; per priority, the take and restore targets, and the takes missed |
 | **Playbooks** | Which troubleshooting trees check a new case before the NOC is called, and how each has done. A list — the name, what it matches (vendors, trap OIDs, severities), on or off, its runs and how they ended — and one playbook opened below it as its tree: each step, what it does, where each answer leads, down to the leaves (resolve, wait, NOC queue), its JSON and its last runs |
@@ -75,7 +75,8 @@ A situation the Broker opens becomes a case in the NOC queue (ADR #459). A case 
   asks of the NOC.
 * **Milestones**, beside the work: the **take** (critical 25 min, major 1 h, minor 2 h, from
   entering the queue), the **customer update** (30 min from the take), **restore service**
-  (critical 4 h, major 24 h, minor 72 h, from the event to *validate* or *resolved*), the **next
+  (critical 4 h, major 24 h, minor 72 h, from the event to *validate* or *resolved*; it **pauses**
+  while the case is pending and says so, ADR #478), the **next
   update** the NOC promised, and — while an agent holds the case and it can climb — when it
   **escalates** to the next tier. Each a mark, a word and a time, with a bar of the same fraction.
 * **Assignment**: the agent that holds it, at which tier, since when; *Assign…* routes it to an
@@ -90,10 +91,15 @@ A situation the Broker opens becomes a case in the NOC queue (ADR #459). A case 
   can read the case. Each company whose equipment the situation touches may have its **own
   executive summary**; an empty one reads the case's. The update's clock (30 min) stops the first
   time it is complete. Setting the priority by hand makes it yours: the Broker no longer raises it.
+  **Send customer update** (ADR #478) posts the saved, complete update to everyone who may read the
+  case, the customer included; email is not connected yet.
 * **Set pending…** names who the NOC waits on (customer, carrier or fiber provider, scheduled
   maintenance, dispatch, device access, connectivity, vendor, site access, field technician, RCA)
   and when it looks again. It needs the complete customer update. When the next update comes, or a
-  person posts on the feed, the case returns to the queue. A pending case does not climb.
+  person posts on the feed, the case returns to the queue — and to its agent, woken, its
+  escalation time started over. A case waiting on *device access* or *connectivity* returns the
+  moment a custodian lets the agents use a credential for one of its devices. A pending case does
+  not climb.
 * **Resolve…** records the cause and the solution and closes the situation on the Broker. Tick
   *I checked the device* only when the alarms are verifiably gone: then they are cleared too.
 * **The feed** is the conversation and the case's history, each entry with its author's mark — an
@@ -136,7 +142,7 @@ it again reinstates it, its book empty. A circuit is removed from its own row in
 
 | View | The question it answers |
 |---|---|
-| **All agents** | Who the NOC's AI agents are and what each is doing. One line per agent — its mark on its role's tile, name and title, role and tier, *Entry* when queued cases start with it, its state (idle, running, paused, error), open cases, last run, and this month's spend against its budget — filtered by state. An admin hires one here, and finds how an agent connects over MCP |
+| **All agents** | Who the NOC's AI agents are and what each is doing. One line per agent — its mark on its role's tile, name and title, role and tier, *Entry* when queued cases start with it, its state (idle, running, paused, error), open cases, last run, and this month's spend against its budget — filtered by state. An admin hires one here, and finds how an agent connects over MCP. A new hire comes with a first-line engineer's instructions already written and, while no agent is, as the entry point (ADR #478): a name and a model are enough for it to work the queue |
 | **An agent** (each in the sidebar) | What this agent is, what it did and what it costs. The header: its state, who it reports to, how it runs, its last run, and *Assign a case*, *Run now*, *Pause* / *Resume*. **Overview**: its latest run (what woke it, what it did, its tool calls, its cost), runs per day by how they ended, how many succeeded, its cases by priority and by status, its cases, its chain of command and its spend. **Instructions**: what its manager wrote — served to it as the MCP prompt `noc_agent`. **Runs**: each run, opened to its steps — every tool it called with what it asked (never a lease, token or key) and how the route answered. **Configuration**: how it runs and its limits |
 
 * **Hiring** (an admin's): who it is (name, title, mark), its place (role, tier, manager — or the

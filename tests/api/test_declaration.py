@@ -709,11 +709,12 @@ async def test_f43_every_path_served_today_still_registers(store: Store) -> None
     # #473: nineteen /api pairs, six UI modules).
     # Unreleased: 335 -> 338 and 187 -> 188 — ending a customer (ADR #477: one /api pair) and two
     # UI modules (a local Ollama's models; moving an agent in the chart).
-    assert len(served) == 338, f"the served surface moved: {len(served)} method/path pairs"
+    # Unreleased: 338 -> 339 and 188 -> 189 — sending a case's customer update (ADR #478).
+    assert len(served) == 339, f"the served surface moved: {len(served)} method/path pairs"
     api_pairs = {(method, path) for method, path in served if path.startswith("/api")}
     # **v0.19.0: 53 -> 55.** `GET /api/models` and `POST /api/models/register`: what the
     # models are doing, and turning one of this appliance's own fits into an artefact.
-    assert len(api_pairs) == 188, (
+    assert len(api_pairs) == 189, (
         f"the /api surface moved: {len(api_pairs)} pairs. v0.16.0 adds exactly five — the "
         f"operator's five gestures — v0.16.2 adds exactly one, `POST …/promote` (DECISIONS #273), "
         f"v0.16.5 adds exactly one, `POST /api/alarms/clear` (DECISIONS #301), "
@@ -897,11 +898,12 @@ async def test_f42_every_path_served_today_still_registers(store: Store) -> None
     # #473: nineteen /api pairs, six UI modules).
     # Unreleased: 335 -> 338 and 187 -> 188 — ending a customer (ADR #477: one /api pair) and two
     # UI modules (a local Ollama's models; moving an agent in the chart).
-    assert len(served) == 338, f"the served surface moved: {len(served)} method/path pairs"
+    # Unreleased: 338 -> 339 and 188 -> 189 — sending a case's customer update (ADR #478).
+    assert len(served) == 339, f"the served surface moved: {len(served)} method/path pairs"
     api_pairs = {(method, path) for method, path in served if path.startswith("/api")}
     # **v0.19.0: 53 -> 55.** `GET /api/models` and `POST /api/models/register`: what the
     # models are doing, and turning one of this appliance's own fits into an artefact.
-    assert len(api_pairs) == 188, (
+    assert len(api_pairs) == 189, (
         f"the /api surface moved: {len(api_pairs)} pairs. v0.16.0 adds exactly five — the "
         f"operator's five gestures — v0.16.2 adds exactly one, `POST …/promote` (DECISIONS #273), "
         f"v0.16.5 adds exactly one, `POST /api/alarms/clear` (DECISIONS #301), "
@@ -1236,7 +1238,8 @@ def test_the_three_postures_are_all_populated() -> None:
     # ADR #470: 52 -> 53, the NOC's overview (a collection). ADR #473: 53 -> 72, the customers'
     # books — the two lists narrow (collections), and the seventeen routes naming one customer 404
     # on one none of whose elements the caller can see (targeted).
-    assert len(SCOPED) == 72, SCOPED
+    # ADR #478: 72 -> 73, sending a case's customer update names one case (targeted).
+    assert len(SCOPED) == 73, SCOPED
     assert len(rbac.ROUTE_SCOPE) == len(ADMIN_ONLY) + len(UNSCOPED) + len(SCOPED)
 
 
@@ -1431,6 +1434,8 @@ SCOPED_TARGETED = [
     ("POST", "/api/noc/cases/{sid}/resolve"),
     ("GET", "/api/noc/cases/{sid}/feed"),
     ("POST", "/api/noc/cases/{sid}/feed"),
+    # ADR #478: sending the customer update names one case.
+    ("POST", "/api/noc/cases/{sid}/customer-update"),
     # ADR #467: routing and escalating one case — the same 404 for one the caller cannot see.
     ("POST", "/api/noc/cases/{sid}/assign"),
     ("POST", "/api/noc/cases/{sid}/escalate"),
