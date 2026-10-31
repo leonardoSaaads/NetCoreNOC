@@ -181,6 +181,9 @@ REFERENCE: dict[tuple[str, str], Entry] = {
     ),
     ("GET", "/api/noc/cases/{sid}/feed"): Entry(CASES, "A case's feed, as far as you may read it"),
     ("POST", "/api/noc/cases/{sid}/feed"): Entry(CASES, "Post on a case's feed"),
+    ("POST", "/api/noc/cases/{sid}/customer-update"): Entry(
+        CASES, "Send the customer update to the customer"
+    ),
     ("GET", "/api/noc/people"): Entry(CASES, "People a specified post may name"),
     ("POST", "/api/noc/exec"): Entry(AUTOMATION, "Act on a device with a lease (read only)"),
     ("POST", "/api/noc/secrets/{secret_id}/hostkey"): Entry(VAULT, "Forget a pinned host key"),

@@ -36,6 +36,17 @@ first start: there is nothing to set. The last command prints a one-time passwor
    **SNMPv3**, add the user under **Settings → SNMP** first; the form prints the device commands.
 3. Watch **Situations**. Devices and alarm types appear as traps arrive.
 
+To let the NOC's AI agents work the cases (optional): switch the header to **NOC** — its overview
+lists what is missing, each a link.
+
+1. **Secrets → AI providers**: connect a model. A local Ollama needs no key; from the Compose
+   container it is `host.docker.internal`, port 11434 (start Ollama with `OLLAMA_HOST=0.0.0.0`).
+2. **Agents → Hire an agent**: a name and a model are enough — its job comes prefilled, and the
+   first one hired takes the cases from the queue.
+3. **Secrets → New credential** for each device (SSH or SNMP), then **Let agents use it**. Until
+   then an agent says it has no access and sets the case *Pending connectivity*; it is woken the
+   moment access is granted. Agents receive a short-lived token, never the password.
+
 Cannot use port 162? Set `NETCORENOC_TRAP_PORT=1162` in `.env`, run `docker compose up -d` again,
 and send traps to port 1162. Other ways to install (plain Docker, pip, systemd, Nix):
 [`docs/install.md`](docs/install.md).

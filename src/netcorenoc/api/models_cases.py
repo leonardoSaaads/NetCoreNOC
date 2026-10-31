@@ -122,6 +122,18 @@ class PostIn(BaseModel):
     readers: list[int] = Field(default_factory=list, max_length=20)
 
 
+class SendUpdateIn(BaseModel):
+    """Send the saved customer update — as of ``version``, when given (ADR #478)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    version: int | None = Field(
+        default=None,
+        description="The case version you read; a newer one is a 409, so what is sent is what "
+        "you saw.",
+    )
+
+
 class PlaybookIn(BaseModel):
     """A playbook to store or replace: the tree as a JSON object (`engine/noc/playbook.py` is the
     authority on its shape), and the case it was learned from."""

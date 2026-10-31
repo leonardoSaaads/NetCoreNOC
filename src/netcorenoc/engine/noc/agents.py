@@ -44,6 +44,7 @@ __all__ = [
     "RUN_STATUSES",
     "STATUSES",
     "TRIGGERS",
+    "WORKING",
     "AgentError",
     "chain",
     "cost_cents",
@@ -108,6 +109,8 @@ STATUSES: dict[str, str] = {
     "error": "Error",
     "terminated": "Terminated",
 }
+#: An agent who can still be given work: neither paused nor retired.
+WORKING = frozenset({"idle", "running", "error"})
 TRIGGERS: dict[str, str] = {
     "timer": "Heartbeat",
     "assignment": "Case assigned",

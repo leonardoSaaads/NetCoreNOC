@@ -4,7 +4,8 @@
  * update** (30 minutes from the take), **restoring service** (from the event to validate or
  * resolved), the **next update** the NOC promised, and — when an agent holds the case — when it
  * **climbs** to the next tier. Each row is a mark, a word and a time: "12m left", "late 4m",
- * "met in 9m"; the bar beside it is the same fraction drawn, never the only signal.
+ * "met in 9m"; the bar beside it is the same fraction drawn, never the only signal. Restoring
+ * service pauses while the case is pending, and says so (ADR #478).
  *
  * The server computed every state and target; this counts the running ones on between reads.
  */
@@ -18,7 +19,7 @@ const MS_ICON = { run: "kpi", late: "warn", met: "check", missed: "cross", off: 
 
 function stateOf(clock, now) {
   if (!clock) return "off";
-  if (clock.state === "withdrawn") return "off";
+  if (clock.state === "withdrawn" || clock.state === "paused") return "off";
   if (clock.state === "met") return "met";
   if (clock.state === "missed") return "missed";
   const elapsed = now - (clock.due_at - clock.target_s);
@@ -48,6 +49,7 @@ function ClockRow({ name, clock, now, idle }) {
   const state = stateOf(clock, now);
   const meta = !clock ? idle
     : clock.state === "withdrawn" ? "Ended before anyone took it: not charged."
+      : clock.state === "paused" ? `Paused while the case waits on someone outside the NOC · ${span(clock.paused_s)} paused so far`
       : clock.state === "met" || clock.state === "missed" ? `Target ${span(clock.target_s)}`
         : `Target ${span(clock.target_s)} · due ${absolute(clock.due_at)}`;
   return html`<${Row} name=${name} state=${state} meta=${meta}

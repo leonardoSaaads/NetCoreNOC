@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from netcorenoc.ingest import known_oids
 from netcorenoc.store.base import StoreBase
 
 #: Statuses in which a case is still the agents' to conclude: not waiting on someone outside the
@@ -54,6 +55,38 @@ class NocRoutingMixin(StoreBase):
             (limit,),
         )
         return [dict(r) for r in await cur.fetchall()]
+
+    async def noc_cases_awaiting(self, host: str, statuses: tuple[str, ...]) -> list[int]:
+        """Cases in ``statuses`` with an alarm from the element at ``host`` (ADR #478)."""
+        cur = await self.conn.execute(
+            "SELECT DISTINCT c.situation_id FROM noc_case c "
+            "JOIN situation_alarm sa ON sa.situation_id = c.situation_id "
+            "JOIN alarm a ON a.id = sa.alarm_id JOIN ne n ON n.id = a.ne_id "
+            "WHERE c.status = ANY(?) AND host(n.ip) = ? ORDER BY c.situation_id",
+            (list(statuses), host),
+        )
+        return [int(r[0]) for r in await cur.fetchall()]
+
+    async def noc_case_devices(self, situation_id: int) -> list[dict[str, Any]]:
+        """The elements a case's alarms came from — address, vendor, alarms and how many are
+        active: what an agent woken about it is told first (ADR #478)."""
+        cur = await self.conn.execute(
+            "SELECT host(n.ip) AS address, n.vendor, COUNT(*) AS alarms, "
+            "COUNT(*) FILTER (WHERE a.status = 'active') AS active, "
+            "array_agg(DISTINCT c.oid) AS oids "
+            "FROM situation_alarm sa JOIN alarm a ON a.id = sa.alarm_id "
+            "JOIN alarm_class c ON c.id = a.class_id "
+            "JOIN ne n ON n.id = a.ne_id WHERE sa.situation_id = ? "
+            "GROUP BY n.ip, n.vendor ORDER BY n.ip LIMIT 20",
+            (situation_id,),
+        )
+        out = []
+        for row in await cur.fetchall():
+            # The element's vendor, or else its traps' enterprise arc's (Huawei, Ciena…).
+            named = sorted({v for oid in row["oids"] if (v := known_oids.vendor_of(str(oid)))})
+            vendor = row["vendor"] or (named[0] if named else None)
+            out.append({**{k: row[k] for k in ("address", "alarms", "active")}, "vendor": vendor})
+        return out
 
     async def noc_agent_loads(self) -> dict[int, int]:
         """Live cases per agent: what routing balances."""

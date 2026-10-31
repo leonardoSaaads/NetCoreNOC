@@ -19,7 +19,7 @@ _CASE = (
     "c.owner_name, c.owner_kind, c.opened_at, c.status_at, c.cause, c.solution, c.resolution, "
     "c.resolved_at, c.resolved_by, c.alarms_cleared, c.version, c.created_at, c.updated_at, "
     "c.updated_by, c.priority_by, c.restored_at, c.agent_id, c.assigned_at, c.tier, "
-    "c.escalated_at, c.with_people, "
+    "c.escalated_at, c.with_people, c.paused_s, c.paused_at, "
     # The holder's photo digest, when a person holds it (ADR #470): `user:<id>` is the owner ref.
     "(SELECT a.sha256 FROM user_avatar a WHERE c.owner_ref = 'user:' || a.user_id) "
     "AS owner_avatar, "

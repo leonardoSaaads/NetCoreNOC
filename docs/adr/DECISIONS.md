@@ -6853,3 +6853,60 @@ From this release an entry is about six lines: decision, reason, release.*
 - **Reason**: the owner's review: a local Ollama asked for a token and showed no models; a customer
   the NOC stopped serving could not be removed; the hiring form's titles sat above their cards; and
   the organization chart should move an agent the way a person would, with a confirmation.
+
+## 478. Agents that work a case with nothing typed: wake, wait, tell the customer (unreleased)
+
+- **Context**: the owner's test, run from zero as a newcomer would — the compose file up, a switch
+  pointed at the appliance, two agents hired with nothing typed, no device credential. The hired
+  agents were not entry points, so the case sat unassigned and no model was called; once routed,
+  the agent was told the case's number and nothing of its devices; with no credential the guide was
+  silent and the model improvised; a person's post sent the case back to the queue but did not wake
+  its agent, and the climb counted from the first assignment, so the case would have gone up a
+  tier at once; the restore clock kept running while the case waited on access; the customer
+  update could not be sent; and in Docker a local Ollama at 127.0.0.1 was the container itself.
+- **Decision** (`api/mcp.py`, `api/agent_tools.py`, `ui/app/views/parts/agentform.js`): **an
+  agent knows its job with nothing typed.** The NOC's rules (`GUIDE`, served to every agent) now
+  say, in order: read the case, its alarms (`get_situation`) and its feed; read each customer's
+  book; take it; write the customer update; reach the device read-only, with each vendor's first
+  commands (Huawei VRP, Ciena SAOS, MikroTik RouterOS); **with no access, say so on the feed and
+  set the case `pending_connectivity`**; post each finding as it comes; put it in the update,
+  **send it**, and set the case pending on whom it waits (`pending_customer`). The hiring form
+  comes **prefilled with a first-line engineer's instructions** (`DEFAULT_INSTRUCTIONS`, served in
+  the agents' catalogue), and the first agent hired is the **entry point** while the NOC has none;
+  a form that would leave none says so. The run's first message names the case's devices — address,
+  vendor, alarms — **whether a credential the agent may lease covers each**, and why the case is
+  back.
+- **Decision** (`engine/noc/case_ops.py`, `engine/noc/access.py`, `api/routes/secrets.py`,
+  migration 0042): **a case that comes back wakes its agent.** Whatever returns a case to the queue
+  — its next update, a person's post, an alarm, automation — returns it to the agent it is with,
+  woken as on an assignment, its escalation clock started over: the wait was not its delay. And
+  **access arriving ends the wait**: when a custodian lets the agents use a credential for one of a
+  case's devices, every case waiting on access to it (`pending_connectivity`,
+  `pending_device_access`) is back in the queue (cycle reason `access`) and with its agent at once.
+  An AI provider's key is never offered to an agent as a device's credential, nor leased.
+- **Decision** (migration 0042, `engine/noc/kpi.py`, `ui/app/views/parts/{caseclock,
+  casemilestones}.js`): **the restore clock pauses while a case is pending**, as it already stopped
+  at `validate`: waiting on the customer, a provider or access is time nothing the NOC does can
+  restore the service in. A trigger on the status keeps `paused_s` and `paused_at`; the clock reads
+  "paused · 3.2h left", its due time moved on by every wait.
+- **Decision** (`engine/noc/feed.py`, `api/routes/case_feed.py`, `api/mcp_tools.py`,
+  `ui/app/views/parts/caseform.js`): **the customer update is sent.** `POST
+  /api/noc/cases/{sid}/customer-update` (`cases.work`, MCP `noc_send_customer_update`) posts the
+  saved update — complete, or refused with what it lacks — to everyone who may read the case, the
+  customer included, under its fields' labels and the next update's time, with an event and a
+  `noc.case.send_update` audit row. Email is not connected yet, and the answer says so
+  (`"email": false`).
+- **Decision** (`engine/noc/overview.py`, `ui/app/views/nocoverview.js`): the NOC overview shows
+  **what the NOC still lacks for its agents to work** — an AI provider, an agent, an entry point,
+  a device credential agents may use — each a link to where it is done, until none is missing.
+- **Decision** (`docker-compose.yml`, `engine/noc/providers.py`, `ui/app/views/parts/
+  aiproviders.js`): **a local Ollama from a container**: compose maps `host.docker.internal` to
+  the host (`host-gateway`); in a container (`/.dockerenv`, `/run/.containerenv`) the Ollama card
+  proposes that host and says why, and a model list or an agent's run that fails at 127.0.0.1
+  says the address is the container itself. NetCoreNOC reads the Ollama server from the credential ("Where it runs"),
+  never from `OLLAMA_HOST`, and calls `/v1/chat/completions` (its native `/api/tags`, `/api/show`
+  and `/api/ps` only to list models).
+- **Reason**: a newcomer hires agents without reading, and an agent that does not know what to do
+  without access guesses. The wait is the device owner's, not the agent's: it should neither
+  charge the restore clock nor send the case up a tier, and the agent should be back the moment
+  access is given.

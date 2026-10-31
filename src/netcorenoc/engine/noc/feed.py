@@ -13,6 +13,11 @@ is not named — a post reads as from "NOC engineer", "NOC agent" or "Operator",
 username. Free text is coarsened by pattern, not by word, because a person writes `10.0.0.1,` and
 `(10.0.0.1)` as readily as `10.0.0.1`.
 
+**A sent customer update** (ADR #478) is a post to `all`: the customer update as the customer
+reads it (:func:`customer_update`) — the same fields the NOC keeps, under their labels, and when
+the NOC will update again. It is what reaches a customer with access to the console; email is not
+connected yet.
+
 **A person posting on a pending case puts it back in the NOC queue** (`requeues`): the customer
 answered, or someone told the NOC something it has to read, and nobody would otherwise look until
 the next update. An agent's post does not — an agent writing is the NOC itself.
@@ -26,9 +31,10 @@ import ipaddress
 import re
 from collections.abc import Collection, Mapping
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from typing import Any
 
-from netcorenoc.engine.noc.cases import PENDING
+from netcorenoc.engine.noc.cases import FIELD_LIMITS, PENDING
 
 __all__ = [
     "MAX_BODY",
@@ -36,6 +42,7 @@ __all__ = [
     "VISIBILITIES",
     "Reader",
     "author_label",
+    "customer_update",
     "mask_addresses",
     "requeues",
     "unknown_readers",
@@ -121,3 +128,31 @@ def mask_addresses(text: str) -> str:
 def unknown_readers(readers: Collection[int], known: Collection[int]) -> list[int]:
     """The named ids that are not an enabled account (a 400 for the caller)."""
     return sorted(set(readers) - set(known))
+
+
+#: The customer update's fields in the order a customer reads them (`cases.FIELD_LIMITS` labels).
+CU_ORDER = (
+    "description",
+    "executive_summary",
+    "current_analysis",
+    "noc_next_step",
+    "customer_next_step",
+)
+
+
+def customer_update(case: Mapping[str, Any]) -> str:
+    """The post a sent customer update is: its title, each field under its label, and when the
+    NOC updates again — the longest fields cut first when it would not fit one post."""
+    when = datetime.fromtimestamp(float(case["next_update_at"]), UTC)
+    head = f"Customer update — {str(case['title']).strip()}"
+    tail = f"Next update: {when:%Y-%m-%d %H:%M} UTC"
+    parts = {k: str(case.get(k) or "").strip() for k in CU_ORDER}
+    excess = sum(len(v) for v in parts.values()) - (MAX_BODY - len(head) - len(tail) - 200)
+    for name in sorted(parts, key=lambda k: -len(parts[k])):
+        if excess <= 0:
+            break
+        cut = min(excess + 1, len(parts[name]))
+        parts[name] = parts[name][: len(parts[name]) - cut] + "…"
+        excess -= cut - 1
+    body = [f"{FIELD_LIMITS[k][0]}:\n{v}" for k, v in parts.items() if v]
+    return "\n\n".join([head, *body, tail])[:MAX_BODY]

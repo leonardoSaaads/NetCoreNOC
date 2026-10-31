@@ -27,7 +27,7 @@ from typing import Any
 from netcorenoc.api import asgi_call, mcp, mcp_tools
 from netcorenoc.api.agent_hire import binding
 from netcorenoc.crosscutting import audit, secretbox
-from netcorenoc.engine.noc import agents, kinds, providers
+from netcorenoc.engine.noc import agents, cases, kinds, providers
 from netcorenoc.engine.noc.agent_loop import Outcome
 from netcorenoc.engine.noc.providers import Provider
 from netcorenoc.store import Store
@@ -37,6 +37,7 @@ __all__ = [
     "MAX_RESULT",
     "Keys",
     "Usage",
+    "briefing",
     "call_tool",
     "first_message",
     "open_keys",
@@ -179,8 +180,46 @@ async def toolbox(app: Any, token: str) -> tuple[list[tuple[str, str]], dict[str
 
 def system_prompt(agent: Mapping[str, Any]) -> str:
     own = str(agent["instructions"]).strip()
-    guide = mcp.GUIDE.replace("9. End your run with `noc_finish_run`", "9. End your turn")
+    guide = mcp.GUIDE.replace(*mcp.GUIDE_END)
     return f"{own}\n\n{guide}" if own else guide
+
+
+async def briefing(store: Store, run: Mapping[str, Any]) -> dict[str, Any] | None:
+    """The case a run is about, with what its agent is told first (ADR #478): the devices its
+    alarms came from, whether a credential it may lease covers each, and why the case is back."""
+    if not run["situation_id"]:
+        return None
+    sid = int(run["situation_id"])
+    async with store.reading():
+        case = await store.noc_case(sid)
+        if case is None:
+            return None
+        devices = await store.noc_case_devices(sid)
+        cycles = await store.noc_case_cycles(sid)
+        vault = await store.noc_list_secrets()
+    leasable = {
+        str(s["host"])
+        for s in vault
+        if s["agent_access"] and getattr(kinds.KINDS.get(str(s["kind"])), "group", "ai") != "ai"
+    }
+    return {
+        **case,
+        "devices": [{**d, "credential": str(d["address"]) in leasable} for d in devices],
+        "reason": cycles[-1]["reason"] if cycles else None,
+    }
+
+
+def _device_line(device: Mapping[str, Any]) -> str:
+    vendor = str(device.get("vendor") or "vendor not known")
+    access = (
+        "a credential you may lease covers it"
+        if device["credential"]
+        else "no credential you may lease covers it"
+    )
+    return (
+        f"{device['address']} ({vendor}) — {device['alarms']} alarm(s), {device['active']} "
+        f"active; {access}"
+    )
 
 
 def first_message(run: Mapping[str, Any], case: Mapping[str, Any] | None) -> str:
@@ -190,11 +229,21 @@ def first_message(run: Mapping[str, Any], case: Mapping[str, Any] | None) -> str
             f"You were woken ({why}, run {run['id']}). Call noc_me, look at the cases routed to "
             "you and the NOC queue, act on what needs you, and finish the run."
         )
-    return (
-        f"You were woken ({why}, run {run['id']}) about case #{case['situation_id']} — "
-        f"{case['priority']}, {case['status']}: {case['title'] or 'no title yet'}. Work it as "
-        "the NOC's rules say, then finish the run with what you did."
+    sid = case["situation_id"]
+    lines = [
+        f"You were woken ({why}, run {run['id']}) about case #{sid} — {case['priority']}, "
+        f"{case['status']}: {case['title'] or 'no title yet'}."
+    ]
+    reason = case.get("reason")
+    if reason and reason != "opened":
+        lines.append(f"Why it is back: {cases.CYCLE_REASONS.get(str(reason), reason)}.")
+    if case.get("devices"):
+        lines.append("Its devices: " + "; ".join(_device_line(d) for d in case["devices"]) + ".")
+    lines.append(
+        f"Read the case, its alarms (get_situation {sid}), its feed and its customers' books, "
+        "then work it as the NOC's rules say, and finish the run with what you did."
     )
+    return "\n".join(lines)
 
 
 async def step(

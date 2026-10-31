@@ -17,7 +17,7 @@ export function span(seconds) {
 }
 
 const TONE = { running: "clock-ok", met: "clock-ok", late: "clock-late", missed: "clock-late",
-  withdrawn: "clock-off" };
+  withdrawn: "clock-off", paused: "clock-off" };
 
 /** One clock, as of `now` (a running one keeps counting after the read). */
 export function Clock({ clock, now, label }) {
@@ -27,6 +27,7 @@ export function Clock({ clock, now, label }) {
   const over = elapsed - clock.target_s;
   let text;
   if (clock.state === "withdrawn") text = "withdrawn";
+  else if (clock.state === "paused") text = over > 0 ? `paused · late ${span(over)}` : `paused · ${span(-over)} left`;
   else if (clock.state === "met") text = `met in ${span(elapsed)}`;
   else if (clock.state === "missed") text = `missed by ${span(over)}`;
   else text = over > 0 ? `late ${span(over)}` : `${span(-over)} left`;

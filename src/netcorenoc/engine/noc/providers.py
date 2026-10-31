@@ -30,6 +30,7 @@ Pure.
 
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass
 
 from netcorenoc.engine.noc.agents import MODELS, OPENAI_PROVIDERS
@@ -43,6 +44,8 @@ __all__ = [
     "by_kind",
     "check_endpoint",
     "describe",
+    "in_container",
+    "loopback_hint",
 ]
 
 
@@ -191,6 +194,30 @@ PROVIDERS: dict[str, Provider] = {
 
 # The agents' configuration names the `openai` adapter's providers without importing this module.
 assert tuple(p.id for p in PROVIDERS.values() if p.adapter == "openai") == OPENAI_PROVIDERS
+
+
+#: What a container runtime leaves at the root: Docker's mark, then Podman's.
+CONTAINER_MARKS = ("/.dockerenv", "/run/.containerenv")
+#: The host a container reaches the machine it runs on by — `docker-compose.yml` maps it.
+HOST_FROM_CONTAINER = "host.docker.internal"
+_LOOPBACK = frozenset({"127.0.0.1", "localhost", "::1"})
+
+
+def in_container() -> bool:
+    """Does this process run in a container? There, 127.0.0.1 is the container itself, not the
+    machine a local Ollama runs on (ADR #478)."""
+    return any(os.path.exists(mark) for mark in CONTAINER_MARKS)
+
+
+def loopback_hint(host: str) -> str:
+    """The sentence a failed call to a local model server needs when it pointed at the container
+    itself; empty otherwise."""
+    if host.strip("[]").lower() not in _LOOPBACK or not in_container():
+        return ""
+    return (
+        f" NetCoreNOC runs in a container, where {host} is the container itself: point it at "
+        f"{HOST_FROM_CONTAINER} (docker-compose.yml maps it to the host) or the host's address."
+    )
 
 
 def by_kind(kind: str) -> Provider | None:

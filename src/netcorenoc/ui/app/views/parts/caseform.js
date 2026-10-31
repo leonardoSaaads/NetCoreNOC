@@ -8,9 +8,11 @@
  * sends only what changed, with the version it was read at, so two writers never overwrite each
  * other.
  *
- * **Send customer update** sits at the end of the form, beside saving: it is how the update will
- * reach the customer by email. Sending is not connected yet, and the button says so rather than
- * pretending; it asks for the update to be saved first, because what is sent is what was saved.
+ * **Send customer update** sits at the end of the form, beside saving (ADR #478): it posts the
+ * saved update to the case feed for everyone who may read the case, the customer included, and
+ * says when it went. It asks for the update to be saved first, because what is sent is what was
+ * saved, and the server refuses an incomplete one. Email is not connected yet, and the note after
+ * sending says so rather than pretending.
  *
  * **The next update** offers its times as one click each — the handbook's cadence for the case's
  * priority first, then the usual steps — beside the free choice.
@@ -134,10 +136,17 @@ export class CaseForm extends Component {
       <label for=${id}>${meta.label}</label>${control}</div>`;
   }
 
-  /** Not connected yet (ADR #470): the button is the place, and it says what it will do. */
-  send() {
-    this.setState({ sendNote: "Sending to the customer by email is not connected yet. The update "
-      + "is saved, and the NOC and the agents read it." });
+  /** Sends the saved update as read (ADR #478); the feed then shows the post. */
+  async send() {
+    this.setState({ busy: true, error: null, sendNote: null });
+    try {
+      await post(`/api/noc/cases/${this.props.c.id}/customer-update`, { version: this.props.c.version });
+      this.setState({ busy: false, sendNote: `Sent at ${absolute(Date.now() / 1000)}: posted to the `
+        + "case feed for everyone who reads the case, the customer included. Email is not connected yet." });
+      if (this.props.onSent) this.props.onSent();
+    } catch (error) {
+      this.setState({ busy: false, error: error.message });
+    }
   }
 
   render({ c, editable, priorities, cadence }, st) {
@@ -173,7 +182,7 @@ export class CaseForm extends Component {
         ${st.saved && !dirty ? html`<span class="muted" role="status">Saved.</span>` : null}
         <button type="button" class="primary send-update" disabled=${st.busy || dirty}
           title=${dirty ? "Save the customer update first: what is sent is what was saved."
-            : "Email this customer update to the customer."}
+            : "Post this customer update to the customer, on the case feed."}
           onClick=${() => this.send()}><${Icon} name="send" /> Send customer update</button>
       </div>
       ${st.sendNote ? html`<p class="hint send-note" role="status">${st.sendNote}</p>` : null}

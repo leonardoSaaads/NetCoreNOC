@@ -103,6 +103,12 @@ TOOLS: tuple[Tool, ...] = (
     _t("noc_take_case", "POST", "/api/noc/cases/{sid}/take", "Take a case", idempotent=True),
     _t("noc_update_case", "POST", "/api/noc/cases/{sid}", "Update the customer update"),
     _t("noc_post_to_case", "POST", "/api/noc/cases/{sid}/feed", "Post to a case's feed"),
+    _t(
+        "noc_send_customer_update",
+        "POST",
+        "/api/noc/cases/{sid}/customer-update",
+        "Send the saved customer update to the customer",
+    ),
     _t("noc_set_case_pending", "POST", "/api/noc/cases/{sid}/status", "Set a case pending"),
     _t("noc_release_case", "POST", "/api/noc/cases/{sid}/release", "Release a case"),
     _t(

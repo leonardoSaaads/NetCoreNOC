@@ -28,7 +28,7 @@ from netcorenoc.api.declare import DeclaredRoutes
 from netcorenoc.api.models_noc import AgentAccessIn, SecretIn, StepUpOnly
 from netcorenoc.crosscutting import auth, secretbox, stepup
 from netcorenoc.crosscutting.vault import VaultError
-from netcorenoc.engine.noc import kinds, probe, providers
+from netcorenoc.engine.noc import access, kinds, probe, providers
 from netcorenoc.engine.noc.kinds import CredentialError
 
 #: How long the console keeps a revealed credential on screen (it is a statement, not a control).
@@ -105,7 +105,7 @@ def register(app: FastAPI, ctx: AppContext) -> None:
         request: Request, principal: auth.Principal = Depends(security)
     ) -> dict[str, Any]:
         """The vault for a custodian; for anyone else, an empty list and the sentence why."""
-        catalogue = kinds.describe()
+        catalogue = {**kinds.describe(), "in_container": providers.in_container()}
         if not await gate.is_custodian(ctx, request, principal):
             return {
                 "custodian": False,
@@ -330,7 +330,7 @@ def register(app: FastAPI, ctx: AppContext) -> None:
         """Agents on (stepped up) or off (never stepped up: the off switch must always be
         reachable). Off ends every lease on the credential at once."""
         await gate.require_custodian(ctx, request, principal)
-        await secret_or_404(secret_id)
+        row = await secret_or_404(secret_id)
         detail: dict[str, Any] = {"enabled": body.enabled}
         if body.enabled:
             outcome = await gate.confirm(
@@ -351,6 +351,9 @@ def register(app: FastAPI, ctx: AppContext) -> None:
                 if body.enabled
                 else await store.noc_revoke_secret_leases(secret_id, now, principal.actor)
             )
+            # A device's access, granted, wakes the cases that waited for it (ADR #478).
+            device = moved and body.enabled and kinds.KINDS[str(row["kind"])].group != "ai"
+            woken = await access.granted(store, str(row["host"]), now) if device else []
             if moved or ended:
                 await audit_row(
                     request,
@@ -359,9 +362,10 @@ def register(app: FastAPI, ctx: AppContext) -> None:
                     "ok",
                     object_type="noc_secret",
                     object_id=str(secret_id),
-                    details={**detail, "leases_ended": ended},
+                    details={**detail, "leases_ended": ended, "cases_woken": woken},
                 )
-        return {"id": secret_id, "agent_access": body.enabled, "leases_ended": ended}
+        out = {"id": secret_id, "agent_access": body.enabled, "leases_ended": ended}
+        return {**out, "cases_woken": woken}
 
     @route.post("/api/noc/secrets/{secret_id}/check")
     async def check_now(

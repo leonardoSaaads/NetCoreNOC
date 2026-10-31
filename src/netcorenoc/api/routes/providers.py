@@ -88,7 +88,8 @@ def register(app: FastAPI, ctx: AppContext) -> None:
                 else await llm_http.list_models(provider, base, key)
             )
         except ProviderCallError as exc:
-            raise HTTPException(status_code=502, detail=f"{provider.label}: {exc}") from exc
+            hint = providers.loopback_hint(str(secret["host"]))
+            raise HTTPException(status_code=502, detail=f"{provider.label}: {exc}{hint}") from exc
         fit = next((d["name"] for d in details if d["fit"] == "agents"), None)
         return {
             "provider": provider.id,

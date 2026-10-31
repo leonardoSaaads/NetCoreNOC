@@ -154,6 +154,27 @@ stored device credential is unreadable (#455).
   from a paste or an uploaded workbook, previewed first). Scoped by the customer's elements; eight
   new MCP tools (42 in all). Migration **0039**.
 
+### Added — agents that work a case with nothing typed (#478)
+
+- **An agent knows its job out of the box**: the hiring form comes prefilled with a first-line
+  engineer's instructions, the first agent hired is the entry point, and the NOC's rules say what
+  to do in order — read the case, its alarms and the customer's book; with **no access to the
+  device, say so on the feed and set the case Pending connectivity**; post each finding as it
+  comes; update the customer update, **send it**, and set the case pending on whom it waits. The
+  run's first message names the case's devices and whether the agent may reach each.
+- **A case that comes back wakes its agent**, its escalation clock started over; **granting the
+  agents access to a device** brings back every case waiting on it (cycle reason `access`).
+- **The restore clock pauses while a case is pending** ("paused · 3.2h left"). Migration **0042**
+  (schema 42).
+- **Send customer update** works: the saved update, complete, is posted to everyone who may read
+  the case, the customer included (`POST /api/noc/cases/{sid}/customer-update`, MCP
+  `noc_send_customer_update`). Email is not connected yet.
+- The NOC overview lists **what is still missing for the agents to work** (AI provider, agent,
+  entry point, device credential), each a link.
+- **Ollama from Docker**: Compose maps `host.docker.internal` to the host; in a container the
+  Ollama card proposes it and explains why 127.0.0.1 fails. An AI provider's key is no longer
+  offered to agents as a device credential.
+
 ### Added — the owner's adjustments (#477)
 
 - **A local Ollama needs no key**: connect it by where it runs, and it lists the models pulled on
