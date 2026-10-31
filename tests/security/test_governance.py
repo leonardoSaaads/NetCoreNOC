@@ -1486,6 +1486,8 @@ def test_f34_every_mutating_route_below_admin_resolves_scope() -> None:
         ("POST", "/api/noc/cases/{sid}/status"): "async def set_status(",
         ("POST", "/api/noc/cases/{sid}/resolve"): "async def resolve_case(",
         ("POST", "/api/noc/cases/{sid}/feed"): "async def post_to_case(",
+        # ADR #478: sending the customer update names one case, scoped as every case act is.
+        ("POST", "/api/noc/cases/{sid}/customer-update"): "async def send_update(",
         # ADR #467: routing and escalating a case, scoped as every case act is.
         ("POST", "/api/noc/cases/{sid}/assign"): "async def assign_case(",
         ("POST", "/api/noc/cases/{sid}/escalate"): "async def escalate_case(",
