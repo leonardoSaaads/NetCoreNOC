@@ -1,6 +1,6 @@
 # Operating NetCoreNOC
 
-From the first sign-in to closing a situation. Commands assume Docker Compose. Elsewhere, replace the
+From the first sign-in to closing a situation, and the NOC's cases and agents. Commands assume Docker Compose. Elsewhere, replace the
 `docker compose exec netcorenoc` prefix and point the command at the database — with the bundled
 systemd unit, whose database URL is the default:
 `sudo NETCORENOC_DATABASE_PASSWORD_FILE=/etc/netcorenoc/db_password /opt/netcorenoc/.venv/bin/python -m netcorenoc …`.
@@ -142,7 +142,7 @@ cleared — check for that situation before calling the job done. Details:
 
 ## 7. Which model decides
 
-Five trained models compete; a judge re-ranks them every few minutes and the best one decides.
+Seven trained models compete; a judge re-ranks them every few minutes and the best one decides.
 **Settings → Correlation** shows which one is running. An admin can **pin** a model (a reason is
 required and audited) or fall back to the built-in formula. The startup log names the deciding model:
 
@@ -224,7 +224,7 @@ docker compose exec netcorenoc python -m netcorenoc --help          # every main
 ```
 
 `db status` names the server, the database, the role and the schema it reached, then the schema's
-version beside this release's — `version 32 (this release: 32)` — and the schema's size on disk. A
+version beside this release's — `version 42 (this release: 42)` — and the schema's size on disk. A
 lower first number is migrations not yet applied (start the appliance, or run `db migrate`); a
 higher one is a database a newer release migrated, which the console also warns about.
 
@@ -235,3 +235,44 @@ v0.30.0 or earlier, the SQLite file is imported once, before the first start: se
 
 The analysis reports for contributors (`make bias-report`, `make agreement-report`,
 `make shadow-report`, `make census`) are described in [`correlation.md`](correlation.md).
+
+## 9. The NOC: cases and AI agents
+
+Switch the top bar to **NOC**. A situation becomes a **case** when someone starts working it
+(**Start working this** on its card): the case enters the NOC queue with its priority (from the
+Broker's severity) and its clocks — the take, the customer update and the restore
+([`console.md`](console.md#noc--work)). People and agents work it the same way: take it, post to
+its feed (*Internal*, *Specified* or *All with access*), fill and send the **customer update**, set
+it **pending** while someone outside the NOC must act (the restore clock pauses), and resolve it.
+
+AI agents are optional. The NOC's **Overview** lists what is missing, each item a link:
+
+1. **Secrets → AI providers**: connect a model — any OpenAI-compatible API, a local Ollama (no key)
+   or Claude. From the Compose container a local Ollama is `host.docker.internal`, port 11434;
+   start Ollama with `OLLAMA_HOST=0.0.0.0` so the container can reach it.
+2. **Agents → Hire an agent**: a name and a model are enough. Its job comes prefilled; the first
+   agent hired takes cases from the queue, and **Organization** places agents in tiers to escalate
+   through.
+3. **Secrets → New credential** for each device (SSH or SNMP), then **Let agents use it** (a custodian
+   confirms with their password). Until then an agent says it has no access and sets the case
+   *Pending connectivity*; it is woken the moment access is granted.
+
+An agent never receives a password: it leases a short-lived token for one device and the appliance
+runs the read-only command for it. Who stored, read or changed a credential, and which agent leased
+and used it, is in the audit log ([`security.md`](security.md#the-credential-vault-noc--secrets)). **Customers** holds each
+customer's instructions, workbook and circuits for the agents to read.
+
+## 10. Before a team relies on it
+
+| Step | How |
+|---|---|
+| Only accept traps from your equipment | `NETCORENOC_ALLOWLIST=10.0.0.0/8,192.0.2.10` in `.env` |
+| Serve HTTPS | `NETCORENOC_TLS_CERT` / `NETCORENOC_TLS_KEY`, or a TLS reverse proxy — [`security.md`](security.md) |
+| One account per person | **People & access**: `viewer` (read), `editor` (work situations), `admin` (everything). A visibility scope narrows what someone sees, but it is **not tenant isolation** — [`security.md`](security.md) |
+| A second admin | so a forgotten password never locks the team out |
+| Password recovery by email | **Settings → Email** and a recovery address per person |
+| Accept only what you expect | **Settings → SNMP**: switch off unused versions, list communities, or require SNMPv3 users |
+| Programs use service tokens | **People & access → Service tokens**; the value is shown once |
+| Back up the database and both key files | section 8 above |
+| Cannot use port 162 | `NETCORENOC_TRAP_PORT=1162` in `.env`, then `docker compose up -d` — [`install.md`](install.md) |
+

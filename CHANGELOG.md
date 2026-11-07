@@ -27,8 +27,9 @@ and playbooks that check a new case before the NOC is called (#462, #463) — th
 through the tiers, and the NOC plane redrawn after Paperclip and Salesforce (#464-#469) — and the
 NOC at a glance, AI providers' keys for agents on any OpenAI-compatible API, what agents cost, and
 **each customer's book** for the agents to read (#470-#473), and what an operators' review round
-on a lab like the owner's found (#474-#476). The schema is PostgreSQL's baseline,
-**migration 0031**, which includes SQLite's 0030, **0032** to **0040** (schema 40). See
+on a lab like the owner's found (#474-#476), the owner's adjustments (#477), agents that work a
+case with nothing typed (#478), and the console's identity after Paperclip (#479). The schema is PostgreSQL's baseline,
+**migration 0031**, which includes SQLite's 0030, **0032** to **0042** (schema 42). See
 [`MIGRATION.md`](MIGRATION.md): the SQLite file is **imported once**, before the first start; the
 appliance is three processes and a spool on disk, and a container needs two CPUs. No grouping
 decision changes (`make eval` is byte-identical).
@@ -153,6 +154,24 @@ stored device credential is unreadable (#455).
   or reference; each circuit's path drawn site by site; the customer's own multi-row sheet imported
   from a paste or an uploaded workbook, previewed first). Scoped by the customer's elements; eight
   new MCP tools (42 in all). Migration **0039**.
+
+### Changed — the console's identity, after Paperclip (#479)
+
+- **Neutral surfaces**: near-black and white with hairline borders, no blue cast; a neutral primary
+  button; the accent kept for what is selected, linked or live; panel titles in sentence case.
+- **Inter, served by the appliance** (`vendor/inter-5.3.0.latin.woff2`, OFL-1.1, pinned in
+  `vendor/CHECKSUMS.txt`); the CSP gains `font-src 'self'`. Figures in tabular numerals.
+- **One control** for every "one of these" — ranges, filters, states, the Broker | NOC switch (now
+  with each plane's icon); the sidebar's rows as rounded pills.
+- **Charts without frames**: hairline grids, 2 px lines, the Overview's severity area translucent
+  under a bright edge. The marks are unchanged.
+- **A new mark**: an N drawn as a network (`app/logo.js`, `favicon.svg`), on the sidebar, sign-in
+  and recovery.
+- An open case refreshes every 5 s (was 15 s); a case pending connectivity says what wakes it.
+- **README**: summarised, with a one-minute video (`docs/media/`). Documentation reviewed: the NOC
+  and its agents in `operate.md` and `troubleshoot.md`; stale statements corrected in
+  `architecture.md` (phase 2 and the MCP server exist), `console.md` (the health control's
+  readings), `operate.md` (seven models compete, schema 42), `ROADMAP.md` and `plans/noc-phase2.md`.
 
 ### Added — agents that work a case with nothing typed (#478)
 

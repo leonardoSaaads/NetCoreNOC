@@ -29,7 +29,9 @@ rest is at `3ecf237` ([`record.md`](record.md)).
   plan, down to the table and the key derivation, is §1 of the v0.21.0 handoff
   (`git show f8efb09:HANDOFF.md`). **Nothing in the product promises it** — the placeholder
   capabilities were removed rather than left, because a capability with no route is a promise of
-  a feature nobody built.
+  a feature nobody built. **The credential half now exists**: the NOC's vault seals SNMP
+  credentials (#455) and the executor runs one SNMP GET for an agent's lease (#462). A periodic
+  poll of a target set does not.
 - **The appliance on native Windows.** `main.py` installs its shutdown with
   `loop.add_signal_handler` and the resource sampler reads `os.statvfs`; Windows' Python has
   neither, so `python -m netcorenoc.main` does not start there. WSL 2 runs it unchanged

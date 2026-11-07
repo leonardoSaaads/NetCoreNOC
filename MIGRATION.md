@@ -80,6 +80,13 @@ Two rules that have held since v0.1.0 and are not going to change:
 
 *(This table has no rows for v0.17.0 or v0.18.0: neither release wrote one, and inventing upgrade notes for a release somebody else built would be describing an upgrade nobody tested.)*
 
+## Unreleased — the console's identity (#479)
+
+Nothing to do: no migration and no setting. The console looks different (neutral greys, Inter, a new
+mark). A reverse proxy that sets its own `Content-Security-Policy` must allow `font-src 'self'`, or
+the console falls back to the system font. Two files are new on the served surface:
+`/app/logo.js` and `/vendor/inter-5.3.0.latin.woff2`.
+
 ## Unreleased — agents that work a case with nothing typed (#478)
 
 Nothing to do: migration **0042** (the time a case spent pending, the cycle reason `access`)

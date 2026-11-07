@@ -6943,6 +6943,14 @@ From this release an entry is about six lines: decision, reason, release.*
   `vendor/CHECKSUMS.txt` and attributed in `NOTICE`. The CSP gains exactly one directive,
   `font-src 'self'`: this origin's own pinned bytes. Without it a Linux desktop drew the console in
   whatever `system-ui` resolved to.
+- **Decision** (`ui/app/views/parts/casedetail.js`), from watching the lab's agents work a fibre
+  cut: an open case refreshes every **5 s** (was 15 s) — while an agent works, a quarter-minute of
+  stillness read as a stuck screen — and a case pending connectivity says what wakes it (a
+  credential switched on for agents, its next update, a post) and that its restore clock is paused.
+- **Decision** (`docs/media/`): the README carries a **one-minute video** (H.264, 4 MB) behind a
+  five-second GIF, and the mark as `logo.svg`. Both were made outside the repository (recorded from
+  the lab with a browser, cut with a video editor); no tool that made them is a dependency or a
+  file here.
 - **Reason**: an operations console is read for hours; calm surfaces, one typeface, one shape per
   kind of control and charts that show the data rather than their frame are what modern consoles
   converged on, and what the owner asked for.
