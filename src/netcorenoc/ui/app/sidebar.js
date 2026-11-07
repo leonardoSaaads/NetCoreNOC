@@ -43,6 +43,7 @@
 import { html, Component, cx } from "./dom.js";
 import { reachableViews } from "./router.js";
 import { Icon } from "./icons.js";
+import { LogoMark } from "./logo.js";
 import { DEFAULT_VIEW } from "./registry.js";
 
 /** Group id -> heading. Order here is order on screen. `null` group renders above the first.
@@ -177,7 +178,7 @@ export class Sidebar extends Component {
     return html`<div class=${cx("sidebar", collapsed && "sidebar-collapsed")}>
       <a class="brand" href=${`#/${DEFAULT_VIEW}`} title="Go to the Overview"
          aria-label="NetCoreNOC — go to the Overview">
-        <span class="brand-mark" aria-hidden="true">◈</span>
+        <span class="brand-mark" aria-hidden="true"><${LogoMark} size=${26} /></span>
         <span class="brand-name">Net<b>CoreNOC</b></span>
       </a>
       <nav id="nav" class=${cx("nav", `nav-plane-${plane}`)} aria-label="Sections"

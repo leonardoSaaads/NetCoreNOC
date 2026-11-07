@@ -40,7 +40,7 @@ MUTATING = frozenset({"POST", "PUT", "PATCH", "DELETE"})
 
 CSP = (
     "default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self'; "
-    "connect-src 'self'; base-uri 'none'; frame-ancestors 'none'"
+    "font-src 'self'; connect-src 'self'; base-uri 'none'; frame-ancestors 'none'"
 )
 SECURITY_HEADERS = {
     "Content-Security-Policy": CSP,

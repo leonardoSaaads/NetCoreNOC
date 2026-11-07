@@ -1,14 +1,14 @@
 # NetCoreNOC documentation
 
-New here? Start with the project [`README.md`](../README.md): it gets the appliance running in ten
-minutes. Then pick the page for what you are doing.
+New here? Start with the project [`README.md`](../README.md) and its one-minute video: three
+commands get the appliance running. Then pick the page for what you are doing.
 
 ## Using it
 
 | I want to… | Read |
 |---|---|
 | Install it, or install it another way | [`install.md`](install.md) |
-| Sign in, send traps, work situations, understand repeats and clears | [`operate.md`](operate.md) |
+| Sign in, send traps, work situations and NOC cases, set up AI agents, back up | [`operate.md`](operate.md) |
 | Try it, or develop, with no network equipment (Linux and Windows) | [`simulate.md`](simulate.md) |
 | Change a port, the allowlist, TLS, retention | [`configure.md`](configure.md) |
 | Know what a screen is for | [`console.md`](console.md) |
@@ -36,7 +36,7 @@ development folder explains itself: [`tests/`](../tests/README.md), [`eval/`](..
 | [`ROADMAP.md`](ROADMAP.md) | Open items |
 | [`plans/releases.md`](plans/releases.md) | What each release is — the source of truth for release claims |
 | [`plans/correlation-kpi-audit.md`](plans/correlation-kpi-audit.md) | Audit of trap → situation classification against the 3 × 20 s KPIs, with a remediation plan |
-| [`plans/noc-phase2.md`](plans/noc-phase2.md) | Phase 2, the NOC plane: what is built, the API reviewed for AI agents (MCP), the executor and the MCP server to come, open questions |
+| [`plans/noc-phase2.md`](plans/noc-phase2.md) | Phase 2, the NOC plane: what is built (cases, vault, executor, playbooks, agents, MCP server, customers), the API reviewed for AI agents, open questions |
 | [`analysis/`](analysis/) | Pre-registered analysis plans: written before the data, hash-guarded, never edited |
 | [`record.md`](record.md) | Where removed documents went, and how to read an old citation |
 

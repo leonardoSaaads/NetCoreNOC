@@ -6910,3 +6910,47 @@ From this release an entry is about six lines: decision, reason, release.*
   without access guesses. The wait is the device owner's, not the agent's: it should neither
   charge the restore clock nor send the case up a tier, and the agent should be back the moment
   access is given.
+
+## 479. The console's identity, after Paperclip: neutral surfaces, Inter, one control family, a new mark (unreleased)
+
+- **Context**: the owner found the console dated — a blue-cast dark theme, shouting capitals on
+  every panel title, five different shapes of "pick one of these", monospaced figures everywhere
+  and charts that read as 2012 (a filled brown block under a framed well) — and asked for the
+  identity of Paperclip, Zabbix and Salesforce, the Broker brought close to Paperclip.
+- **Decision** (`ui/style.css`): **neutral surfaces** — near-black and white with hairline borders,
+  no blue cast — after Paperclip's tokens (`ui/src/index.css`, OKLCH greys); a **neutral primary
+  action** (light on dark, dark on light), the accent kept for what is selected, linked or live;
+  radii of 6 px (controls) and 10 px (cards); cards with no shadow. Panel titles in sentence case;
+  the capitalised micro-label kept for the sidebar's groups and for property labels, as Paperclip
+  keeps it. Figures in Inter's tabular numerals; monospace for code, IDs and addresses only.
+- **Decision**: **one control family for "one of these"** — the window picker, the segmented
+  filters, the situation states and the Broker | NOC switch are one shape: a sunken track with the
+  chosen item a raised chip. The plane switch carries each plane's mark (network, headset).
+- **Decision**: the **sidebar** as Paperclip's: rounded rows in the rail's gutter, the selected
+  row a soft fill rather than a stripe, counts as quiet pills, group labels 10.5 px capitals. The
+  **top bar** on the page background, the live state a chip.
+- **Decision** (`ui/style.css`, charts): **no frame and no well** under a plot — three hairlines
+  drawn by the background; lines at 2 px; the Overview's stacked area translucent (16 %) under a
+  bright 2 px edge in each severity's own colour; axis labels in small tabular figures. The
+  geometry (`polyline`, `polygon`, `rect`) is unchanged, so every honesty rule and every test that
+  reads a chart's marks still holds.
+- **Decision** (`ui/app/logo.js`, `ui/favicon.svg`): **a new mark** — an N drawn as a network: four
+  nodes and three links on a blue tile, the diagonal the broker's correlation, the ringed node the
+  probable root cause. It replaces the `◈` glyph, which said nothing about the product.
+- **Decision** (`ui/vendor/inter-5.3.0.latin.woff2`, `api/perimeter.py`): **Inter, vendored**
+  (OFL-1.1, the Latin subset of the variable weight axis, 48 KB, from the
+  `@fontsource-variable/inter` 5.3.0 tarball whose sha1 matched the registry's), pinned in
+  `vendor/CHECKSUMS.txt` and attributed in `NOTICE`. The CSP gains exactly one directive,
+  `font-src 'self'`: this origin's own pinned bytes. Without it a Linux desktop drew the console in
+  whatever `system-ui` resolved to.
+- **Decision** (`ui/app/views/parts/casedetail.js`), from watching the lab's agents work a fibre
+  cut: an open case refreshes every **5 s** (was 15 s) — while an agent works, a quarter-minute of
+  stillness read as a stuck screen — and a case pending connectivity says what wakes it (a
+  credential switched on for agents, its next update, a post) and that its restore clock is paused.
+- **Decision** (`docs/media/`): the README carries a **one-minute video** (H.264, 4 MB) behind a
+  five-second GIF, and the mark as `logo.svg`. Both were made outside the repository (recorded from
+  the lab with a browser, cut with a video editor); no tool that made them is a dependency or a
+  file here.
+- **Reason**: an operations console is read for hours; calm surfaces, one typeface, one shape per
+  kind of control and charts that show the data rather than their frame are what modern consoles
+  converged on, and what the owner asked for.

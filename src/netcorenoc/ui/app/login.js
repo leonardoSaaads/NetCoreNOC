@@ -26,6 +26,7 @@ import { post, get, ApiError } from "./api.js";
 import { setPasswordPolicy } from "./session.js";
 import { PasswordInput, PasswordMeter, pairProblem } from "./password.js";
 import { CardHead, ForgotForm, ResetForm, resetToken } from "./recover.js";
+import { LogoMark } from "./logo.js";
 
 export class Login extends Component {
   constructor(props) {
@@ -122,7 +123,7 @@ export class Login extends Component {
   render() {
     return html`<div id="login" class="login">
       <section class="login-hero" aria-hidden="true">
-        <div class="login-brand"><span class="brand-mark">◈</span> Net<b>CoreNOC</b></div>
+        <div class="login-brand"><span class="brand-mark"><${LogoMark} size=${44} /></span><span>Net<b>CoreNOC</b></span></div>
         <p class="login-tagline">SNMP trap correlation for telecom networks.</p>
         <ul class="login-points">
           <li>Point your equipment at it — no MIBs, no inventory, no topology files.</li>

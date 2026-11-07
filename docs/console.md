@@ -440,6 +440,13 @@ preview mode, the console says so rather than inventing a count.
 
 ## Appearance and keyboard
 
+The look follows Paperclip (ADR #479): neutral grey surfaces with hairline borders, one blue accent
+kept for state (links, focus, the active plane), Inter served from the appliance itself
+(`vendor/inter-*.woff2`, so the CSP still allows nothing from elsewhere), one segmented control for
+every range, tab and plane switch, and frameless charts on a hairline grid. The mark is an **N**
+drawn as a network: four nodes and three links, the diagonal for the Broker's correlation and the
+ringed node for the probable root cause (`app/logo.js`, the same drawing as `favicon.svg`).
+
 Dark, light, or your system's preference; compact or comfortable density; and since v0.16.4 the
 sidebar collapses to icons. All three are remembered in cookies that carry a name from a closed set
 and nothing else — never a user id, never a token ([#172](adr/DECISIONS.md), [#290](adr/DECISIONS.md)).
@@ -512,11 +519,9 @@ Stated here rather than discovered:
 * **The network graph is not keyboard-operable** and has no screen-reader equivalent beyond its
   label. Everything it shows is on the **Entities** screen as text, and the graph says so. No
   screen-reader testing has been performed.
-* **There is no CPU, memory, disk or uptime figure**, because the appliance does not measure one —
-  there is no `psutil`, no `resource` and no `/proc` read anywhere in `src/`. What it *does* measure
-  is in the top bar's health control on every screen since v0.16.4, and that control says which
-  four things it shows rather than leaving the absence to be inferred. A ten-minute series is
-  v0.16.5's, because it needs storage nothing has.
+* **There is no uptime figure**, and no per-process breakdown. What the appliance measures — CPU,
+  memory and storage, from stdlib reads (`/proc/stat`, the cgroup's limit, `os.statvfs`; no
+  `psutil`) — is in the top bar's health control on every screen, with a two-hour sparkline each.
 
 ## How the console is tested
 

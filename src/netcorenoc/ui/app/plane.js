@@ -20,6 +20,11 @@
 
 import { html, cx } from "./dom.js";
 import { reachableViews } from "./router.js";
+import { Icon } from "./icons.js";
+
+/** Each plane's mark beside its name (ADR #479): the network for the Broker, the headset for the
+ *  NOC. Decoration beside the label, never instead of it. */
+const PLANE_ICON = { broker: "network", noc: "headset" };
 
 /** The two halves of the product, in the order the top bar shows them. Kept out of `registry.js`,
  *  whose entries are views and are parsed as such by `tests/ui/test_security_ui.py`. */
@@ -57,7 +62,8 @@ export function PlaneSwitch({ capabilities, plane, last, onNavigate }) {
       const to = landing(capabilities, p.key, on ? null : last);
       return html`<a key=${p.key} class=${cx("plane", `plane-${p.key}`, on && "plane-on")}
         href=${to} title=${p.title} aria-current=${on ? "true" : null}
-        onClick=${(event) => { event.preventDefault(); if (to) onNavigate(to); }}>${p.label}</a>`;
+        onClick=${(event) => { event.preventDefault(); if (to) onNavigate(to); }}>
+        <${Icon} name=${PLANE_ICON[p.key] || "kpi"} />${p.label}</a>`;
     })}
   </nav>`;
 }

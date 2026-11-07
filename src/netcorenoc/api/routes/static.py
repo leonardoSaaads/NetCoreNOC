@@ -63,6 +63,7 @@ _UI_MODULES = (
     # `password.js` is the confirmation, length meter and reveal shared by the sign-in card and the
     # account screen, so the two cannot drift about what a valid password is (V.2).
     "app/icons.js",
+    "app/logo.js",
     "app/login.js",
     "app/parameters.js",
     "app/password.js",
@@ -277,6 +278,8 @@ STATIC_ASSETS = {
     "favicon.svg": "image/svg+xml",
     # v0.30.0 (ADR #446): the sign-in artwork, self-hosted because `img-src 'self'`.
     "login-bg.svg": "image/svg+xml",
+    # ADR #479: the console's typeface, self-hosted because the CSP allows `font-src 'self'` only.
+    "vendor/inter-5.3.0.latin.woff2": "font/woff2",
     # RFC 9116 machine-readable security contact. Static, public, unauthenticated, additive to
     # this allowlist (not a new dynamic surface); it is served under the same CSP/security-headers
     # middleware and shipped in the package (ui/.well-known/security.txt).

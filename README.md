@@ -1,131 +1,87 @@
-# NetCoreNOC
+<p align="center">
+  <img src="docs/media/logo.svg" width="72" height="72" alt="NetCoreNOC">
+</p>
 
-**SNMP trap correlation for telecom networks, with nothing to configure.** Point your equipment's
-trap destination at NetCoreNOC. It discovers the devices, groups related alarms into
-**situations**, names the probable root cause, and shows *why* each alarm was grouped. No MIBs, no
-inventory and no topology files are needed.
+<h1 align="center">NetCoreNOC</h1>
 
-One Python appliance — a process that receives traps and spools them to disk, one that decodes
-them, one that correlates — one PostgreSQL schema, one web console. No accepted trap is lost to a
-slow model or a restart, and each one is timed against a KPI an administrator sets.
+<p align="center">
+  <b>Traps in. Situations out. AI agents on call.</b><br>
+  An open-source NOC for telecom networks: it correlates SNMP traps into situations with nothing to
+  configure, and AI agents work the cases.
+</p>
 
-[![CI](https://github.com/leonardoSaaads/NetCoreNOC/actions/workflows/ci.yml/badge.svg)](https://github.com/leonardoSaaads/NetCoreNOC/actions/workflows/ci.yml)
-[![License: Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
-[![Latest release](https://img.shields.io/github/v/release/leonardoSaaads/NetCoreNOC?sort=semver)](https://github.com/leonardoSaaads/NetCoreNOC/releases)
+<p align="center">
+  <a href="https://github.com/leonardoSaaads/NetCoreNOC/actions/workflows/ci.yml"><img src="https://github.com/leonardoSaaads/NetCoreNOC/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-Apache--2.0-blue.svg" alt="License: Apache-2.0"></a>
+  <a href="https://github.com/leonardoSaaads/NetCoreNOC/releases"><img src="https://img.shields.io/github/v/release/leonardoSaaads/NetCoreNOC?sort=semver" alt="Latest release"></a>
+</p>
 
-> **Early software.** It has not run in production yet. Run it beside your current NMS first — it
+<p align="center">
+  <a href="docs/media/netcorenoc-promo.mp4"><img src="docs/media/netcorenoc-promo.gif" width="800" alt="NetCoreNOC in one minute: install, sign in, a fibre cut becomes one situation, and an AI agent works the case"></a><br>
+  <sub>▶ <a href="docs/media/netcorenoc-promo.mp4">Watch the one-minute video</a>: install on Linux, sign in, a fibre cut becomes one situation, an AI agent works the case.</sub>
+</p>
+
+## What it does
+
+* **Broker**: point your equipment's traps at it. It discovers devices and alarm types, groups related
+  alarms into **situations**, names the probable root cause and shows *why* each alarm was grouped.
+  No MIBs, no inventory, no topology files.
+* **NOC**: a situation someone starts working becomes a **case**, with a queue, clocks and a
+  customer update. **AI agents** (any OpenAI-compatible model, a local Ollama or Claude) take the
+  case, read the devices with read-only commands and keep the customer informed. They lease
+  short-lived tokens and never see a password.
+* One appliance: three Python processes, PostgreSQL and a web console. No accepted trap is lost to a
+  slow model or a restart.
+
+> **Early software.** It has not run in production yet. Run it beside your current NMS first: it
 > only needs a copy of the traps.
 
-## Quickstart (10 minutes, Docker)
-
-You need Docker with Compose, and a host your equipment can reach on UDP 162.
+## Quickstart (Linux, Docker Compose)
 
 ```sh
 git clone https://github.com/leonardoSaaads/NetCoreNOC.git && cd NetCoreNOC
-cp .env.example .env                       # optional settings; safe to leave as is
 docker compose up -d --build
-docker compose logs netcorenoc | grep -A4 "bootstrap admin"
+docker compose logs netcorenoc | grep -A4 "bootstrap admin"   # the one-time password for `admin`
 ```
 
-Compose also starts PostgreSQL on a private network, with a database password it generates on the
-first start: there is nothing to set. The last command prints a one-time password for the user
-`admin`. Then:
+1. Open `http://127.0.0.1:8080/` (or `http://<host>:8080/`), sign in as `admin` and choose a new
+   password.
+2. Point the devices' **SNMP trap destination** at the host, UDP **162** (v1/v2c; SNMPv3 users go in
+   **Settings → SNMP**).
+3. Watch **Situations**.
 
-1. Open `http://<host>:8080/`, sign in as `admin`, and choose a new password (12+ characters).
-2. Point your equipment's **SNMPv2c or v1 trap destination** at `<host>`, UDP port **162**. For
-   **SNMPv3**, add the user under **Settings → SNMP** first; the form prints the device commands.
-3. Watch **Situations**. Devices and alarm types appear as traps arrive.
+AI agents (optional): switch the top bar to **NOC**. Its Overview lists what is missing, each item a
+link: connect a model in **Secrets → AI providers**, hire an agent in **Agents**, and let agents use
+each device credential in **Secrets**. No equipment yet? [`docs/simulate.md`](docs/simulate.md)
+sends real traps from simulated devices.
 
-To let the NOC's AI agents work the cases (optional): switch the header to **NOC** — its overview
-lists what is missing, each a link.
-
-1. **Secrets → AI providers**: connect a model. A local Ollama needs no key; from the Compose
-   container it is `host.docker.internal`, port 11434 (start Ollama with `OLLAMA_HOST=0.0.0.0`).
-2. **Agents → Hire an agent**: a name and a model are enough — its job comes prefilled, and the
-   first one hired takes the cases from the queue.
-3. **Secrets → New credential** for each device (SSH or SNMP), then **Let agents use it**. Until
-   then an agent says it has no access and sets the case *Pending connectivity*; it is woken the
-   moment access is granted. Agents receive a short-lived token, never the password.
-
-Cannot use port 162? Set `NETCORENOC_TRAP_PORT=1162` in `.env`, run `docker compose up -d` again,
-and send traps to port 1162. Other ways to install (plain Docker, pip, systemd, Nix):
-[`docs/install.md`](docs/install.md).
-
-### Try it with test traffic, without equipment
-
-```sh
-python3.12 -m venv .venv && .venv/bin/pip install .
-make pg-test-up                # a throwaway PostgreSQL on 127.0.0.1:55432 (Docker), or use your own
-export NETCORENOC_DATABASE_URL=postgresql://netcorenoc:netcorenoc@127.0.0.1:55432/postgres
-NETCORENOC_TRAP_PORT=1162 NETCORENOC_HTTP_PORT=8081 .venv/bin/python -m netcorenoc.main
-# in a second terminal: a fibre cut on two devices, sent as real SNMP traps
-make replay                    # `make replay-list` shows the other scenarios
-```
-
-Open `http://localhost:8081/`. Run the appliance itself outside Docker: Docker's port proxy
-rewrites the source address of traps sent from the same machine, so every simulated device would
-appear as one. The test database keeps nothing (`make pg-test-down` removes it). More scenarios,
-your own traps, a PostgreSQL without Docker, `snmptrap`, and the steps for Windows (WSL 2):
-[`docs/simulate.md`](docs/simulate.md).
-
-## Before a team relies on it
-
-| Step | How |
-|---|---|
-| Only accept traps from your equipment | `NETCORENOC_ALLOWLIST=10.0.0.0/8,192.0.2.10` in `.env` |
-| Serve HTTPS | `NETCORENOC_TLS_CERT` / `NETCORENOC_TLS_KEY`, or a TLS reverse proxy — [`docs/security.md`](docs/security.md) |
-| One account per person | **People & access**: `viewer` (read), `editor` (work situations), `admin` (everything). A visibility scope narrows what someone sees, but it is **not tenant isolation**: correlation still learns across the whole estate — [`docs/security.md`](docs/security.md) |
-| A second admin | so a forgotten password never locks the team out |
-| Password recovery by email | **Settings → Email** (Gmail, Microsoft 365 and others preset, or any SMTP server), and a recovery address per person |
-| Accept only what you expect | **Settings → SNMP**: switch off unused versions, list communities, or require SNMPv3 users |
-| Programs use service tokens | **People & access → Service tokens**; the value is shown once, and the API reference below the list shows every call a token can make |
-| Back up the database | a `pg_dump` of the schema, while it runs — the command is in [`docs/operate.md`](docs/operate.md#8-backups-upgrades-and-checks) |
-| Upgrade | back up, `git pull`, `docker compose up -d --build`; read [`MIGRATION.md`](MIGRATION.md). From v0.30.0 or earlier, the SQLite file is imported into PostgreSQL once, before the first start |
-
-Forgot a password? **Forgot your password?** on the sign-in screen once email is set up; otherwise
-`docker compose exec netcorenoc python -m netcorenoc admin reset-password <user>`. More in
-[`docs/troubleshoot.md`](docs/troubleshoot.md).
-
-## How it decides
-
-* Every trap becomes an **alarm**: device + trap type + instance (for example the port). A repeat
-  of the same alarm increments its count instead of creating a new one.
-* A trained model compares each new alarm with recent ones and decides which belong together. Five
-  models compete and a judge picks the best; an admin can pin one. If no model can be loaded, a
-  simple built-in formula takes over. Every grouping shows the reasons, with numbers.
-* A situation is **New** until someone works on it, **Open** while the team handles it, and
-  **Resolved** when its alarms clear, it goes quiet, or an operator closes it. A model never adds
-  alarms to an Open situation on its own — it proposes them as **Pending** for an operator to
-  accept or reject.
-* A clear (for example `linkUp`, or a trap whose severity reads `cleared`) ends its alarm. An alarm
-  that repeats after a long silence, or after its situation was closed, opens a **new** situation.
-  [`docs/operate.md`](docs/operate.md#4-how-alarms-repeat-clear-and-come-back) has the exact rules.
+Before a team relies on it: an allowlist, HTTPS, one account per person and backups of the database
+and both key files ([`docs/operate.md`](docs/operate.md), section 10). A visibility scope narrows
+what someone sees, but it is **not tenant isolation** ([`docs/security.md`](docs/security.md)).
 
 ## Documentation
 
 | | |
 |---|---|
-| [`docs/install.md`](docs/install.md) | Every way to install it |
-| [`docs/operate.md`](docs/operate.md) | Signing in, sending traps, working situations, alarm rules |
-| [`docs/configure.md`](docs/configure.md) | Every setting and its default, and the database (bundled, Supabase or another managed PostgreSQL) |
+| [`docs/install.md`](docs/install.md) | Every way to install it (Compose, Docker, pip, systemd, Nix) and upgrades |
+| [`docs/operate.md`](docs/operate.md) | First sign-in, traps, situations, the NOC and its agents, backups, going to production |
 | [`docs/console.md`](docs/console.md) | What each screen is for |
+| [`docs/configure.md`](docs/configure.md) | Every setting and its default; the database |
+| [`docs/security.md`](docs/security.md) | Accounts, roles, the credential vault, agents, TLS, the audit log |
 | [`docs/troubleshoot.md`](docs/troubleshoot.md) | Symptoms and fixes |
-| [`docs/security.md`](docs/security.md) | Accounts, roles, TLS, the audit log |
 | [`docs/README.md`](docs/README.md) | Everything else, including how it works inside |
 
 ## Development
 
 ```sh
 python3.12 -m venv .venv && .venv/bin/pip install -e ".[dev]"
-make qa         # lint, type check, the test suite and the evaluation gate; needs a PostgreSQL
-                # (local binaries, or `make pg-test-up` — see CONTRIBUTING.md)
-make dom        # the console's tests; needs Node 22+ on PATH
-make security   # bandit and pip-audit
+make qa         # lint, type check, tests and the evaluation gate (needs PostgreSQL: `make pg-test-up`)
+make dom        # the console's tests (Node 22+)
 ```
 
 [`CONTRIBUTING.md`](CONTRIBUTING.md) has the rules a change must follow.
 
 ## Licence
 
-Apache-2.0 — see [LICENSE](LICENSE). Report vulnerabilities privately, as described in
+Apache-2.0, see [LICENSE](LICENSE). Report vulnerabilities privately, as described in
 [`SECURITY.md`](SECURITY.md).

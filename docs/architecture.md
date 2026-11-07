@@ -218,20 +218,20 @@ contents.
 
 ## The three phases — what this code is the first third of
 
-NetCoreNOC is designed in three phases. **Only the first is built.** The other two are described
-here so that a reader understands the shape the current code is part of, and so that neither arrives
-as a surprise that has to be bolted on.
+NetCoreNOC is designed in three phases. **The first is built, the second is well under way, the
+third is not begun.** All three are described here so that a reader understands the shape the
+current code is part of, and so that nothing arrives as a surprise that has to be bolted on.
 
-### Phase 1 — correlation and inference *(this is where the project is)*
+### Phase 1 — correlation and inference *(built: the Broker)*
 
 Traps arrive and are correlated into situations. Entities and classes are inferred without MIBs; a
 network graph is built from co-occurrence; probable root causes are ranked; and an operator can see
 **why** any grouping happened, per term. The output is a live, explained model of what is happening
 in a complex, dynamic ISP network — from the trap stream alone.
 
-Everything in this document, and everything you can run today, is phase 1.
+Everything in this document above this section is phase 1: the console's **Broker** plane.
 
-### Phase 2 — automated first response *(begun: the NOC plane, its cases, its credential vault, the executor and playbooks)*
+### Phase 2 — automated first response *(under way: the NOC plane — cases, the credential vault, the executor, playbooks, AI agents and the MCP server)*
 
 Takes phase 1's output and acts as a **NOC level 1**: an AI plus a library of diagnostic and
 remediation scripts that **evolve and are scored over time**, trying the steps a human would try. If
@@ -265,9 +265,16 @@ nobody has taken it. This is the script library's first form: what it lacks is t
 screen; a vault that seals each device credential twice, under two keys and two ciphers, bound to
 the host it works for; custodians, a step-up for every act on a secret, and a stated placeholder for
 the second factor; status lights from checks that never open the seal; and **leases** — what an AI
-agent holds instead of a credential. **What does not, yet**: the MCP server agents will reach it
-through, write commands on a device, and scoring a playbook by whether its resolutions held. Their
-design and the review of the current API for agents are in
+agent holds instead of a credential.
+
+**AI agents** (ADRs #464-#478): an organization of agents in tiers, each with a model (Claude, any
+OpenAI-compatible API, a local Ollama, or a webhook), instructions and a budget; an **MCP server**
+(`POST /api/mcp`) whose every tool is a route called with the agent's own key; routing from the
+queue to an entry agent and escalation through the tiers; each customer's book for the agents to
+read; and an agent woken when its case returns to the queue or access to its devices is granted.
+
+**What does not exist, yet**: write commands on a device, and scoring a playbook by whether its
+resolutions held. Their design and the review of the API for agents are in
 [`plans/noc-phase2.md`](plans/noc-phase2.md).
 
 ### Phase 3 — case creation *(not built, not designed)*

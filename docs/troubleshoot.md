@@ -299,6 +299,33 @@ dump ([`operate.md`](operate.md#8-backups-upgrades-and-checks)) onto healthy sto
 
 Node 22 or newer is not on `PATH`. The console tests skip rather than fail; install Node.
 
+## The NOC's agents
+
+### A case waits in the queue and no agent takes it
+
+The NOC's **Overview** lists what is missing, each item a link: a model under **Secrets → AI
+providers**, a hired agent under **Agents**. An agent that reached its monthly budget is paused,
+with the reason, until a person resumes it (ADR #472). Each agent's **Runs** tab shows every step
+it took and the error that ended a run.
+
+### An agent on a local Ollama never answers
+
+From the Compose container, a local Ollama is `host.docker.internal`, port 11434 (ADR #478). Ollama
+listens on `127.0.0.1` by default: start it with `OLLAMA_HOST=0.0.0.0`. A host firewall must let
+the Docker bridge reach that port — on NixOS, for example,
+`networking.firewall.trustedInterfaces = [ "docker0" ];`. To test from the container:
+
+```sh
+docker compose exec netcorenoc python -c \
+  "import urllib.request; print(urllib.request.urlopen('http://host.docker.internal:11434/api/tags').read()[:200])"
+```
+
+### An agent says it has no access, and the case is *Pending connectivity*
+
+No credential the agents may lease covers that device. In **Secrets**, store one for the device's
+address and choose **Let agents use it**; the case goes back to its agent at once. The agent never
+sees the password: it leases a short-lived token and the appliance runs the read-only command.
+
 ## When you are stuck
 
 ```sh
