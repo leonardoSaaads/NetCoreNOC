@@ -55,6 +55,10 @@ link: connect a model in **Secrets → AI providers**, hire an agent in **Agents
 each device credential in **Secrets**. No equipment yet? [`docs/simulate.md`](docs/simulate.md)
 sends real traps from simulated devices.
 
+Before a team relies on it: an allowlist, HTTPS, one account per person and backups of the database
+and both key files ([`docs/operate.md`](docs/operate.md), section 10). A visibility scope narrows
+what someone sees, but it is **not tenant isolation** ([`docs/security.md`](docs/security.md)).
+
 ## Documentation
 
 | | |
