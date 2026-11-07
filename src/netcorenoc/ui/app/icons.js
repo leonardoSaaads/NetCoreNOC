@@ -205,3 +205,4 @@ export function Icon({ name, className }) {
       html`<circle key=${`c${i}`} cx=${cx} cy=${cy} r=${r} />`)}
   </svg>`;
 }
+

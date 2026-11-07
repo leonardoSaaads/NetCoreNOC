@@ -10,7 +10,8 @@
 # verifies what this file already names (v0.13.0).
 #
 # Regenerate intentionally with:
-#   cd src/netcorenoc/ui/vendor && sha256sum preact-10.29.8.module.js htm-3.1.1.module.js
+#   cd src/netcorenoc/ui/vendor && sha256sum preact-10.29.8.module.js htm-3.1.1.module.js \
+#     inter-5.3.0.latin.woff2
 #
 # ## Provenance
 #
@@ -22,6 +23,9 @@
 #                             tarball sha1 fc85b82dc2474e245b1430b51781d417361f5fc3
 #   htm-3.1.1.module.js       htm 3.1.1, Apache-2.0, npm tarball dist/htm.module.js
 #                             tarball sha1 49266582be0dc66ed2235d5ea892307cc0c24b78
+#   inter-5.3.0.latin.woff2   Inter 5.3.0 (variable wght, Latin subset), OFL-1.1, npm tarball
+#                             @fontsource-variable/inter 5.3.0 files/inter-latin-wght-normal.woff2
+#                             tarball sha1 351dd1e02dab63a6cf66d57ec36dcfd10c07f07b (ADR #479)
 #
 # d3 was removed in v0.22.0: both drawings that used it became hand-written SVG (ADR #383).
 #
@@ -30,3 +34,4 @@
 # <script type="importmap">, which the CSP forbids (see docs/adr/DECISIONS.md #175).
 c30e721ebfdc6e2ad4c18c14d2dfb82667829c8aec27de1207774e3fc16858a8  preact-10.29.8.module.js
 ab33dd3f38059b9be4d5f5350128eefb2356639c4e0bbe9d9e8b3ba75847e9e4  htm-3.1.1.module.js
+3100e775e8616cd2611beecfa23a4263d7037586789b43f035236a2e6fbd4c62  inter-5.3.0.latin.woff2

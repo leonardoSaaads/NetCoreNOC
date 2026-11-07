@@ -49,6 +49,7 @@ UNAUTHENTICATED_PATHS: frozenset[str] = frozenset(
         # fetched before any identity exists — the sign-in card imports them — so both are
         # unauthenticated by necessity as well as by claim.
         "/app/icons.js",
+        "/app/logo.js",
         "/app/login.js",
         "/app/parameters.js",
         "/app/password.js",
@@ -220,6 +221,7 @@ UNAUTHENTICATED_PATHS: frozenset[str] = frozenset(
         "/login-bg.svg",
         # Vendored third-party assets, pinned by CHECKSUMS.txt.
         "/vendor/htm-3.1.1.module.js",
+        "/vendor/inter-5.3.0.latin.woff2",
         "/vendor/preact-10.29.8.module.js",
     }
 )

@@ -861,11 +861,13 @@ def test_the_ui_tree_is_exactly_what_is_declared() -> None:
 
 
 def test_csp_is_unchanged_and_forbids_inline() -> None:
-    """The CSP is **not relaxed** by this release. Not one directive moved."""
+    """The CSP is **not relaxed**: no inline, no eval, no other origin. ADR #479 added exactly one
+    directive, `font-src 'self'`, for the console's vendored typeface — this origin's own bytes,
+    pinned in `vendor/CHECKSUMS.txt` like every other vendored asset."""
     assert "style-src 'self'" in CSP and "script-src 'self'" in CSP
     assert "'unsafe-inline'" not in CSP and "default-src 'none'" in CSP
     assert "'unsafe-eval'" not in CSP
     assert CSP == (
         "default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self'; "
-        "connect-src 'self'; base-uri 'none'; frame-ancestors 'none'"
-    ), "the CSP text changed; v0.13.0 may not touch it (Part VI.5)"
+        "font-src 'self'; connect-src 'self'; base-uri 'none'; frame-ancestors 'none'"
+    ), "the CSP text changed: say why in an ADR, as #479 did for `font-src 'self'`"

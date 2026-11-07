@@ -710,7 +710,9 @@ async def test_f43_every_path_served_today_still_registers(store: Store) -> None
     # Unreleased: 335 -> 338 and 187 -> 188 — ending a customer (ADR #477: one /api pair) and two
     # UI modules (a local Ollama's models; moving an agent in the chart).
     # Unreleased: 338 -> 339 and 188 -> 189 — sending a case's customer update (ADR #478).
-    assert len(served) == 339, f"the served surface moved: {len(served)} method/path pairs"
+    # Unreleased: 339 -> 341, /api unchanged — the console's identity (ADR #479): the brand mark's
+    # module (`app/logo.js`) and the vendored typeface (`vendor/inter-5.3.0.latin.woff2`).
+    assert len(served) == 341, f"the served surface moved: {len(served)} method/path pairs"
     api_pairs = {(method, path) for method, path in served if path.startswith("/api")}
     # **v0.19.0: 53 -> 55.** `GET /api/models` and `POST /api/models/register`: what the
     # models are doing, and turning one of this appliance's own fits into an artefact.
@@ -899,7 +901,9 @@ async def test_f42_every_path_served_today_still_registers(store: Store) -> None
     # Unreleased: 335 -> 338 and 187 -> 188 — ending a customer (ADR #477: one /api pair) and two
     # UI modules (a local Ollama's models; moving an agent in the chart).
     # Unreleased: 338 -> 339 and 188 -> 189 — sending a case's customer update (ADR #478).
-    assert len(served) == 339, f"the served surface moved: {len(served)} method/path pairs"
+    # Unreleased: 339 -> 341, /api unchanged — the console's identity (ADR #479): the brand mark's
+    # module (`app/logo.js`) and the vendored typeface (`vendor/inter-5.3.0.latin.woff2`).
+    assert len(served) == 341, f"the served surface moved: {len(served)} method/path pairs"
     api_pairs = {(method, path) for method, path in served if path.startswith("/api")}
     # **v0.19.0: 53 -> 55.** `GET /api/models` and `POST /api/models/register`: what the
     # models are doing, and turning one of this appliance's own fits into an artefact.
