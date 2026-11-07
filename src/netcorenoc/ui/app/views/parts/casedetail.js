@@ -25,7 +25,9 @@ const PATH = [
   ["queue", "Pending assignment"], ["working", "Working"], ["pending", "Pending"],
   ["validate", "Validate resolution"], ["resolved", "Resolved"], ["closed", "Closed"],
 ];
-const REFRESH_MS = 15000;
+/** How often an open case is read again. Five seconds (ADR #479): an agent works a case in a handful
+ * of tool calls a few seconds apart, and at fifteen its posts arrived in bursts the reader waited on. */
+const REFRESH_MS = 5000;
 
 /** What the step the case is on asks of the NOC — Salesforce's guidance, in the handbook's words. */
 function guidance(c) {

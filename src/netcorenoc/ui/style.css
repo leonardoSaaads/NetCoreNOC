@@ -77,7 +77,7 @@
   /* palette — dark is the default because a NOC wall is dark */
   --bg: #0c0c0e;
   --bg-raised: #141417;
-  --bg-sunken: #09090b;
+  --bg-sunken: #0f0f12;
   --bg-hover: #1c1c20;
   --line: #232328;
   --line-strong: #34343b;
@@ -1762,8 +1762,8 @@ pre.refusal-reason {
   padding: var(--space-6) var(--space-5); box-shadow: var(--shadow-2);
 }
 .login-head { margin-bottom: var(--space-4); }
-.login-head h1 { font-size: var(--fs-lg); font-weight: 400; margin: 0 0 var(--space-4); color: var(--fg-muted); }
-.login-head h1 span { color: var(--accent); font-weight: 600; }
+.login-head h1 { display: flex; align-items: center; gap: 8px; font-size: var(--fs-lg); font-weight: 600; letter-spacing: -0.02em; margin: 0 0 var(--space-4); color: var(--fg); }
+.login-head h1 b { color: var(--fg-muted); font-weight: 500; }
 .login-head h2 { font-size: var(--fs-2xl); margin: 0 0 var(--space-1); }
 .login-head .hint { margin: 0; }
 /* DIRECT CHILDREN ONLY, and that is the whole of F86: a descendant selector reached the composed
@@ -2668,11 +2668,11 @@ button.mw-row-name {
 }
 .toprank { color: var(--fg-dim); font-size: var(--fs-sm); text-align: right; }
 .topname { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: var(--mono); font-size: var(--fs-sm); }
-.topmix { display: flex; height: 10px; border-radius: 3px; overflow: hidden; background: var(--bg-sunken); }
+.topmix { display: flex; height: 6px; border-radius: 999px; overflow: hidden; background: var(--grid); }
 .topmix-part { display: block; min-width: 3px; }
-.topmix-part.sev-critical { background: var(--sev-critical-fill); }
-.topmix-part.sev-major { background: var(--sev-major-fill); }
-.topmix-part.sev-minor { background: var(--sev-minor-fill); }
+.topmix-part.sev-critical { background: var(--alarm); }
+.topmix-part.sev-major { background: var(--major); }
+.topmix-part.sev-minor { background: var(--minor); }
 .topmix-part.sev-warning { background: var(--sev-warning-line); }
 .topmix-part.sev-indeterminate { background: var(--fg-muted); }
 .topmix-part.sev-unplaced { background: var(--fg-dim); }

@@ -385,7 +385,7 @@ UI_HASHES: dict[str, str] = {
     "app/parameters.js": "6c5cf807535cc2ef87d4b1d54f2ab2abb34f595f74c64cc272b26bb88113b1f4",
     "app/password.js": "6c85d8111fcaa2da415910744064c84e41adf5db57fc953cad9f1f14543ec11d",
     "app/plane.js": "1f46083206d6a6a2c6e8fea242e3bfeef0a9465d7846f6b7844523af6f47b382",
-    "app/recover.js": "c302e4f0bc0ffc416ec72b2bd266d3b716cb5f4ce687c823644c8e384bfa83f4",
+    "app/recover.js": "4ec71b672d6d647dc311fede65c51ff407b883f85d3bfdc8cec5e229f92fa5be",
     "app/registry.js": "458928b21449b7eaa3d4bab4ddbb2ffc8bd251339f0bfd706f67dfa337dee45d",
     "app/roster.js": "3cb720924adb78f3ea8e4cdb94fd0b18c864df39e92218584c1a93cb6127d299",
     "app/router.js": "9d6635854bd66b18c51318ce219fdc54c8260444b95a1da6228afd03afdf313e",
@@ -456,7 +456,7 @@ UI_HASHES: dict[str, str] = {
         "9bce26e4e9102cbcb80419deac7c44142b17a01e4725d2896e25c8b415b2fd6f"
     ),
     "app/views/parts/casedetail.js": (
-        "9a7f374e0599cab4e758786b221c00c9d0ae6c6283009114eae7703e8ea9b749"
+        "e458f64402fa9306c58260045c5f168c6a47b3629ae99a014942a08c45ef08a7"
     ),
     "app/views/parts/casefeed.js": (
         "cac9f9d3503ee2f8cba10b31992f8fe51867a469ef7207d4e09a9bc73bd651bb"
@@ -630,10 +630,10 @@ UI_HASHES: dict[str, str] = {
     "app/views/situations.js": "afe374be8e8e920369da6fe767294cc29a7cec7fea9899a6deace262f1509241",
     "app/views/timeline.js": "f023cedba738a32c4961e4c0cb051f82bd4244be5548556c4c2633c6cfe9fe54",
     "app/widgets.js": "32ee7263e4f7b1905b5d8acd68532635a9351df2a5d811a88e814c268052c5c7",
-    "favicon.svg": "d826c2a8b1b7d5842ccecc1aa262f97505d79944d83a6c9f71c08ce1c9826288",
+    "favicon.svg": "67be772b54d99f4978143983b4d5313c8aab40e1498a1fa748680e00f7735bf2",
     "index.html": "d057123e5cfc1ab497db465df016c598e38b049fbde26ecc9ee868eb4899fad7",
     "login-bg.svg": "5f677f3371a2828c8d21668cd83381c105ccdc1780a66dc09fc6f6bc19d211d6",
-    "style.css": "0f0d9c436173bca62682c28b693ec63582290a7ea97a1ca73c90fec743f81f80",
+    "style.css": "341c009ad0cbc380a723a7a79bdfd78b379167a108f964d9e20d4b5bd0d6d2b0",
     "vendor/CHECKSUMS.txt": "d0a7c4ec48719c3cb3c86f6da7e010b7be5e822cf62ed9f2aafdf39726405ad7",
     "vendor/htm-3.1.1.module.js": (
         "ab33dd3f38059b9be4d5f5350128eefb2356639c4e0bbe9d9e8b3ba75847e9e4"
@@ -674,7 +674,7 @@ UI_SIZES: dict[str, int] = {
     "app/parameters.js": 10_388,
     "app/password.js": 5_442,
     "app/plane.js": 3_305,
-    "app/recover.js": 4_863,
+    "app/recover.js": 4_934,
     "app/registry.js": 13_364,
     "app/roster.js": 4_052,
     "app/router.js": 5_261,
@@ -716,7 +716,7 @@ UI_SIZES: dict[str, int] = {
     "app/views/parts/caseacts.js": 6_406,
     "app/views/parts/caseassign.js": 5_930,
     "app/views/parts/caseclock.js": 2_732,
-    "app/views/parts/casedetail.js": 11_973,
+    "app/views/parts/casedetail.js": 12_180,
     "app/views/parts/casefeed.js": 6_893,
     "app/views/parts/caseform.js": 10_114,
     "app/views/parts/casemilestones.js": 5_153,
@@ -793,10 +793,10 @@ UI_SIZES: dict[str, int] = {
     "app/views/situations.js": 15_602,
     "app/views/timeline.js": 7_227,
     "app/widgets.js": 13_969,
-    "favicon.svg": 1_137,
+    "favicon.svg": 1_136,
     "index.html": 1_549,
     "login-bg.svg": 18_884,
-    "style.css": 265_689,
+    "style.css": 265_719,
     "vendor/CHECKSUMS.txt": 2_426,
     "vendor/htm-3.1.1.module.js": 1_207,
     "vendor/htm.LICENSE": 11_341,

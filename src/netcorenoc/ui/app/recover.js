@@ -10,6 +10,7 @@
 import { html, Component } from "./dom.js";
 import { post, ApiError } from "./api.js";
 import { PasswordInput, PasswordMeter, pairProblem } from "./password.js";
+import { LogoMark } from "./logo.js";
 
 const RESET = /^#\/reset\/([A-Za-z0-9_-]{20,128})$/;
 
@@ -26,7 +27,7 @@ export function resetToken() {
 /** A sign-in card's heading: the wordmark (the only one on a phone, where the hero is gone). */
 export function CardHead({ title, hint }) {
   return html`<header class="login-head">
-    <h1>Net<span>CoreNOC</span></h1>
+    <h1><${LogoMark} size=${22} /><span>Net<b>CoreNOC</b></span></h1>
     <h2>${title}</h2>
     ${hint ? html`<p class="hint">${hint}</p>` : null}
   </header>`;

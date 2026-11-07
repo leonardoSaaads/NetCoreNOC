@@ -3,7 +3,7 @@
   <!-- The console's brand mark (ADR #479): an N drawn as a network, four nodes and three links,
        the diagonal the broker's correlation and the ringed node the probable root cause. Served
        from this origin because the CSP's `img-src 'self'` forbids a `data:` URI (F96). No text,
-       no external reference, no script. The same drawing as `LogoMark` in `app/icons.js`. -->
+       no external reference, no script. The same drawing as `LogoMark` in `app/logo.js`. -->
   <defs>
     <linearGradient id="tile" x1="0" y1="0" x2="1" y2="1">
       <stop offset="0" stop-color="#6aa0ff"/>
