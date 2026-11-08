@@ -127,6 +127,7 @@ MODULE_ORDER: tuple[str, ...] = (
     "routes/customers.py",
     "routes/customer_docs.py",
     "routes/circuits.py",
+    "routes/customer_mail.py",
     "routes/mcp.py",
 )
 

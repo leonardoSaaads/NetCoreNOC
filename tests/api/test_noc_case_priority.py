@@ -48,6 +48,7 @@ async def _situation(store: Store, *, opened: float, trap: str = LINK_DOWN) -> i
         alarm = await store.ingest(util.event(device="10.0.0.1", trap_oid=trap, ts=opened))
         await store.add_alarm_to_situation(sid, alarm.alarm_id)
         await store.promote_situation(sid, opened, "promote")
+        await store.noc_case_open(sid, opened)  # ADR #480
         await store.commit()
     return sid
 

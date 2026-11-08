@@ -49,6 +49,7 @@ async def _routes(store: Store) -> tuple[dict[str, dict[str, Any]], dict[str, in
         alarm = await store.ingest(util.event(device="10.0.0.1", ts=time.time()))
         await store.add_alarm_to_situation(sid, alarm.alarm_id)
         await store.promote_situation(sid, time.time(), "promote")
+        await store.noc_case_open(sid, time.time())  # ADR #480
         await store.commit()
     await case_loop.tick(store)
     assert (await agent_loop.tick(store))["routed"] == 1

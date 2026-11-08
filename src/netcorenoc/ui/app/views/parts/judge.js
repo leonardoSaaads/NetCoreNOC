@@ -51,7 +51,7 @@ import { Loading, Failed } from "../../widgets.js";
 import { alarmName, deviceName, lastJudgement, percent, plural } from "../../format.js";
 import { Members } from "./members.js";
 import { Decide } from "./decide.js";
-import { canEdit } from "../../session.js";
+import { can, canEdit } from "../../session.js";
 
 export class Detail extends Component {
   constructor(props) {
@@ -168,7 +168,9 @@ export class Detail extends Component {
     if (this.state.sending) return;
     this.setState({ sending: true, outcome: null });
     try {
-      await post(`/api/situations/${sid}/promote`, {});
+      // ADR #480: the button opens the NOC case of an open situation (its own route); the bare
+      // promote of a new situation stays an API act for programs.
+      await post(`/api/noc/cases/${sid}/open`, {});
       this.setState({ sending: false, outcome: { ok: true, kind: "promote" } });
       this.props.onChanged();
     } catch (error) {
@@ -260,6 +262,7 @@ export class Detail extends Component {
         marked=${this.state.marked.size}
         activeCount=${activeCount} markedActive=${markedActive}
         confirmingClear=${this.state.confirmingClear}
+        kase=${detail.case ? { ...detail.case, sid } : null} canWork=${can("cases.work")}
         onAdjust=${() => this.setState({ adjusting: true })}
         onPromote=${() => this.promote()}
         onVerdict=${(kind) => this.verdict(kind)}
@@ -305,7 +308,7 @@ export class Detail extends Component {
 }
 
 const OUTCOME_TEXT = {
-  promote: "Open, and yours. Nothing was recorded about whether the grouping is right.",
+  promote: "Its case is in the NOC queue. Nothing was recorded about whether the grouping is right.",
   confirm: "Recorded: this grouping is correct. Every pair in it is now an asserted positive.",
   split: "Recorded: this grouping is wrong. Only the members you marked are asserted negative.",
   close: "Closed.",

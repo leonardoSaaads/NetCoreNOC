@@ -11,7 +11,7 @@
  */
 
 import { html, Component, cx } from "../../dom.js";
-import { Badge } from "../../widgets.js";
+import { Badge, SectionMark } from "../../widgets.js";
 import { count, plural, relative, timeTitle } from "../../format.js";
 
 const SHOWN = 6;
@@ -39,7 +39,7 @@ export class SituationSummary extends Component {
       ["open", "Open", "being worked"],
     ];
     return html`<section class="panel-block sitsum">
-      <div class="section-heading"><h3>Situations</h3>
+      <div class="section-heading"><h3><${SectionMark} icon="situations" />Situations</h3>
         <a class="sitsum-all" href="#/situations">View all</a></div>
       <div class="sitsum-kpis" role="tablist" aria-label="Situations by state">
         ${tabs.map(([key, word, what]) => html`<button type="button" key=${key} role="tab"

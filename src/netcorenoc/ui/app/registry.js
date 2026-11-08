@@ -208,9 +208,9 @@ export const VIEWS = [
     // ADRs #454-#458. `secrets.read` is editor, and the screen still opens the vault only for a
     // custodian — an admin, or an editor an admin named; anyone else is told why, and offered
     // nothing. Every write below it is gated in the screen on its own capability.
-    id: "secrets", label: "Secrets", icon: "vault", group: "noc", plane: "noc",
+    id: "secrets", label: "Vault access", icon: "vault", group: "noc", plane: "noc",
     capability: "secrets.read", component: Secrets,
-    summary: "Credentials for equipment and AI providers' keys, sealed twice. Agents never get the secret.",
+    summary: "Who holds the vault, and the credentials no customer owns yet. A customer's credentials are in its book; AI keys under Agents.",
   },
 
   /* ---------- reachable by address, not offered in navigation ---------- */

@@ -25,7 +25,7 @@ from netcorenoc.api.context import AppContext
 from netcorenoc.api.declare import DeclaredRoutes
 from netcorenoc.api.models_cases import PostIn, SendUpdateIn
 from netcorenoc.crosscutting import auth, shaping
-from netcorenoc.engine.noc import case_ops, feed
+from netcorenoc.engine.noc import case_ops, feed, mail_loop
 from netcorenoc.engine.noc.cases import CaseError
 
 NO_SUCH = "no such case"
@@ -130,8 +130,9 @@ def register(app: FastAPI, ctx: AppContext) -> None:
         principal: auth.Principal = Depends(security),
     ) -> dict[str, Any]:
         """Send the saved customer update to the customer: a post everyone who may read the case
-        reads. Refused while the update is incomplete; then set the case pending on whom it
-        waits."""
+        reads, and an email to each of its customers whose mailbox is set up (``email`` says
+        where it went). Refused while the update is incomplete; then set the case pending on whom
+        it waits — a reply by email puts it back in the queue."""
         await visible_case(sid, await scope_for(principal))
         actor = actor_of(principal)
         async with write_txn():
@@ -156,7 +157,10 @@ def register(app: FastAPI, ctx: AppContext) -> None:
                 object_id=str(sid),
                 details={"post": post_id, "version": case["version"]},
             )
-        return {"id": post_id, "sent": True, "email": False}
+        # ADR #481: and by email, to each of the case's customers whose mailbox is set up —
+        # outside the transaction, since a mail server is a network round trip.
+        emailed = await mail_loop.send_update(store, case, time.time())
+        return {"id": post_id, "sent": True, "email": emailed}
 
     @route.get("/api/noc/people", operation_id="noc_list_people")
     async def people(principal: auth.Principal = Depends(security)) -> dict[str, Any]:

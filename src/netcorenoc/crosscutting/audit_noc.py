@@ -24,9 +24,13 @@ NOC_ACTIONS: frozenset[str] = frozenset(
         "noc.lease.issue",
         "noc.lease.use",
         "noc.lease.revoke",
-        # Cases (ADRs #459-#461): who took, released, edited, set pending or resolved a case, and
+        # Cases (ADRs #459-#461): who opened (ADR #480), took, released, edited, set pending or
+        # resolved a case, and
         # who posted on its feed — under the actor's name, person or agent. The case loop's own
         # moves are events in the case feed, not audit rows: nobody chose them.
+        "noc.case.open",
+        # ADR #481: who changed a customer's email settings or sent it a test message.
+        "noc.customer.mail",
         "noc.case.take",
         "noc.case.release",
         "noc.case.update",

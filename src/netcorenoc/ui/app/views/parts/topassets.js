@@ -11,7 +11,7 @@
 
 import { html, Component, cx } from "../../dom.js";
 import { get } from "../../api.js";
-import { SeverityMix } from "../../widgets.js";
+import { SectionMark, SeverityMix } from "../../widgets.js";
 import { Trend } from "../../stack.js";
 import { SCALE, UNPLACED, count, plural } from "../../format.js";
 
@@ -57,7 +57,7 @@ export class TopAssets extends Component {
     const rows = (data && data.top) || [];
     const win = rangeS <= 86400 ? rangeS : 86400;
     return html`<section class="panel-block topassets">
-      <div class="section-heading"><h3>Assets with the most active alarms</h3>
+      <div class="section-heading"><h3><${SectionMark} icon="router" />Assets with the most active alarms</h3>
         <a class="sitsum-all" href="#/entities">View all</a></div>
       <div class="seg" role="group" aria-label="Which severities count">
         ${TIERS.map((t) => html`<button type="button" key=${t.key}

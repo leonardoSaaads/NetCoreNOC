@@ -20,6 +20,7 @@
 
 import { html, Component, cx } from "./dom.js";
 import { InfoTip } from "./info.js";
+import { Icon } from "./icons.js";
 import { severity as severityOf, count, timeTitle, absolute, relative } from "./format.js";
 
 /* ---------- the four states ---------- */
@@ -287,11 +288,17 @@ export function Stat({ label, value, note, tone, title }) {
 }
 
 /** A section heading with an optional explanation. Used by every screen, so they read alike. */
-export function SectionHeading({ title, hint, id, children }) {
+/** A section's mark, as Paperclip's cards lead with one (ADR #480). */
+export function SectionMark({ icon }) {
+  return html`<span class="section-icon" aria-hidden="true"><${Icon} name=${icon} /></span>`;
+}
+
+export function SectionHeading({ title, hint, id, icon, children }) {
   /* v0.22.0: a section's explanation is one `i` beside its title, never a paragraph under it —
-     the console-wide prose budget, applied at the one component every section heading uses. */
+     the console-wide prose budget, applied at the one component every section heading uses.
+     ADR #480: a section may lead with its mark, as Paperclip's cards do. */
   return html`<div class="section-heading">
-    <h3 id=${id}>${title}${hint
+    <h3 id=${id}>${icon ? html`<${SectionMark} icon=${icon} />` : null}${title}${hint
       ? html`<${InfoTip} label=${`About ${title}`}>${hint}<//>` : null}</h3>
     ${children}
   </div>`;

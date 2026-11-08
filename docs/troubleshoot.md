@@ -227,7 +227,7 @@ run `db migrate` with the owner's URL and `NETCORENOC_DB_RUNTIME_ROLE` set to th
 or give the appliance `NETCORENOC_DATABASE_OWNER_URL`
 ([`configure.md`](configure.md#two-roles-one-owns-the-schema-the-appliances-owns-nothing)).
 
-### The secrets key (NOC → Secrets)
+### The secrets key (the credential vault)
 
 **"a credential sealed with another secrets key"** on a reveal or a change — the appliance was given
 another `secrets.key` than the one the vault was written with (a new `netcorenoc-vault` volume, a
@@ -303,8 +303,9 @@ Node 22 or newer is not on `PATH`. The console tests skip rather than fail; inst
 
 ### A case waits in the queue and no agent takes it
 
-The NOC's **Overview** lists what is missing, each item a link: a model under **Secrets → AI
-providers**, a hired agent under **Agents**. An agent that reached its monthly budget is paused,
+The NOC's **Overview** lists what is missing, each item a link: a model under **Agents → AI
+providers**, a hired agent under **Agents**. A case opens only when someone presses **Start working
+this** on an open situation (ADR #480): a confirmed situation alone has no case. An agent that reached its monthly budget is paused,
 with the reason, until a person resumes it (ADR #472). Each agent's **Runs** tab shows every step
 it took and the error that ended a run.
 
@@ -322,9 +323,20 @@ docker compose exec netcorenoc python -c \
 
 ### An agent says it has no access, and the case is *Pending connectivity*
 
-No credential the agents may lease covers that device. In **Secrets**, store one for the device's
-address and choose **Let agents use it**; the case goes back to its agent at once. The agent never
-sees the password: it leases a short-lived token and the appliance runs the read-only command.
+No credential the agents may lease covers that device. In the customer's **Access** (Customers → the
+customer), store one for the device's address and choose **Let agents use it**; the case goes back
+to its agent at once. The agent never sees the password: it leases a short-lived token and the
+appliance runs the read-only command. A credential stored before it belonged to a customer is under
+**Vault access → Not assigned**.
+
+### The customer update is not emailed, or the customer's reply never reaches the case
+
+The customer's **Email** tab says why, message by message: *Not sent* (with what the mail server
+answered: a wrong app password, a refused sender), *Refused* (an address the customer did not
+register — add it to its recipients or its workbook — or an automatic reply), *No case* (the reply
+names no open case of this customer: keep `[NetCoreNOC #N]` in the subject). Replies are read every
+minute from the IMAP credential chosen there; *Send a test message* checks the sending side. Gmail
+and Microsoft 365 need an app password.
 
 ## When you are stuck
 

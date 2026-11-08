@@ -38,6 +38,7 @@ async def _tables(store: Store) -> tuple[dict[str, dict[str, Any]], int]:
         await store.add_alarm_to_situation(sid, alarm.alarm_id)
         await store.conn.execute("UPDATE situation SET severity='critical' WHERE id=?", (sid,))
         await store.promote_situation(sid, time.time(), "promote")
+        await store.noc_case_open(sid, time.time())  # ADR #480
         await store.commit()
     await case_loop.tick(store)
     editor = await authutil.client_as(app, "editor")
@@ -45,6 +46,11 @@ async def _tables(store: Store) -> tuple[dict[str, dict[str, Any]], int]:
         assert (await editor.post(f"/api/noc/cases/{sid}/take")).status_code == 200
     finally:
         await editor.aclose()
+    async with store.lock:
+        # ADR #481: the case touches a customer, whose book holds its credentials and email.
+        cid = await store.create_organization("Acme", "acme", 1.0)
+        await store.set_ne_organization(await store.ne_id("10.0.0.1", 1.0), cid)
+        await store.commit()
     tables = {role: await uifixtures.capture(app, role) for role in ("editor", "admin")}
     for role in tables:
         client = await authutil.client_as(app, role)
@@ -54,10 +60,14 @@ async def _tables(store: Store) -> tuple[dict[str, dict[str, Any]], int]:
                 f"/api/noc/cases/{sid}/feed",
                 "/api/noc/cases?view=working",
                 "/api/noc/cases?view=queue&priority=critical",
+                f"/api/noc/customers/{cid}",
+                f"/api/noc/customers/{cid}/mail",
+                f"/api/noc/secrets?customer_id={cid}",
             ):
                 tables[role][path] = {"status": 200, "json": (await client.get(path)).json()}
         finally:
             await client.aclose()
+    tables["customer"] = cid  # type: ignore[assignment]
     return tables, sid
 
 
@@ -126,17 +136,21 @@ async def test_the_vault_offers_each_ai_provider_and_a_card_per_device_kind(
     store: Store,
 ) -> None:
     tables, _sid = await _tables(store)
-    shown = _render(tables["admin"], "#/secrets?tab=ai")
+    # ADR #481: the AI providers' keys are under Agents, beside the agents that run on them.
+    shown = _render(tables["admin"], "#/agents?tab=providers")
     for name in ("Anthropic", "OpenAI", "Google AI Studio", "xAI", "Meta", "Ollama"):
         assert f'"{name}"' in shown["dump"], name
     assert ".brand-tile" in shown["dump"]
-    opened = _act(tables["admin"], "#/secrets?tab=ai", click=["Connect"])
+    opened = _act(tables["admin"], "#/agents?tab=providers", click=["Connect"])
     assert '"Connect Anthropic"' in opened["dump"] and "Get a key" in opened["dump"]
     assert not [r for r in opened["sent"] if r["method"] == "POST"], "opening it stores nothing"
-    picker = _act(tables["admin"], "#/secrets", click=["New credential"])
+    # ADR #481: a device credential is stored from its customer's Access tab.
+    cid = tables["customer"]
+    picker = _act(tables["admin"], f"#/customers/{cid}/access", click=["New credential"])
     assert "What does this credential open?" in picker["dump"]
-    for kind in ("SFTP", "SMTP", "API token"):
+    for kind in ("SFTP", "SMTP", "IMAP — mailbox", "Telnet — username and password", "API token"):
         assert f'"{kind}"' in picker["dump"], kind
+    assert '"Anthropic — Claude"' not in picker["dump"], "an AI key belongs to no customer"
 
 
 @dom_test
@@ -148,7 +162,7 @@ async def test_the_overview_says_what_the_agents_still_need(store: Store) -> Non
     assert '"Get the NOC\'s agents working"' in seen["dump"]
     for step in ("Connect an AI provider", "Hire an agent", "Make one agent the entry point"):
         assert f'"{step}"' in seen["dump"], step
-    assert '"Secrets → AI providers"' in seen["dump"], "each step links to where it is done"
+    assert '"Agents → AI providers"' in seen["dump"], "each step links to where it is done"
 
 
 @dom_test
@@ -161,7 +175,7 @@ async def test_in_a_container_a_local_ollama_is_proposed_on_the_docker_host(stor
     ollama = [p for p in vault["catalogue"]["providers"] if p["id"] == "ollama"]
     catalogue = {**vault["catalogue"], "providers": ollama, "in_container": True}
     routes["/api/noc/secrets"] = {"status": 200, "json": {**vault, "catalogue": catalogue}}
-    seen = _act(routes, "#/secrets?tab=ai", click=["Connect"])
+    seen = _act(routes, "#/agents?tab=providers", click=["Connect"])
     assert '"Connect Ollama"' in seen["dump"] and '"Where it runs"' in seen["dump"]
     assert "host.docker.internal" in seen["dump"], "the Docker host, not the container"
     assert "127.0.0.1 is the container itself" in seen["dump"]

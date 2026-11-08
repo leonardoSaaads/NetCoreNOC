@@ -225,6 +225,8 @@ UNDRIVEN_QUERY_PARAMS: dict[tuple[str, str], tuple[str, ...]] = {
     # `tests/api/test_noc_cases.py` and `tests/api/test_declaration.py`.
     # ADR #470: the severity and tier filters, driven in `tests/api/test_noc_overview.py`.
     ("GET", "/api/noc/cases"): ("limit", "mine", "priority", "tier", "view"),
+    # ADR #481: one customer's credentials, or those of none.
+    ("GET", "/api/noc/secrets"): ("customer_id", "unassigned"),
     ("GET", "/api/noc/cases/kpis"): ("days",),
     ("GET", "/api/noc/cases/{sid}/feed"): ("before", "limit"),
     # ADR #465: an agent's activity window, recorded at its default; driven in

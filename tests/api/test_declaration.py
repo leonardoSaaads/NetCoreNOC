@@ -712,11 +712,14 @@ async def test_f43_every_path_served_today_still_registers(store: Store) -> None
     # Unreleased: 338 -> 339 and 188 -> 189 — sending a case's customer update (ADR #478).
     # Unreleased: 339 -> 341, /api unchanged — the console's identity (ADR #479): the brand mark's
     # module (`app/logo.js`) and the vendored typeface (`vendor/inter-5.3.0.latin.woff2`).
-    assert len(served) == 341, f"the served surface moved: {len(served)} method/path pairs"
+    # Unreleased: 341 -> 348 and 189 -> 193 — Start working this opens a case (ADR #480: one /api
+    # pair), a customer's email (ADR #481: three /api pairs) and three UI modules (a customer's
+    # Access and Email, and the credential list they share with the vault).
+    assert len(served) == 348, f"the served surface moved: {len(served)} method/path pairs"
     api_pairs = {(method, path) for method, path in served if path.startswith("/api")}
     # **v0.19.0: 53 -> 55.** `GET /api/models` and `POST /api/models/register`: what the
     # models are doing, and turning one of this appliance's own fits into an artefact.
-    assert len(api_pairs) == 189, (
+    assert len(api_pairs) == 193, (
         f"the /api surface moved: {len(api_pairs)} pairs. v0.16.0 adds exactly five — the "
         f"operator's five gestures — v0.16.2 adds exactly one, `POST …/promote` (DECISIONS #273), "
         f"v0.16.5 adds exactly one, `POST /api/alarms/clear` (DECISIONS #301), "
@@ -903,11 +906,14 @@ async def test_f42_every_path_served_today_still_registers(store: Store) -> None
     # Unreleased: 338 -> 339 and 188 -> 189 — sending a case's customer update (ADR #478).
     # Unreleased: 339 -> 341, /api unchanged — the console's identity (ADR #479): the brand mark's
     # module (`app/logo.js`) and the vendored typeface (`vendor/inter-5.3.0.latin.woff2`).
-    assert len(served) == 341, f"the served surface moved: {len(served)} method/path pairs"
+    # Unreleased: 341 -> 348 and 189 -> 193 — Start working this opens a case (ADR #480: one /api
+    # pair), a customer's email (ADR #481: three /api pairs) and three UI modules (a customer's
+    # Access and Email, and the credential list they share with the vault).
+    assert len(served) == 348, f"the served surface moved: {len(served)} method/path pairs"
     api_pairs = {(method, path) for method, path in served if path.startswith("/api")}
     # **v0.19.0: 53 -> 55.** `GET /api/models` and `POST /api/models/register`: what the
     # models are doing, and turning one of this appliance's own fits into an artefact.
-    assert len(api_pairs) == 189, (
+    assert len(api_pairs) == 193, (
         f"the /api surface moved: {len(api_pairs)} pairs. v0.16.0 adds exactly five — the "
         f"operator's five gestures — v0.16.2 adds exactly one, `POST …/promote` (DECISIONS #273), "
         f"v0.16.5 adds exactly one, `POST /api/alarms/clear` (DECISIONS #301), "
@@ -1243,7 +1249,9 @@ def test_the_three_postures_are_all_populated() -> None:
     # books — the two lists narrow (collections), and the seventeen routes naming one customer 404
     # on one none of whose elements the caller can see (targeted).
     # ADR #478: 72 -> 73, sending a case's customer update names one case (targeted).
-    assert len(SCOPED) == 73, SCOPED
+    # ADR #480: 73 -> 74, Start working this names one situation (targeted).
+    # ADR #481: 74 -> 77, a customer's email settings, their change and a test message (targeted).
+    assert len(SCOPED) == 77, SCOPED
     assert len(rbac.ROUTE_SCOPE) == len(ADMIN_ONLY) + len(UNSCOPED) + len(SCOPED)
 
 
@@ -1272,6 +1280,8 @@ _BODIES: dict[tuple[str, str], dict[str, Any]] = {
     ("POST", "/api/noc/cases/{sid}/escalate"): {"reason": "guard"},
     # ADR #473: each write to a customer's book in a shape that passes validation.
     ("POST", "/api/noc/customers/{customer_id}"): {"instructions": "guard"},
+    # ADR #481: a customer's email settings in a shape that passes validation.
+    ("POST", "/api/noc/customers/{customer_id}/mail"): {"recipients": "", "version": 0},
     ("POST", "/api/noc/customers/{customer_id}/memory"): {"memory": "guard"},
     ("POST", "/api/noc/customers/{customer_id}/contacts"): {
         "party": "guard",
@@ -1440,6 +1450,8 @@ SCOPED_TARGETED = [
     ("POST", "/api/noc/cases/{sid}/feed"),
     # ADR #478: sending the customer update names one case.
     ("POST", "/api/noc/cases/{sid}/customer-update"),
+    # ADR #480: Start working this names one situation, whose case it opens.
+    ("POST", "/api/noc/cases/{sid}/open"),
     # ADR #467: routing and escalating one case — the same 404 for one the caller cannot see.
     ("POST", "/api/noc/cases/{sid}/assign"),
     ("POST", "/api/noc/cases/{sid}/escalate"),
@@ -1678,6 +1690,7 @@ async def _open_every_situation(store: Store) -> None:
     async with store.lock:
         for row in await store.list_situations(None, 100, None):
             await store.promote_situation(int(row["id"]), BASE + 10, "promote")
+            await store.noc_case_open(int(row["id"]), BASE + 10)  # ADR #480: the button
         await store.commit()
     await case_loop.tick(store)
 

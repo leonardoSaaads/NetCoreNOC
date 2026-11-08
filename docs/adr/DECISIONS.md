@@ -6954,3 +6954,79 @@ From this release an entry is about six lines: decision, reason, release.*
 - **Reason**: an operations console is read for hours; calm surfaces, one typeface, one shape per
   kind of control and charts that show the data rather than their frame are what modern consoles
   converged on, and what the owner asked for.
+
+## 480. Start working this opens the case, on an open situation only; the password meter and the cards after Paperclip (unreleased)
+
+- **Context**: every gesture on a new situation — confirming its grouping, correcting it, merging,
+  a hand clear — opened it, and an open situation got its NOC case in the same transaction (0034's
+  trigger). The owner's reading of a storm: ten situations arrive, one is the root cause the others
+  propagate from, and the NOC should work that one; the button *Start working this* sat on a new
+  situation, before anyone had said the grouping was right.
+- **Decision** (`migrations/0043_case_on_request.sql`, `store/noc_cases.py::noc_case_open`,
+  `api/routes/cases.py`): two decisions, two gestures. **Is the grouping right?** — confirm or
+  correct it, and the situation is `open`, the Broker's business as before. **Does the NOC work
+  it?** — *Start working this*, offered only on an `open` situation with no case
+  (`POST /api/noc/cases/{sid}/open`, `cases.work`, scoped), creates the case with the priority
+  mapping the trigger used. A new situation answers 409 ("confirm or correct the grouping
+  first"), a resolved one 409, a second press returns the case. The trigger is dropped; cases that
+  exist are untouched. The situation's card reads its case (`GET /api/situations/{sid}` → `case`)
+  and links to it once it exists. Audited as `noc.case.open`.
+- **Decision** (`ui/app/password.js`, `ui/style.css`): the length meter on the first sign-in, the
+  account page and recovery is **four segments** across the field (three fill on the way to the
+  minimum, the fourth at it), a short sentence and a count (`10 / 12`, `23 characters`,
+  `130 / 128`); the reveal control sits inside the field's box, which carries the border and the
+  focus ring.
+- **Decision** (`ui/app/widgets.js::SectionMark`, `ui/style.css`): every card and section of the
+  Broker's and the NOC's overviews and of Settings leads with its mark, as Paperclip's cards do;
+  the Settings tabs carry theirs; the network graph sits on a quiet dot grid with ring nodes on a
+  tint of their state and softer links; chart legends are pills with round swatches; the Models
+  tab's choice lost the fieldset's stray border.
+- **Reason**: the NOC's queue should hold the cases somebody decided to work, not every
+  grouping somebody confirmed; and the console's identity (ADR #479) applied to what it had not
+  reached yet.
+
+## 481. Each customer's equipment access and its email; secure Telnet; AI providers under Agents (unreleased)
+
+- **Context**: the owner's model of a NOC with many customers, each with its own circuits,
+  equipment, documents and instructions: an agent working a case should identify the customer,
+  read its book and reach its devices with **that customer's** credentials — not search one
+  vault-wide list and cross-reference the customer's documents for an address. And the customer
+  should hear about its case by email, and its reply should come back to the case.
+- **Decision** (`migrations/0044_customer_access_mail.sql`, `api/routes/secrets.py`): a device
+  credential carries the **customer** it belongs to (`noc_secret.organization_id`). It is stored
+  from the customer's book (*Customers → a customer → Access*), listed by customer
+  (`GET /api/noc/secrets?customer_id=`), and moved by a custodian with a step-up. It is not part of
+  the seal's binding: moving it changes who reads it in a list, not which machine it opens. A
+  credential stored before belongs to none and is listed under *Vault access → Not assigned* until
+  someone assigns it. An agent's list (`noc_list_credentials`) names each credential's customer.
+- **Decision** (`engine/noc/kinds.py`, `engine/noc/telnet.py`, `api/routes/noc_exec.py`): **secure
+  Telnet** — a `telnet` credential, Telnet over TLS first (port 992), plain Telnet for equipment
+  with nothing else (the form warns that it sends the password in the clear). The executor runs one
+  read-only command (`commands.check`) over it: options refused but echo and suppress-go-ahead, the
+  login and password prompts answered, a pager's *More* answered with a space. Over TLS the
+  certificate is **pinned on first use**, as an SSH host key is (ADR #462), and a different one is
+  refused before the username is sent.
+- **Decision** (`engine/noc/custmail.py`, `engine/noc/mail_loop.py`, `crosscutting/inbox.py`,
+  `api/routes/customer_mail.py`): each customer has an **Email** part: the recipients and copies of
+  its customer update, a sender, and two credentials of its own in the vault (`smtp`, `imap`, a
+  `mail` group no agent leases). Sending the customer update also emails it — through the
+  customer's SMTP credential, opened inside the appliance, or the appliance's own server (Settings
+  → Email) — with the case's tag in the subject (`[NetCoreNOC #123] …`) and a Message-ID kept in
+  `noc_case_mail`. Every minute the customer's IMAP inbox is read (TLS only, unread messages, at most
+  20 a pass, 256 KiB each, marked read once fetched). A reply is matched to its case by the message
+  it references, or by the tag; it is **posted to the case's feed as the customer's**
+  (`author_kind = 'customer'`, visible to everyone who reads the case), its quoted history cut and
+  its text bounded; a case pending goes back to the queue (`customer_email`) **unassigned**, so the
+  routing gives it to the agent at its tier with the fewest cases — the balance the owner asked
+  for. A reply from an address the customer did not register (recipients, copies, workbook), an
+  automatic reply and a message read twice are never posted; one naming another customer's case is
+  kept as `unmatched`. Changing which credential sends and reads is a custodian's act; the rest is
+  the book, kept by who works cases. Audited as `noc.customer.mail`.
+- **Decision** (`ui/app/views/agents.js`, `ui/app/views/secrets.js`): the AI providers' keys move to
+  **Agents → AI providers**, beside the agents that run on them; what was *Secrets* is **Vault
+  access**: the custodians, the NOC's leads and the agent tokens, and the credentials no customer
+  owns yet. `#/secrets/{id}` still opens any credential.
+- **Reason**: an agent that starts from the case's customer finds its credentials, circuits and
+  instructions in one place; a customer that answers by email is heard by the case it answered;
+  and a reply that brings a case back is work for whichever agent is free, not for the one that
+  happened to have it.

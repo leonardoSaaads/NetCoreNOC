@@ -45,6 +45,7 @@ async def _open_case(store: Store) -> int:
         alarm = await store.ingest(util.event(device=DEVICE, ts=now))
         await store.add_alarm_to_situation(sid, alarm.alarm_id)
         await store.promote_situation(sid, now, "promote")
+        await store.noc_case_open(sid, now)  # ADR #480
         await store.commit()
     await case_loop.tick(store)
     return sid
@@ -241,7 +242,7 @@ async def test_the_customer_update_is_sent_to_the_customer(store: Store) -> None
         assert stale.status_code == 409 and "changed since you read it" in stale.json()["detail"]
         sent = await editor.post(send, json={"version": saved.json()["version"]})
         assert sent.status_code == 200, sent.text
-        assert sent.json() == {"id": sent.json()["id"], "sent": True, "email": False}
+        assert sent.json() == {"id": sent.json()["id"], "sent": True, "email": []}
         feed = (await viewer.get(f"/api/noc/cases/{sid}/feed")).json()["posts"]
         update = next(p for p in feed if p["id"] == sent.json()["id"])
         assert update["visibility"] == "all"

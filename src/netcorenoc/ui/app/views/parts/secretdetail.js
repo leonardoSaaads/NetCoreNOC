@@ -189,7 +189,7 @@ export class SecretDetail extends Component {
     const { catalogue, secondFactor } = this.props;
     const kind = catalogue.kinds.find((k) => k.id === d.kind) || { fields: [] };
     if (mode === "edit") {
-      return html`<${SecretForm} catalogue=${catalogue} secret=${d} secondFactor=${secondFactor}
+      return html`<${SecretForm} catalogue=${catalogue} secret=${d} secondFactor=${secondFactor} chooseCustomer=${true}
         onSaved=${() => this.changed()} onCancel=${() => this.setState({ mode: null })} />`;
     }
     if (mode === "reveal") {
@@ -230,6 +230,9 @@ export class SecretDetail extends Component {
       <dl class="secret-facts">
         <div><dt>Type</dt><dd>${d.kind_label}${d.protocol_version ? ` · ${d.protocol_version}` : ""}</dd></div>
         <div><dt>Where</dt><dd class="mono">${d.host}:${d.port}</dd></div>
+        ${ai ? null : html`<div><dt>Customer</dt><dd>${d.customer_id
+          ? html`<a href=${`#/customers/${d.customer_id}/access`}>${d.customer_name}</a>`
+          : html`<span class="muted">not assigned — Change… to choose one</span>`}</dd></div>`}
         ${ai ? null : html`<div><dt>Grants</dt><dd>${d.access_label}</dd></div>`}
         <div><dt>Version</dt><dd>${d.version}</dd></div>
         <div><dt>Stored</dt><dd title=${timeTitle(d.created_at)}>${relative(d.created_at)} by ${d.created_by}</dd></div>

@@ -1481,6 +1481,7 @@ def test_f34_every_mutating_route_below_admin_resolves_scope() -> None:
         # ADRs #459-#461: a case is its situation, worked; every act on it names the situation,
         # and resolving one closes it — inside the perimeter for every reason the gestures are.
         ("POST", "/api/noc/cases/{sid}"): "async def update_case(",
+        ("POST", "/api/noc/cases/{sid}/open"): "async def open_case(",
         ("POST", "/api/noc/cases/{sid}/take"): "async def take_case(",
         ("POST", "/api/noc/cases/{sid}/release"): "async def release_case(",
         ("POST", "/api/noc/cases/{sid}/status"): "async def set_status(",

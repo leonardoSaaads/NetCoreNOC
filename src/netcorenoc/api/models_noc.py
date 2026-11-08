@@ -54,6 +54,9 @@ class SecretIn(BaseModel):
     monitor: bool = True
     fields: dict[str, str] | None = Field(default=None, max_length=8)
     stepup: StepUpIn | None = None
+    #: ADR #481: the customer whose equipment (or mail server) this is; ``None`` for an AI
+    #: provider's key, and for a device credential nobody has assigned yet.
+    customer_id: int | None = Field(default=None, ge=1)
 
 
 class StepUpOnly(BaseModel):
@@ -109,7 +112,7 @@ class ExecIn(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     lease: str = Field(min_length=1, max_length=lease.MAX_LEASE_CHARS)
-    action: Literal["ssh", "snmp_get", "reach"]
+    action: Literal["ssh", "telnet", "snmp_get", "reach"]
     command: str | None = Field(default=None, max_length=512)
     mode: Literal["exec", "shell"] = "exec"
     oids: list[str] = Field(default_factory=list, max_length=20)

@@ -214,6 +214,41 @@ def register(app: FastAPI, ctx: AppContext) -> None:
         every queue cycle it has been through, and what you may do to it. Its feed is `/feed`."""
         return await detail(sid, request, principal, await scope_for(principal))
 
+    @route.post("/api/noc/cases/{sid}/open")
+    async def open_case(
+        sid: int, request: Request, principal: auth.Principal = Depends(security)
+    ) -> dict[str, Any]:
+        """**Start working this** (ADR #480): open the NOC case of situation ``sid``.
+
+        Only an ``open`` situation — one whose grouping someone confirmed or corrected — gets a
+        case, and only when somebody asks: of ten situations a storm opens, the NOC works the one
+        the others propagate from. A new situation answers 409 (confirm the grouping first), a
+        resolved one 409, a second press returns the case that exists. The case starts ``new``;
+        the case loop puts it in the queue (or automated checks) within seconds.
+        """
+        scope = await scope_for(principal)
+        if not await ctx.perimeter.situation_in_scope(sid, scope):
+            raise HTTPException(status_code=404, detail="no such situation")
+        async with write_txn():
+            cur = await store.conn.execute("SELECT status FROM situation WHERE id = ?", (sid,))
+            row = await cur.fetchone()
+            if row is None:
+                raise HTTPException(status_code=404, detail="no such situation")
+            status = str(row[0])
+            if status == "new":
+                raise HTTPException(
+                    status_code=409,
+                    detail="confirm or correct the grouping first: an open situation is what the "
+                    "NOC works",
+                )
+            if status == "resolved":
+                raise HTTPException(
+                    status_code=409, detail="that situation has resolved; reload the card"
+                )
+            if await store.noc_case_open(sid, time.time()):
+                await audited(request, principal, "noc.case.open", sid)
+        return await detail(sid, request, principal, scope)
+
     @route.post("/api/noc/cases/{sid}/take", operation_id="noc_take_case")
     async def take_case(
         sid: int, request: Request, principal: auth.Principal = Depends(security)

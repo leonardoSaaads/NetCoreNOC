@@ -28,8 +28,9 @@ through the tiers, and the NOC plane redrawn after Paperclip and Salesforce (#46
 NOC at a glance, AI providers' keys for agents on any OpenAI-compatible API, what agents cost, and
 **each customer's book** for the agents to read (#470-#473), and what an operators' review round
 on a lab like the owner's found (#474-#476), the owner's adjustments (#477), agents that work a
-case with nothing typed (#478), and the console's identity after Paperclip (#479). The schema is PostgreSQL's baseline,
-**migration 0031**, which includes SQLite's 0030, **0032** to **0042** (schema 42). See
+case with nothing typed (#478), the console's identity after Paperclip (#479), the case opened
+on request (#480) and each customer's credentials and email (#481). The schema is PostgreSQL's baseline,
+**migration 0031**, which includes SQLite's 0030, **0032** to **0044** (schema 44). See
 [`MIGRATION.md`](MIGRATION.md): the SQLite file is **imported once**, before the first start; the
 appliance is three processes and a spool on disk, and a container needs two CPUs. No grouping
 decision changes (`make eval` is byte-identical).
@@ -154,6 +155,33 @@ stored device credential is unreadable (#455).
   or reference; each circuit's path drawn site by site; the customer's own multi-row sheet imported
   from a paste or an uploaded workbook, previewed first). Scoped by the customer's elements; eight
   new MCP tools (42 in all). Migration **0039**.
+
+### Added — each customer's credentials and email; secure Telnet (#481)
+
+- **A device credential belongs to a customer**: stored, listed and opened in the customer's book
+  (*Customers → a customer → Access*); a custodian moves one with *Change…*. Credentials stored
+  before are under *Vault access → Not assigned*. An agent's credential list names each one's
+  customer. Migration **0044** (schema 44).
+- **Email**: each customer's recipients, sender, and its own SMTP and IMAP credentials. Sending
+  the customer update also emails it (subject `[NetCoreNOC #N] …`); the customer's reply, read
+  every minute, is posted to the case's feed as the customer's, and a case waiting on the
+  customer goes back to the queue **unassigned**, for the agent at its tier with the fewest cases.
+  Replies from unregistered addresses and automatic replies are refused; every message is logged
+  on the customer's Email tab.
+- **Secure Telnet**: a `telnet` credential (Telnet over TLS by default, its certificate pinned on
+  first use; plain Telnet for equipment with nothing else), and `noc_exec` action `telnet`.
+- **AI providers** move to *Agents → AI providers*; *Secrets* becomes **Vault access** (custodians,
+  leads, agent tokens, and the credentials no customer owns yet).
+
+### Changed — Start working this opens the case; the password meter and the cards (#480)
+
+- **Opening a situation no longer opens a case.** Confirm or correct the grouping and the situation
+  is Open; *Start working this*, on an open situation only, opens its NOC case
+  (`POST /api/noc/cases/{sid}/open`). Migration **0043** drops the trigger.
+- The password length meter is four segments, a sentence and a count; the reveal control sits
+  inside the field.
+- Every card of both overviews and every Settings section leads with its mark; the Settings tabs
+  carry icons; the network graph sits on a dot grid with ring nodes; chart legends are pills.
 
 ### Changed — the console's identity, after Paperclip (#479)
 

@@ -20,7 +20,9 @@ KEEP_CHECKS = 50
 _METADATA = (
     "id, ref, name, description, kind, access_level, host, port, protocol_version, version, "
     "agent_access, monitor, created_at, created_by, updated_at, updated_by, revealed_at, "
-    "revealed_by, checked_at, host_key_at"
+    "revealed_by, checked_at, host_key_at, organization_id, "
+    # ADR #481: the customer a device credential belongs to, by name for the lists.
+    "(SELECT o.name FROM organization o WHERE o.id = noc_secret.organization_id) AS customer_name"
 )
 
 
@@ -28,8 +30,8 @@ class NocVaultMixin(StoreBase):
     async def noc_create_secret(self, row: dict[str, Any], now: float, actor: str) -> int:
         cur = await self.conn.execute(
             "INSERT INTO noc_secret (ref, name, description, kind, access_level, host, port, "
-            "protocol_version, sealed, monitor, created_at, created_by, updated_at, updated_by) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id",
+            "protocol_version, sealed, monitor, created_at, created_by, updated_at, updated_by, "
+            "organization_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id",
             (
                 row["ref"],
                 row["name"],
@@ -45,15 +47,25 @@ class NocVaultMixin(StoreBase):
                 actor,
                 now,
                 actor,
+                row.get("organization_id"),
             ),
         )
         found = await cur.fetchone()
         assert found is not None
         return int(found[0])
 
-    async def noc_list_secrets(self) -> list[dict[str, Any]]:
+    async def noc_list_secrets(
+        self, *, organization_id: int | None = None, unassigned: bool = False
+    ) -> list[dict[str, Any]]:
+        """Every credential, or one customer's (``organization_id``), or those of no customer."""
+        where, args = "", tuple[int, ...]()
+        if organization_id is not None:
+            where, args = "WHERE organization_id = ? ", (organization_id,)
+        elif unassigned:
+            where = "WHERE organization_id IS NULL "
         cur = await self.conn.execute(
-            f"SELECT {_METADATA} FROM noc_secret ORDER BY name, id"  # nosec B608 - a literal
+            f"SELECT {_METADATA} FROM noc_secret {where}ORDER BY name, id",  # nosec B608 - literals
+            args,
         )
         return [dict(r) for r in await cur.fetchall()]
 
@@ -75,7 +87,7 @@ class NocVaultMixin(StoreBase):
         await self.conn.execute(
             "UPDATE noc_secret SET name=?, description=?, kind=?, access_level=?, host=?, port=?, "
             "protocol_version=?, sealed=?, monitor=?, updated_at=?, updated_by=?, "
-            "version = version + ? WHERE id=?",
+            "version = version + ?, organization_id=? WHERE id=?",
             (
                 row["name"],
                 row["description"],
@@ -89,6 +101,7 @@ class NocVaultMixin(StoreBase):
                 now,
                 actor,
                 1 if resealed else 0,
+                row.get("organization_id"),
                 secret_id,
             ),
         )

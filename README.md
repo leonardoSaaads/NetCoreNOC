@@ -26,10 +26,12 @@
 * **Broker**: point your equipment's traps at it. It discovers devices and alarm types, groups related
   alarms into **situations**, names the probable root cause and shows *why* each alarm was grouped.
   No MIBs, no inventory, no topology files.
-* **NOC**: a situation someone starts working becomes a **case**, with a queue, clocks and a
-  customer update. **AI agents** (any OpenAI-compatible model, a local Ollama or Claude) take the
-  case, read the devices with read-only commands and keep the customer informed. They lease
-  short-lived tokens and never see a password.
+* **NOC**: confirm a situation's grouping, press *Start working this*, and it becomes a **case**,
+  with a queue, clocks and a customer update. Each **customer** keeps its book — instructions,
+  circuits, documents, its equipment's credentials and its email. **AI agents** (any
+  OpenAI-compatible model, a local Ollama or Claude) take the case, read the customer's devices with
+  read-only commands (SSH, SNMP, secure Telnet) and email the customer update; the customer's reply
+  comes back to the case. Agents lease short-lived tokens and never see a password.
 * One appliance: three Python processes, PostgreSQL and a web console. No accepted trap is lost to a
   slow model or a restart.
 
@@ -51,9 +53,10 @@ docker compose logs netcorenoc | grep -A4 "bootstrap admin"   # the one-time pas
 3. Watch **Situations**.
 
 AI agents (optional): switch the top bar to **NOC**. Its Overview lists what is missing, each item a
-link: connect a model in **Secrets → AI providers**, hire an agent in **Agents**, and let agents use
-each device credential in **Secrets**. No equipment yet? [`docs/simulate.md`](docs/simulate.md)
-sends real traps from simulated devices.
+link: connect a model under **Agents → AI providers**, hire an agent, and in each customer's
+**Access** store its devices' credentials and switch agents on; its **Email** sends the customer
+updates and reads the replies. No equipment yet? [`docs/simulate.md`](docs/simulate.md) sends real
+traps from simulated devices.
 
 Before a team relies on it: an allowlist, HTTPS, one account per person and backups of the database
 and both key files ([`docs/operate.md`](docs/operate.md), section 10). A visibility scope narrows

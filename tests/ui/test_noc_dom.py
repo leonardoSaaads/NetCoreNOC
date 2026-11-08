@@ -58,7 +58,7 @@ async def test_the_top_bar_switches_planes_and_the_sidebar_follows(store: Store)
     tables, _sid = await _routes(store)
     broker = _render(tables["admin"], "#/overview")
     assert ".plane-switch" in broker["dump"] and ".plane-broker.plane-on" in broker["dump"]
-    assert "Secrets" not in broker["navItems"] and "Situations" in broker["navItems"]
+    assert "Vault access" not in broker["navItems"] and "Situations" in broker["navItems"]
     assert broker["navGroups"] == ["Operations", "Evidence", "Administer"]
     noc = _render(tables["admin"], "#/secrets")
     assert ".plane-noc.plane-on" in noc["dump"]
@@ -72,7 +72,7 @@ async def test_the_top_bar_switches_planes_and_the_sidebar_follows(store: Store)
         "All customers",
         "All agents",
         "Organization",
-        "Secrets",
+        "Vault access",
     ]
     # ADR #473: the customers the NOC serves, between the work and the agents.
     assert noc["navGroups"] == ["Work", "Customers", "Agents", "NOC"]
@@ -152,6 +152,7 @@ async def _case_routes(store: Store) -> tuple[dict[str, dict[str, Any]], int]:
         await store.add_alarm_to_situation(sid, alarm.alarm_id)
         await store.conn.execute("UPDATE situation SET severity='critical' WHERE id=?", (sid,))
         await store.promote_situation(sid, time.time(), "promote")
+        await store.noc_case_open(sid, time.time())  # ADR #480
         await store.commit()
     await case_loop.tick(store)
     tables = {role: await uifixtures.capture(app, role) for role in ("viewer", "editor")}

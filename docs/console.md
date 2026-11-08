@@ -7,9 +7,11 @@ bundle.** The files a browser fetches are the files on disk. That is a test
 The console has two **planes**, switched from the middle of the top bar (ADR #454):
 
 * **Broker** (phase 1) — receiving traps, correlating them into situations, training the models
-  that do it, and the inventory. Every screen below except Secrets.
+  that do it, and the inventory.
 * **NOC** (phase 2) — working the situations that reach the operations centre, with people and AI
-  agents: **Cases**, **KPIs** and **Playbooks**, and **Secrets**, the credentials used to reach
+  agents: **Cases**, **KPIs** and **Playbooks**, the **Customers** (each with its book, its
+  equipment's credentials and its email), the **Agents** (and the AI providers they run on), and
+  **Vault access**, who holds the credentials used to reach
   equipment.
 
 The sidebar shows the plane you are in; a link into a screen opens its plane, and the switch
@@ -53,13 +55,13 @@ disabled controls.
 
 The NOC plane's sidebar reads like Paperclip's company (ADR #468): **Work** (Overview, Cases,
 KPIs, Playbooks), **Customers** (all of them, then each by name with its open cases and, under the
-one open, the four parts of its book — ADR #473), **Agents** (all of them, then each by name with
-its state and open cases) and **NOC** (Organization, Secrets).
+one open, the six parts of its book — ADRs #473, #481), **Agents** (all of them, then each by name with
+its state and open cases) and **NOC** (Organization, Vault access).
 
 | View | The question it answers |
 |---|---|
 | **Overview** | The NOC now (ADR #470): the live cases as **Queue**, **Working** and **Pending**, each split by tier (an agents' tier, or the NOC team), by priority and by who holds them, and the takes running late. Each tile opens the cases it counts. Names are shown to roles that may see people. **Equipment reachability** (ADR #476) lists the elements whose management endpoint stopped answering the vault's checks — a switch that loses power sends no trap — each a link to its element and, for a custodian, its credential. Until the agents can work on their own, **Get the NOC's agents working** (ADR #478) lists what is missing — an AI provider, an agent, an entry point, a device credential agents may use — each a link |
-| **Cases** | What the NOC has to take, what it is working, what waits on someone else, and what is over. A list view: **Queue**, **Working**, **Pending**, **Resolved**, **All**, each with its count, a filter over the rows on screen (number or words), and *Only mine*. Every row: priority (its colour on the row's edge too), the case, its status, **who holds it** — an agent at its tier, a person, the NOC team, or nobody — the **take** clock counted and drawn ("12m left", "late 15m"), the customer-update clock, the next update and when it opened. Read again every 15 s. A live case **hears its alarms** (ADR #474): what joined its situation, raised again or cleared is an event on its feed (an alarm just told of waits five minutes, so a flapping port is a line every five minutes; one back in a newer situation is named with it, a link), and a pending case whose fault came back returns to the queue |
+| **Cases** | What the NOC has to take, what it is working, what waits on someone else, and what is over. A list view: **Queue**, **Working**, **Pending**, **Resolved**, **All**, each with its count, a filter over the rows on screen (number or words), and *Only mine*. Every row: priority (its colour on the row's edge too), the case, its status, **who holds it** — an agent at its tier, a person, the NOC team, or nobody — the **take** clock counted and drawn ("12m left", "late 15m"), the customer-update clock, the next update and when it opened. Read again every 15 s. A live case **hears its alarms** (ADR #474): what joined its situation, raised again or cleared is an event on its feed (an alarm just told of waits five minutes, so a flapping port is a line every five minutes; one back in a newer situation is named with it, a link), and a pending case whose fault came back returns to the queue. A case is opened from the Broker, by **Start working this** on an open situation (ADR #480) — confirming a grouping alone opens no case. |
 | **KPIs** | How fast the NOC takes a case, documents it and restores service, over 24 hours, 7 or 30 days: taken within target, median time to take, the time past target summed over every late take, customer updates within 30 minutes; per priority, the take and restore targets, and the takes missed |
 | **Playbooks** | Which troubleshooting trees check a new case before the NOC is called, and how each has done. A list — the name, what it matches (vendors, trap OIDs, severities), on or off, its runs and how they ended — and one playbook opened below it as its tree: each step, what it does, where each answer leads, down to the leaves (resolve, wait, NOC queue), its JSON and its last runs |
 
@@ -119,7 +121,7 @@ A NOC serves several customers, each its own way (ADR #473). **Customers** lists
 with its elements, open cases and what its book holds; an admin adds one there (a customer is an
 organization) and puts its elements in it from each element's page. A customer's page is its
 record — highlights (when its instructions and memory last changed and by whom, contacts,
-documents, circuits, open cases) — and four tabs, which are also the four lines under it in the
+documents, circuits, open cases) — and six tabs, which are also the lines under it in the
 sidebar:
 
 | Part | What it holds |
@@ -129,8 +131,11 @@ sidebar:
 | **Additional docs** | What the customer handed over for troubleshooting — topology, sites and shelves, equipment, procedures — as PDF, Word, Excel, PowerPoint, Visio, CSV/TSV, text or PNG/JPEG up to 12 MiB. *Read* shows the text the appliance read from it (what an agent reads); *Download* gives the file |
 | **Circuits** | Every circuit, searched by any word of its fields, attributes, path or notes — a port, an ODF position, a site, a provider's reference. One circuit draws its **path** from the A end to the Z end, site by site, each hop's segment and coordinates (shelf, slot, port, mode, ODF Tx/Rx); then the NOC's notes on it and everything else the customer's sheet said. *Import a sheet* takes the customer's own spreadsheet — pasted from Excel with its header rows of sites and segments, or an Excel/CSV/TSV document already in its Additional docs — shows what it found, and stores it only when asked; a circuit of the same name is replaced, its notes kept |
 
+| **Access** | The credentials that reach the customer's equipment — SSH (password or key), SNMP v1/v2c or v3, **Telnet over TLS** (or plain Telnet, for equipment with nothing else), an API, SFTP — and its mail server (SMTP, IMAP), each with its status light, what it grants and whether agents may use it (ADR #481). Stored here with the customer already chosen; opened one at a time behind a step-up, as in the vault. Only a custodian sees them |
+| **Email** | Whom a sent customer update is emailed to (recipients, copies, sender), the SMTP credential it goes through (or the appliance's server, Settings → Email) and the IMAP credential the customer's replies are read from, every minute. A reply lands on the case's feed as the customer's and puts a waiting case back in the queue; *Send a test message*; and the log of every message sent or read — *Sent*, *Not sent*, *On the case*, *No case*, *Refused* — with why. Choosing a credential is a custodian's act |
+
 A case names the customers whose equipment it touches: *Its customers* on the case record opens each
-one's book.
+one's book — and an agent reaches the devices with that customer's own credentials.
 
 The day the NOC stops serving a customer, an admin ends it from its record (**End service…**, ADR
 #477): what goes (its instructions and memory, contacts, documents, circuits) and what stays (its
@@ -147,7 +152,7 @@ it again reinstates it, its book empty. A circuit is removed from its own row in
 
 * **Hiring** (an admin's): who it is (name, title, mark), its place (role, tier, manager — or the
   NOC team — and whether cases start with it), how it runs — **Claude** (the appliance runs it
-  through the Anthropic API, with an API key a custodian stored in Secrets for agents), **Webhook**
+  through the Anthropic API, with an API key a custodian stored under Agents → AI providers), **Webhook**
   (an agent elsewhere, woken by a signed POST) or **External** (it connects over MCP on its own) —
   what it is told, and when it wakes and its limits (heartbeat, escalation time, run time, monthly
   budget).
@@ -162,13 +167,24 @@ it again reinstates it, its book empty. A circuit is removed from its own row in
 | View | The question it answers |
 |---|---|
 | **Organization** | Who reports to whom. A chart, the **NOC team** — the people — on top, then each agent as a card: its mark, name, role, tier, state and open cases. Choosing a card opens its place beside the chart: its manager, role, tier, whether cases start with it, and its instructions — which an admin changes there. An admin can also **drag an agent onto its new manager** (or the NOC team): a dialog proposes the tier one below that manager's and nothing moves until it is confirmed; a drop that would make a loop is not taken (ADR #477). A case climbs one level of this chart each time it is not concluded in time, and past the top comes to the NOC team |
-| **Secrets** | Which credentials reach which equipment, whether each endpoint answers, and who did what with them. A list a custodian scans in seconds — a status light (green answers, yellow intermittent or slow, red does not answer, grey not checked), the name, where it works, what it grants, whether agents may use it — and one credential opened below it: its facts, **Check now**, **Reveal…**, **Change…**, agent access, its leases and its own audit history. A tab of **AI providers** (ADR #471) — Anthropic, OpenAI, Google AI Studio, xAI, Meta, a local Ollama and Ollama Cloud, each a card with its mark — keeps the keys the NOC's agents think with; a cloud key goes only to its own API, and a custodian lists the models it may use. **A local Ollama takes no key** (ADR #477): it is connected by where it runs, and opens on the models pulled there — which can call tools, and so work a case, the one to try first named. A last tab, **People & agents**, is for admins: custodians, NOC leads (who read the KPIs and the playbooks) and agents |
+| **Vault access** | Who holds the vault — custodians, NOC leads (who read the KPIs and the playbooks) and the tokens that are agents (*Custodians & agents*, for admins) — and the device credentials **no customer owns yet** (*Not assigned*): each opened below, with its facts, **Check now**, **Reveal…**, **Change…** (where its customer is chosen), agent access, its leases and its own audit history (ADR #481). A customer's credentials are in its book; the AI providers' keys under Agents |
+
+The **AI providers** (ADRs #471, #481) are a tab of **Agents**: Anthropic, OpenAI, Google AI
+Studio, xAI, Meta, a local Ollama and Ollama Cloud, each a card with its mark, keep the keys the
+NOC's agents think with; a cloud key goes only to its own API, and a custodian lists the models it
+may use. **A local Ollama takes no key** (ADR #477): it is connected by where it runs, and opens on
+the models pulled there — which can call tools, and so work a case, the one to try first named.
+
+Every credential, wherever it is listed, shows a status light (green answers, yellow intermittent
+or slow, red does not answer, grey not checked), the name, where it works, what it grants and
+whether agents may use it.
 
 * **Only custodians see the vault**: every admin, and each editor an admin names under
-  *Custodians & agents*. Anyone else who opens Secrets is told why and shown nothing.
-* **A new credential** is a type (SSH with a password or a key, SFTP, SNMP v1/v2c or v3, API token,
-  SMTP, other), the access it grants on the device (view only, diagnostic, operator, root), where it
-  works (host, port, protocol version), and its fields. The fields are drawn from the server's own
+  *Custodians & agents*. Anyone else who opens a customer's Access or the vault is told why and
+  shown nothing.
+* **A new credential** is a type (SSH with a password or a key, SFTP, SNMP v1/v2c or v3, Telnet,
+  API token, SMTP, IMAP, other), the access it grants on the device (view only, diagnostic,
+  operator, root), where it works (host, port, protocol version), its customer, and its fields. The fields are drawn from the server's own
   catalogue, secret ones are password inputs, and none is ever pre-filled again.
 * **Revealing, changing, deleting, and letting agents use a credential** each open a step-up card:
   your username and password again, and an authenticator code — the code field is shown disabled,
@@ -358,7 +374,7 @@ you only sometimes ask — *why did it group these* and *is the grouping shaped 
 |---|---|---|
 | **Confirm grouping** | these belong together | every pair in the situation, positive |
 | **Grouping is wrong** | they do not | the marked members, negative against the rest; with nothing marked, a plain split |
-| **Start working this** | somebody has it | nothing about the grouping |
+| **Start working this** (an open situation) | the NOC works this one: its case opens in the queue (ADR #480) | nothing about the grouping |
 | **Move N elsewhere** → a situation | they do not belong here, and they belong there | a negative pair against the members they left, and a positive against the ones they joined |
 | **Move N elsewhere** → *A new situation* | these do not belong with the rest | a negative pair for each marked member against each unmarked one |
 | **Merge another situation in** | these are one incident | the cross pairs, from the two memberships as they were |

@@ -28,7 +28,7 @@
 
 import { Component, html } from "../../dom.js";
 import { get } from "../../api.js";
-import { SectionHeading } from "../../widgets.js";
+import { SectionHeading, SectionMark } from "../../widgets.js";
 import { count, plural } from "../../format.js";
 import { humanise } from "./mwdraft.js";
 
@@ -99,7 +99,7 @@ export class PlannedWork extends Component {
       ["to confirm", pending, pending ? "mwsum-warn" : ""],
     ];
     return html`<section class="panel-block mwsum" data-role="planned-work">
-      <div class="section-heading"><h3>Planned work</h3>
+      <div class="section-heading"><h3><${SectionMark} icon="maintenance" />Planned work</h3>
         <a class="sitsum-all" href="#/maintenance">View all</a></div>
       <div class="mwsum-body">
         <div class="mwsum-kpis">

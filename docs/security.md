@@ -65,7 +65,7 @@ it, and nothing else.
 
 The NOC's vault adds a narrower gate on top of the roles: **custodians** (every admin, and the
 editors an admin names) and **agents** (service tokens an admin names). See
-[the credential vault](#the-credential-vault-noc--secrets).
+[the credential vault](#the-credential-vault-noc--each-customers-access).
 
 Governance is **optional and off by default**. With no policy stored, the built-in permissions and
 full visibility are what you get.
@@ -290,11 +290,16 @@ that an editor can always stop it. Turning a grade on is admin-only (#412).
   counted, so the route's authentication runs before any of it is held — an anonymous request is
   refused without its body ever being read. 100 documents and 256 MiB per customer.
 
-## The credential vault (NOC → Secrets)
+## The credential vault (NOC → each customer's Access)
 
 Phase 2 keeps the credentials people and AI agents use to reach equipment — SSH passwords and keys,
-SFTP, SNMP communities and SNMPv3 users, API tokens, SMTP (ADRs #454-#458). The rules, each a test
-in `tests/api/test_noc_vault.py` or `tests/security/test_secretbox.py`:
+SFTP, SNMP communities and SNMPv3 users, Telnet, API tokens, and each customer's SMTP and IMAP
+(ADRs #454-#458, #481). Since ADR #481 a device credential belongs to the **customer** whose
+equipment it reaches and is kept in that customer's book; the customer is not part of the seal's
+binding (moving a credential changes who reads it in a list, not which machine it opens) and is
+changed only by a custodian, stepped up and audited. The rules, each a test in
+`tests/api/test_noc_vault.py`, `tests/api/test_noc_customer_mail.py` or
+`tests/security/test_secretbox.py`:
 
 * **Sealed twice, under two keys.** A credential's fields are encrypted with a fresh data key
   (ChaCha20-Poly1305), the data key is wrapped under the **secrets key** (AES-256-GCM,
@@ -323,9 +328,30 @@ in `tests/api/test_noc_vault.py` or `tests/security/test_secretbox.py`:
   greeting, an SMTP banner, an open port); it does not mean the password works, and the screen says
   so. Checks send nothing and never open the seal.
 
+* **Secure Telnet is pinned.** A Telnet credential defaults to Telnet over TLS; the device's
+  certificate is pinned on first use, as an SSH host key is, and a different one is refused before
+  the username is sent. Plain Telnet exists for equipment with nothing else, and the form says it
+  sends the password in the clear.
+* **A customer's mail server is the appliance's to use, never an agent's.** SMTP and IMAP
+  credentials are a `mail` group no agent may lease; the appliance opens them to send a customer
+  update and to read the replies.
+
 What it does **not** protect against, stated: a person with the appliance's host (its memory, both
 key files) can read every credential; a custodian is trusted with the whole vault (it is not scoped
 by visibility); and a revealed credential is on that person's screen and clipboard.
+
+### A customer's replies by email (ADR #481)
+
+A reply read from a customer's mailbox is **untrusted text from outside**, and is handled as such:
+only its plain text is kept (an HTML-only message is reduced to text; scripts and styles are
+dropped), the quoted history is cut, it is bounded (6 000 characters), and it is posted to the
+case's feed as the customer's — never as a person's or an agent's, and never as instructions: the
+agents' guide says so. It is posted only when its sender is an address the customer registered
+(its recipients, copies or workbook); anything else, and every automatic reply, is recorded as
+*refused* and posted nowhere. The sender address is what the message claims: the appliance does
+not verify SPF or DKIM, so the registered-address rule narrows who may write to a case, it does not
+authenticate them. The inbox is read over TLS only, at most 20 messages and 256 KiB each per pass,
+each marked read once fetched; a message read twice is posted once.
 
 ## The audit log
 

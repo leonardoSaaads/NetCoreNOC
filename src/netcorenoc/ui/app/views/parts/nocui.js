@@ -67,7 +67,9 @@ export function navEntries(agents) {
 
 /** The four parts of a customer's book, in the order the sidebar and its page show them. */
 export const BOOK = [["instructions", "Instructions", "book"], ["workbook", "Workbook", "phone"],
-  ["docs", "Additional docs", "doc"], ["circuits", "Circuits", "circuit"]];
+  ["docs", "Additional docs", "doc"], ["circuits", "Circuits", "circuit"],
+  // ADR #481: the customer's own credentials and its email, beside what the agents read.
+  ["access", "Access", "vault"], ["email", "Email", "mail"]];
 
 /** The sidebar's line for each customer, under *Customers*, and under the one open its book's
  * four parts (ADR #473). */

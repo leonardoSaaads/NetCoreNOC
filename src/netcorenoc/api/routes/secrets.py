@@ -70,6 +70,7 @@ def _bound(
         "port": port,
         "protocol_version": version,
         "monitor": body.monitor,
+        "organization_id": body.customer_id if kind.group != "ai" else None,
     }
     if not meta["name"]:
         raise HTTPException(status_code=400, detail="name: required")
@@ -100,11 +101,27 @@ def register(app: FastAPI, ctx: AppContext) -> None:
             raise HTTPException(status_code=404, detail=NO_SUCH)
         return row
 
+    async def customer_exists(customer_id: int | None) -> None:
+        """ADR #481: a credential belongs to a customer the NOC serves, or to none."""
+        if customer_id is None:
+            return
+        async with store.reading():
+            cur = await store.conn.execute(
+                "SELECT 1 FROM organization WHERE id = ? AND ended_at IS NULL", (customer_id,)
+            )
+            found = await cur.fetchone()
+        if found is None:
+            raise HTTPException(status_code=400, detail="customer_id: no such customer")
+
     @route.get("/api/noc/secrets")
     async def list_secrets(
-        request: Request, principal: auth.Principal = Depends(security)
+        request: Request,
+        customer_id: int | None = None,
+        unassigned: bool = False,
+        principal: auth.Principal = Depends(security),
     ) -> dict[str, Any]:
-        """The vault for a custodian; for anyone else, an empty list and the sentence why."""
+        """The vault for a custodian — every credential, one customer's (``customer_id``), or
+        those of no customer yet (``unassigned``); for anyone else, an empty list and why."""
         catalogue = {**kinds.describe(), "in_container": providers.in_container()}
         if not await gate.is_custodian(ctx, request, principal):
             return {
@@ -116,7 +133,7 @@ def register(app: FastAPI, ctx: AppContext) -> None:
                 "second_factor": "not-enrolled",
             }
         async with store.reading():
-            rows = await store.noc_list_secrets()
+            rows = await store.noc_list_secrets(organization_id=customer_id, unassigned=unassigned)
             checks = await store.noc_checks([int(r["id"]) for r in rows])
         return {
             "custodian": True,
@@ -135,6 +152,7 @@ def register(app: FastAPI, ctx: AppContext) -> None:
             raise HTTPException(status_code=400, detail="fields: required")
         meta, fields = _bound(body, body.fields)
         assert fields is not None
+        await customer_exists(meta["organization_id"])
         ref = token_hex(16)
         sealed = secretbox.current().seal(_binding(ref, meta), fields)
         now = time.time()
@@ -180,6 +198,7 @@ def register(app: FastAPI, ctx: AppContext) -> None:
         await gate.require_custodian(ctx, request, principal)
         current = await secret_or_404(secret_id, sealed=True)
         meta, fields = _bound(body, body.fields)
+        await customer_exists(meta["organization_id"])
         outcome = await gate.confirm(
             ctx,
             request,
@@ -352,7 +371,7 @@ def register(app: FastAPI, ctx: AppContext) -> None:
                 else await store.noc_revoke_secret_leases(secret_id, now, principal.actor)
             )
             # A device's access, granted, wakes the cases that waited for it (ADR #478).
-            device = moved and body.enabled and kinds.KINDS[str(row["kind"])].group != "ai"
+            device = moved and body.enabled and kinds.KINDS[str(row["kind"])].group == "device"
             woken = await access.granted(store, str(row["host"]), now) if device else []
             if moved or ended:
                 await audit_row(
@@ -390,4 +409,4 @@ def register(app: FastAPI, ctx: AppContext) -> None:
 
 def _described(meta: dict[str, Any]) -> dict[str, Any]:
     """What an audit row says about a credential: its metadata, never a field's value."""
-    return {k: meta[k] for k in ("name", "kind", "host", "port", "access_level")}
+    return {k: meta[k] for k in ("name", "kind", "host", "port", "access_level", "organization_id")}

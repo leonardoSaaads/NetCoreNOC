@@ -220,6 +220,9 @@ def register(app: FastAPI, ctx: AppContext) -> None:
                 if detail is not None and detail.get("scorer_config_id") is not None
                 else None
             )
+            # Whether the NOC works it (ADR #480): the card offers *Start working this* on an open
+            # situation with no case, and a link to the case otherwise.
+            case = await store.noc_case(sid) if detail is not None else None
         if detail is not None:
             # Out-of-scope members are redacted to a count and their classes; a situation with no
             # visible member projects to None, which falls into the SAME not-found branch below —
@@ -255,6 +258,9 @@ def register(app: FastAPI, ctx: AppContext) -> None:
         # is from here.
         detail["maintenance"] = next(
             (markers[ne] for ne in member_ne.values() if ne is not None and ne in markers), None
+        )
+        detail["case"] = (
+            None if case is None else {"status": case["status"], "owner": case["owner_name"]}
         )
         return shaping.shape(detail, principal.role)  # coarsen alarm device IPs below editor
 

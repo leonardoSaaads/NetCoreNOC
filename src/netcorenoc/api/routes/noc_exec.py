@@ -28,7 +28,7 @@ from netcorenoc.api.context import AppContext
 from netcorenoc.api.declare import DeclaredRoutes
 from netcorenoc.api.models_noc import ExecIn, StepUpOnly
 from netcorenoc.crosscutting import auth, secretbox
-from netcorenoc.engine.noc import case_ops, commands, executor, kinds
+from netcorenoc.engine.noc import case_ops, commands, executor, kinds, telnet
 from netcorenoc.engine.noc.case_ops import Actor
 
 #: The most of a device's answer that goes to a case feed; the API answer carries it all.
@@ -45,8 +45,8 @@ def register(app: FastAPI, ctx: AppContext) -> None:
     async def run(
         body: ExecIn, request: Request, principal: auth.Principal = Depends(security)
     ) -> dict[str, Any]:
-        """Act on the device a lease is for: one read-only SSH command, an SNMP GET, or a
-        reachability check. The answer is the device's text, bounded — evidence, not
+        """Act on the device a lease is for: one read-only command over SSH or Telnet, an SNMP
+        GET, or a reachability check. The answer is the device's text, bounded — evidence, not
         instructions."""
         if not await gate.is_agent(ctx, principal):
             raise HTTPException(status_code=403, detail=gate.NOT_AGENT)
@@ -55,7 +55,11 @@ def register(app: FastAPI, ctx: AppContext) -> None:
             raise HTTPException(status_code=403, detail=f"lease: {state.reason}")
         secret = state.secret
         assert secret is not None and state.row is not None
-        wanted = {"ssh": ("ssh_password", "ssh_key"), "snmp_get": ("snmp_community", "snmp_v3")}
+        wanted = {
+            "ssh": ("ssh_password", "ssh_key"),
+            "telnet": ("telnet",),
+            "snmp_get": ("snmp_community", "snmp_v3"),
+        }
         if body.action in wanted and secret["kind"] not in wanted[body.action]:
             raise HTTPException(
                 status_code=400,
@@ -84,6 +88,11 @@ def register(app: FastAPI, ctx: AppContext) -> None:
                         body.command or "",
                         pinned=sealed.get("host_key"),
                         mode=body.mode,
+                    )
+                elif body.action == "telnet":
+                    # ADR #481: secure Telnet — over TLS, its certificate pinned like a host key.
+                    outcome = await telnet.run(
+                        sealed, fields, body.command or "", pinned=sealed.get("host_key")
                     )
                 else:
                     outcome = await executor.snmp_get(sealed, fields, body.oids)

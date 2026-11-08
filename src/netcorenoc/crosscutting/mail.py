@@ -251,8 +251,11 @@ def _context(config: MailConfig) -> ssl.SSLContext:
     return context
 
 
-def send(config: MailConfig, message: EmailMessage) -> None:
-    """Deliver one message. **Blocking**: call through `asyncio.to_thread`. Raises MailError."""
+def send(config: MailConfig, message: EmailMessage, *, password: str | None = None) -> None:
+    """Deliver one message. **Blocking**: call through `asyncio.to_thread`. Raises MailError.
+
+    ``password`` is a customer's own SMTP password, opened from the vault for this send (ADR
+    #481); without it the appliance's (`effective_password`) logs in."""
     if not config.host:
         raise MailError("no SMTP server is configured")
     try:
@@ -268,7 +271,9 @@ def send(config: MailConfig, message: EmailMessage) -> None:
                 client.starttls(context=_context(config))
                 client.ehlo()
             if config.username:
-                client.login(config.username, config.effective_password)
+                client.login(
+                    config.username, config.effective_password if password is None else password
+                )
             client.send_message(message)
     except smtplib.SMTPAuthenticationError as exc:
         raise MailError(

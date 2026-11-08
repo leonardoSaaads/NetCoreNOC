@@ -8,7 +8,9 @@
  *     **memory** the NOC's agents keep of its network as they work;
  *   * **Workbook** — who to call, company by company, in the order they are called;
  *   * **Additional docs** — what it handed over for troubleshooting, and the text read from each;
- *   * **Circuits** — each circuit and its path, hop by hop.
+ *   * **Circuits** — each circuit and its path, hop by hop;
+ *   * **Access** — the credentials that reach its equipment and its mail server (ADR #481);
+ *   * **Email** — whom the customer update goes to, and where its replies are read from.
  *
  * What a caller may change comes from the server (`actions`); a customer is an organization, which
  * an admin adds here (`organizations.write`) and puts elements in from each element's page — and
@@ -32,6 +34,8 @@ import { BookText } from "./parts/custbook.js";
 import { Workbook } from "./parts/custcontacts.js";
 import { CustomerDocs } from "./parts/custdocs.js";
 import { Circuits } from "./parts/circuits.js";
+import { CustomerAccess } from "./parts/custaccess.js";
+import { CustomerMail } from "./parts/custmail.js";
 
 export class Customers extends Loader {
   constructor(props) {
@@ -229,6 +233,8 @@ class CustomerRecord extends Component {
       ${shown === "docs" ? html`<${CustomerDocs} c=${c} onChanged=${() => this.changed()} />` : null}
       ${shown === "circuits" ? html`<${Circuits} c=${c} circuitId=${Number(sub) || null} query=${query}
         navigate=${navigate} onChanged=${() => this.changed()} />` : null}
+      ${shown === "access" ? html`<${CustomerAccess} c=${c} />` : null}
+      ${shown === "email" ? html`<${CustomerMail} c=${c} />` : null}
     </article>`;
   }
 }

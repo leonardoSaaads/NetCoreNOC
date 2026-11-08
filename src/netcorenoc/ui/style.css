@@ -865,9 +865,12 @@ label { display: block; font-size: var(--fs-sm); color: var(--fg-muted); margin-
   margin: var(--space-1) 0 0; padding: 0; list-style: none;
   font-size: var(--fs-xs); color: var(--fg-muted);
 }
-.chart-legend li { display: flex; align-items: center; gap: var(--space-1); }
+.chart-legend li {
+  display: inline-flex; align-items: center; gap: 6px; padding: 2px 8px 2px 6px;
+  border-radius: 999px; background: var(--bg-sunken);
+}
 .chart-swatch {
-  width: 8px; height: 8px; border-radius: 2px; background: var(--accent); flex: none;
+  width: 8px; height: 8px; border-radius: 50%; background: var(--accent); flex: none;
 }
 /* The tone colours the SWATCH. Written as `.chart-legend .chart-warn` it also matched the `li` that
    carries the same class, and a toned series' name sat on a solid block of its colour — found on
@@ -1231,6 +1234,11 @@ td.sev { white-space: nowrap; }
   margin: var(--space-3) 0;
 }
 .decide .bulkclear { margin: 0; margin-left: auto; }
+/* ADR #480: on an open situation, Start working this is the decision left — the primary action. */
+.decide .promote { background: var(--primary); color: var(--primary-fg); border-color: transparent; }
+.decide .promote .icon-svg { color: inherit; }
+/* The case this situation opened (ADR #480): its link, where the button was. */
+.decide .case-link { display: inline-flex; align-items: center; gap: 6px; }
 .decide-note { margin: calc(-1 * var(--space-2)) 0 var(--space-3); font-size: var(--fs-sm); }
 @media (max-width: 720px) {
   /* `margin-left: auto` on a wrapped row pushes the clear onto a line of its own, which reads
@@ -1437,12 +1445,15 @@ td.sev .cell-edit { display: inline-block; width: auto; }
 .graph-bar { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); margin-bottom: var(--space-2); }
 .netgraph {
   position: relative; width: 100%; container: netgraph / inline-size;
-  border: 1px solid var(--line); border-radius: var(--radius-2); background: var(--bg-sunken);
+  border: 1px solid var(--line); border-radius: var(--radius-2); background-color: var(--bg-sunken);
+  /* ADR #480: Paperclip's canvas — a quiet dot grid, so a sparse estate still reads as a map. */
+  background-image: radial-gradient(var(--grid) 1px, transparent 1.2px);
+  background-size: 22px 22px; background-position: 11px 11px;
   margin-bottom: var(--space-4); overflow: hidden;
 }
 .netgraph-edges { position: absolute; inset: 0; width: 100%; height: 100%; }
-.gedge { stroke: var(--fg-dim); vector-effect: non-scaling-stroke; stroke-linecap: round; }
-.gedge-lit { stroke: var(--accent); }
+.gedge { stroke: var(--fg-dim); stroke-opacity: 0.45; vector-effect: non-scaling-stroke; stroke-linecap: round; }
+.gedge-lit { stroke: var(--accent); stroke-opacity: 1; }
 .gnode {
   position: absolute; width: calc(2 * var(--r)); height: calc(2 * var(--r));
   min-width: 0; min-height: 0; padding: 0; transform: translate(-50%, -50%);
@@ -1453,8 +1464,16 @@ td.sev .cell-edit { display: inline-block; width: auto; }
   content: ""; position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%);
   width: max(var(--tap), 100%); height: max(var(--tap), 100%); border-radius: 50%;
 }
-.gnode-alarm { background: var(--alarm); }
-.gnode-quiet { background: var(--quiet); }
+/* ADR #480: a node is a ring on a tint of its state, with a soft halo — Paperclip's dots, not
+   solid discs; the state colour is the ring, so a node still reads at a glance. */
+.gnode-alarm {
+  background: color-mix(in srgb, var(--alarm) 28%, var(--bg-raised)); border: 2px solid var(--alarm);
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--alarm) 14%, transparent);
+}
+.gnode-quiet {
+  background: color-mix(in srgb, var(--quiet) 24%, var(--bg-raised)); border: 2px solid var(--quiet);
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--quiet) 12%, transparent);
+}
 /* Urgent: a static ring (what reduced motion leaves) and a pulse (what draws an eye) — #309. */
 .gnode-urgent {
   box-shadow: 0 0 0 2px var(--bg-sunken), 0 0 0 5px var(--alarm);
@@ -1684,36 +1703,50 @@ pre.refusal-reason {
 /* ---------- the password surface (V.2) ---------- */
 
 .pw-field { margin-bottom: var(--space-2); }
-/* One row: the reveal control, then the field that fills whatever is left. The input carries
-   `flex: 1` (basis 0) and the button `flex: none`, so the field takes the row and the button takes
-   only itself — see `.login-card > input` below for the rule that used to break exactly this. */
-.pw-row { display: flex; align-items: stretch; gap: var(--space-1); }
-.pw-row input { flex: 1; min-width: 0; margin-bottom: 0; }
+/* One field: the reveal control inside the box, then the input that fills whatever is left
+   (ADR #480). The box carries the border and the focus ring, so the eye and the text read as one
+   control rather than two boxes side by side. The input carries `flex: 1` (basis 0) and the button
+   `flex: none` — see `.login-card > input` below for the rule that used to break exactly this. */
+.pw-row {
+  display: flex; align-items: stretch; min-height: 36px;
+  border: 1px solid var(--line-strong); border-radius: var(--radius-1);
+  background: var(--bg-raised); transition: border-color 120ms ease, box-shadow 120ms ease;
+}
+.pw-row:hover { border-color: var(--fg-dim); }
+.pw-row:focus-within { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+.pw-row input {
+  flex: 1; min-width: 0; margin-bottom: 0; border: 0; background: transparent;
+  box-shadow: none; padding-left: 4px;
+}
+.pw-row input:focus { box-shadow: none; }
 /* `order`, not DOM order, and the difference is load-bearing. The icon is asked to sit to the LEFT
    of the field, but the button must stay AFTER the input in the markup: tabbing out of the
    username field has to land in the password box, not on a toggle. Reversing the markup would put
    a control the operator does not want yet between them, and they would type into nothing. */
 .pw-reveal {
-  flex: none; order: -1; width: auto; margin: 0;
-  display: inline-flex; align-items: center; justify-content: center;
+  flex: none; order: -1; width: 36px; margin: 0; border: 0; background: transparent;
+  display: inline-flex; align-items: center; justify-content: center; color: var(--fg-dim);
 }
+.pw-reveal:hover { color: var(--fg); background: transparent; }
 
+/* Four segments across the field, then the sentence and the count on one line (ADR #480). The
+   segments are never the only signal: the sentence changes with the state, as severity does. */
 .pw-meter {
-  display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap;
-  font-size: var(--fs-xs); color: var(--fg-muted); margin: 0 0 var(--space-2);
+  display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center;
+  gap: 6px var(--space-2); margin: 8px 0 var(--space-3);
+  font-size: var(--fs-xs); color: var(--fg-muted);
 }
-.pw-track {
-  flex: none; width: 84px; height: 4px; border-radius: 2px;
-  background: var(--bg-sunken); border: 1px solid var(--line); overflow: hidden;
-}
-.pw-fill { display: block; height: 100%; background: var(--fg-dim); }
-/* The bar is never the only signal: `.pw-words` states the count and the bound in text beside it,
-   and the state changes the WORDS as well as the colour. Same rule as severity. */
-.pw-meter-short .pw-fill { background: var(--warn); }
-.pw-meter-ok .pw-fill { background: var(--quiet); }
-.pw-meter-ok .pw-words { color: var(--quiet); }
-.pw-meter-over .pw-fill { background: var(--alarm); width: 100% !important; }
+.pw-segs { grid-column: 1 / -1; display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px; }
+.pw-seg { height: 4px; border-radius: 999px; background: var(--grid); transition: background-color 160ms ease; }
+.pw-meter-short .pw-seg-on { background: var(--warn); }
+.pw-meter-ok .pw-seg-on { background: var(--quiet); }
+.pw-meter-over .pw-seg-on { background: var(--alarm); }
+.pw-words { display: inline-flex; align-items: center; gap: 6px; min-width: 0; line-height: 1.4; }
+.pw-words .icon-svg { flex: none; width: 14px; height: 14px; color: var(--quiet); }
 .pw-meter-over .pw-words { color: var(--alarm); }
+.pw-count { font-variant-numeric: tabular-nums; color: var(--fg-dim); white-space: nowrap; }
+.pw-meter-short .pw-count { color: var(--warn); }
+.pw-meter-over .pw-count { color: var(--alarm); }
 
 /* A declaration, not a control (V.3): an icon, a sentence, no affordance. Used by the fixed-role
    note on People & access and the two-factor statement on Your account. */
@@ -2449,9 +2482,9 @@ button.mw-row-name[aria-expanded] { background: none; }
   stroke-dasharray: 1 3;
 }
 .chart-sev-unplaced polyline, .chart-sev-unplaced .chart-dash-sample line { stroke-dasharray: 4 4; }
-.chart-legend .sev-glyph { width: 11px; height: 11px; }
-.chart-dash-sample { width: 16px; height: 4px; flex: none; overflow: visible; }
-.chart-dash-sample line { stroke: currentColor; stroke-width: 2; }
+.chart-legend .sev-glyph { width: 10px; height: 10px; opacity: 0.8; }
+.chart-dash-sample { width: 14px; height: 4px; flex: none; overflow: visible; }
+.chart-dash-sample line { stroke: currentColor; stroke-width: 2.4; stroke-linecap: round; }
 
 /* ---------- the "outlived a maintenance window" marker (v0.22.0, item 8, #388) --------------
    A small badge, not a sentence in the row; the sentence is its accessible name and title. */
@@ -3142,7 +3175,11 @@ table.data.league-table td, table.data.league-table th { white-space: nowrap; }
 .settings .stack { max-width: 1100px; }
 .settings .mono, .settings dd { overflow-wrap: anywhere; }
 .pin-form { display: grid; gap: var(--space-2); max-width: 720px; }
-.pin-choice { display: grid; gap: var(--space-2); grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); }
+.pin-choice {
+  display: grid; gap: var(--space-2); grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  border: 0; padding: 0; margin: 0; min-width: 0;
+}
+.pin-choice > legend { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
 .badge-pending { border-color: var(--warn); color: var(--warn); border-style: dashed; }
 .sit > .proposal { margin: 0 var(--space-3) var(--space-2); }
 .mchart-wrap { display: flex; flex-direction: column; gap: var(--space-1); min-width: 0; }
@@ -4229,3 +4266,40 @@ td.ckt-acts .linkish + .linkish { margin-left: var(--space-3); }
 .ckt-import h3 { margin: 0; display: inline-flex; align-items: center; gap: var(--space-1); }
 .ckt-paste { width: 100%; font-family: var(--mono); font-size: var(--fs-xs); white-space: pre; }
 .ckt-report p { margin: 0 0 var(--space-2); }
+
+/* ---------- a customer's Access and Email; Agents → AI providers (ADR #481) ---------- */
+
+.cust-access { display: grid; gap: var(--space-3); }
+.cust-access-note { margin: 0; max-width: 70ch; }
+.cust-mail { display: grid; gap: var(--space-4); }
+.cm-form h3 { display: flex; align-items: center; gap: 8px; margin: 0 0 4px; }
+.cm-grid {
+  display: grid; grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-2) var(--space-3); margin: var(--space-3) 0; max-width: 960px;
+}
+@media (max-width: 720px) { .cm-grid { grid-template-columns: 1fr; } }
+.cm-grid select, .cm-grid input { width: 100%; }
+.cm-cred-fixed { margin: 6px 0 0; font-size: var(--fs-sm); }
+.cm-toggles { display: grid; gap: 6px; margin: var(--space-2) 0 var(--space-3); }
+.cm-actions { display: flex; align-items: center; flex-wrap: wrap; gap: var(--space-2); }
+.cm-actions .icon-svg { width: 14px; height: 14px; }
+.cm-poll { margin: var(--space-3) 0 0; font-size: var(--fs-xs); }
+.cm-log h3 { margin: 0 0 var(--space-2); }
+.cm-dir { display: inline-flex; color: var(--fg-dim); }
+.cm-dir .icon-svg { width: 14px; height: 14px; }
+.cm-subject { max-width: 36ch; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.agents-page { display: grid; gap: var(--space-3); }
+.agents-tabs { justify-self: start; }
+.agents-tabs .icon-svg { width: 14px; height: 14px; }
+.agents-providers { display: grid; gap: var(--space-3); }
+.vault-moved { display: flex; align-items: center; gap: 6px; }
+.vault-moved .icon-svg { width: 14px; height: 14px; flex: none; color: var(--accent); }
+.sf-plain { grid-column: 1 / -1; margin: 0; }
+
+/* ---------- section and tab marks (ADR #480) ---------- */
+.section-icon {
+  display: inline-grid; place-items: center; width: 22px; height: 22px; margin-right: 8px;
+  border-radius: 6px; background: var(--accent-soft); color: var(--accent); vertical-align: -5px;
+}
+.section-icon .icon-svg { width: 13px; height: 13px; }
+.access-tab .icon-svg { width: 14px; height: 14px; margin-right: 2px; vertical-align: -2px; }

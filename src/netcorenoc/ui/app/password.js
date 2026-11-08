@@ -84,29 +84,44 @@ export class PasswordInput extends Component {
   }
 }
 
+/** How many segments the meter draws: three fill on the way to the minimum, the fourth at it. */
+const SEGMENTS = 4;
+
 /**
- * The length meter. Renders nothing at all until the server has stated its policy.
+ * The length meter (ADR #480): four segments, a sentence and a count. Renders nothing at all until
+ * the server has stated its policy.
  *
  * Four states, and "too long" is one of them: `MAX_PASSWORD` is a real bound the server enforces
  * and a passphrase can reach it, so a meter that only ever counted upwards would leave an operator
- * refused with no idea why.
+ * refused with no idea why. The segments are never the only signal: the sentence changes with the
+ * state, and the count says where the bound is.
  */
 export function PasswordMeter({ id, value }) {
   const policy = passwordPolicy();
   if (!policy) return null;
   const n = value.length;
-  const ratio = Math.min(1, n / policy.min);
   const state = n === 0 ? "empty" : n > policy.max ? "over" : n < policy.min ? "short" : "ok";
+  const lit = state === "ok" || state === "over"
+    ? SEGMENTS
+    : Math.min(SEGMENTS - 1, Math.ceil((n / policy.min) * (SEGMENTS - 1)));
+  const more = policy.min - n;
   const words = {
-    empty: `${policy.min}–${policy.max} characters. The appliance checks length and nothing else.`,
-    short: `${policy.min - n} more character${policy.min - n === 1 ? "" : "s"} needed.`,
-    ok: `${n} characters — accepted. Length is the only rule; there is no composition requirement.`,
-    over: `${n} characters — ${n - policy.max} too many. The limit is ${policy.max}.`,
+    empty: `${policy.min}–${policy.max} characters. Length is the only rule.`,
+    short: `${more} more character${more === 1 ? "" : "s"} needed`,
+    ok: "Accepted — length is the only rule",
+    over: `${n - policy.max} too many — the limit is ${policy.max}`,
+  };
+  const count = {
+    empty: "", short: `${n} / ${policy.min}`, ok: `${n} characters`, over: `${n} / ${policy.max}`,
   };
   return html`<p id=${id} class=${`pw-meter pw-meter-${state}`} role="status">
-    <span class="pw-track" aria-hidden="true">
-      <span class="pw-fill" style=${`width:${Math.round(ratio * 100)}%`}></span>
+    <span class="pw-segs" aria-hidden="true">
+      ${Array.from({ length: SEGMENTS }, (_, i) =>
+        html`<span class=${i < lit ? "pw-seg pw-seg-on" : "pw-seg"}></span>`)}
     </span>
-    <span class="pw-words">${words[state]}</span>
+    <span class="pw-words">
+      ${state === "ok" ? html`<${Icon} name="check" />` : null}${words[state]}
+    </span>
+    ${count[state] ? html`<span class="pw-count">${count[state]}</span>` : null}
   </p>`;
 }

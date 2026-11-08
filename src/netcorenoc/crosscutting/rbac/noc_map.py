@@ -47,6 +47,7 @@ NOC_ROUTE_PERMISSIONS: dict[tuple[str, str], str] = {
     ("GET", "/api/noc/overview"): "cases.read",
     ("GET", "/api/noc/cases/{sid}"): "cases.read",
     ("POST", "/api/noc/cases/{sid}"): "cases.work",
+    ("POST", "/api/noc/cases/{sid}/open"): "cases.work",
     ("POST", "/api/noc/cases/{sid}/take"): "cases.work",
     ("POST", "/api/noc/cases/{sid}/release"): "cases.work",
     ("POST", "/api/noc/cases/{sid}/status"): "cases.work",
@@ -104,6 +105,11 @@ NOC_ROUTE_PERMISSIONS: dict[tuple[str, str], str] = {
     ("POST", "/api/noc/customers/{customer_id}/circuits/{circuit_id}"): "cases.work",
     ("POST", "/api/noc/customers/{customer_id}/circuits/{circuit_id}/notes"): "cases.work",
     ("POST", "/api/noc/customers/{customer_id}/circuits/{circuit_id}/delete"): "cases.work",
+    # ADR #481: a customer's email — read by whoever reads cases, kept by who works them; which
+    # credential sends and reads is a custodian's choice, checked in the handler.
+    ("GET", "/api/noc/customers/{customer_id}/mail"): "cases.read",
+    ("POST", "/api/noc/customers/{customer_id}/mail"): "cases.work",
+    ("POST", "/api/noc/customers/{customer_id}/mail/test"): "cases.work",
     # The MCP endpoint (ADR #466): every tool behind it is checked as its own route.
     ("POST", "/api/mcp"): "mcp.use",
 }
@@ -147,6 +153,7 @@ NOC_ROUTE_SCOPE: dict[tuple[str, str], Literal["scoped", "unscoped", "admin_only
     ("GET", "/api/noc/overview"): "scoped",
     ("GET", "/api/noc/cases/{sid}"): "scoped",
     ("POST", "/api/noc/cases/{sid}"): "scoped",
+    ("POST", "/api/noc/cases/{sid}/open"): "scoped",
     ("POST", "/api/noc/cases/{sid}/take"): "scoped",
     ("POST", "/api/noc/cases/{sid}/release"): "scoped",
     ("POST", "/api/noc/cases/{sid}/status"): "scoped",
@@ -207,6 +214,9 @@ NOC_ROUTE_SCOPE: dict[tuple[str, str], Literal["scoped", "unscoped", "admin_only
     ("POST", "/api/noc/customers/{customer_id}/contacts/{contact_id}"): "scoped",
     ("POST", "/api/noc/customers/{customer_id}/contacts/{contact_id}/delete"): "scoped",
     ("POST", "/api/noc/customers/{customer_id}/end"): "admin_only",
+    ("GET", "/api/noc/customers/{customer_id}/mail"): "scoped",
+    ("POST", "/api/noc/customers/{customer_id}/mail"): "scoped",
+    ("POST", "/api/noc/customers/{customer_id}/mail/test"): "scoped",
     ("POST", "/api/noc/customers/{customer_id}/docs"): "scoped",
     ("GET", "/api/noc/customers/{customer_id}/docs/{doc_id}"): "scoped",
     ("GET", "/api/noc/customers/{customer_id}/docs/{doc_id}/file"): "scoped",

@@ -74,7 +74,7 @@ export class Correlation extends Component {
 function Now({ decider }) {
   const champ = decider.champion;
   return html`<section class="panel-block">
-    <${SectionHeading} title="Deciding now" />
+    <${SectionHeading} icon="scorer" title="Deciding now" />
     ${decider.fallback || !champ
       ? html`<p class="err" role="alert">No model could be loaded, so the fail-safe formula is
           grouping. ${(decider.warnings || []).join(" ")}</p>`
@@ -109,7 +109,7 @@ class Choice extends Component {
     const current = decider.pinned || "";
     const changed = pin !== current;
     return html`<section class="panel-block">
-      <${SectionHeading} title="How the model is chosen" />
+      <${SectionHeading} icon="settings" title="How the model is chosen" />
       <form class="pin-form" onSubmit=${(e) => this.submit(e)}>
         <fieldset class="pin-choice" disabled=${!writable || busy}>
           <legend class="sr-only">How the model is chosen</legend>
@@ -149,7 +149,7 @@ class Choice extends Component {
 function League({ rows }) {
   if (!rows.length) return null;
   return html`<section class="panel-block">
-    <${SectionHeading} title="The models, in the judge's order"
+    <${SectionHeading} icon="chart" title="The models, in the judge's order"
       hint="Score: mean pairwise F1 on five test suites no model trained on, including a hand-labelled corpus. Higher is better." />
     <${DataTable} kind="league-table" columns=${[
       { key: "rank", label: "#", numeric: true },
@@ -179,7 +179,7 @@ function History({ rows, decisions, members }) {
   ].sort((a, b) => (b.at || 0) - (a.at || 0)).slice(0, 15);
   if (!merged.length) return null;
   return html`<section class="panel-block">
-    <${SectionHeading} title="History" hint="Every change of model — by the judge or an admin — and why. Append-only." />
+    <${SectionHeading} icon="timeline" title="History" hint="Every change of model — by the judge or an admin — and why. Append-only." />
     <${DataTable} columns=${[
       { key: "when", label: "when" }, { key: "what", label: "what" },
       { key: "by", label: "by" }, { key: "why", label: "why" },

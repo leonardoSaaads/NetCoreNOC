@@ -224,7 +224,7 @@ docker compose exec netcorenoc python -m netcorenoc --help          # every main
 ```
 
 `db status` names the server, the database, the role and the schema it reached, then the schema's
-version beside this release's — `version 42 (this release: 42)` — and the schema's size on disk. A
+version beside this release's — `version 44 (this release: 44)` — and the schema's size on disk. A
 lower first number is migrations not yet applied (start the appliance, or run `db migrate`); a
 higher one is a database a newer release migrated, which the console also warns about.
 
@@ -236,31 +236,48 @@ v0.30.0 or earlier, the SQLite file is imported once, before the first start: se
 The analysis reports for contributors (`make bias-report`, `make agreement-report`,
 `make shadow-report`, `make census`) are described in [`correlation.md`](correlation.md).
 
-## 9. The NOC: cases and AI agents
+## 9. The NOC: customers, cases and AI agents
 
-Switch the top bar to **NOC**. A situation becomes a **case** when someone starts working it
-(**Start working this** on its card): the case enters the NOC queue with its priority (from the
-Broker's severity) and its clocks — the take, the customer update and the restore
-([`console.md`](console.md#noc--work)). People and agents work it the same way: take it, post to
-its feed (*Internal*, *Specified* or *All with access*), fill and send the **customer update**, set
-it **pending** while someone outside the NOC must act (the restore clock pauses), and resolve it.
+Switch the top bar to **NOC**. **The case comes from you** (ADR #480): in the Broker, confirm or
+correct a situation's grouping and it is **Open**; when it is the one the NOC should work — of ten
+situations a storm opens, the root cause — press **Start working this** on it. Its case enters the
+NOC queue with its priority (from the Broker's severity) and its clocks — the take, the customer
+update and the restore ([`console.md`](console.md#noc--work)). People and agents work it the same
+way: take it, post to its feed (*Internal*, *Specified* or *All with access*), fill and send the
+**customer update**, set it **pending** while someone outside the NOC must act (the restore clock
+pauses), and resolve it.
+
+**Each customer first** (ADR #481). Under **Customers**, add the customer (an admin) and put its
+elements in it from each element's page; then fill its book: **Instructions**, **Workbook**,
+**Additional docs**, **Circuits**, and
+
+* **Access** — a credential for each of its devices: SSH, SNMP, **Telnet over TLS** (or plain
+  Telnet for equipment with nothing else) or an API, then **Let agents use it** (a custodian confirms
+  with their password); and its mail server — an SMTP and an IMAP credential;
+* **Email** — the recipients of the customer update, the sender, and which of its credentials
+  sends (or the appliance's server, Settings → Email) and which inbox is read for replies.
+
+A sent customer update is then emailed to the customer, its subject tagged with the case; the
+customer's reply lands on the case's feed, and a case waiting on the customer goes back to the
+queue for whichever agent at its tier has the fewest cases.
 
 AI agents are optional. The NOC's **Overview** lists what is missing, each item a link:
 
-1. **Secrets → AI providers**: connect a model — any OpenAI-compatible API, a local Ollama (no key)
+1. **Agents → AI providers**: connect a model — any OpenAI-compatible API, a local Ollama (no key)
    or Claude. From the Compose container a local Ollama is `host.docker.internal`, port 11434;
    start Ollama with `OLLAMA_HOST=0.0.0.0` so the container can reach it.
 2. **Agents → Hire an agent**: a name and a model are enough. Its job comes prefilled; the first
    agent hired takes cases from the queue, and **Organization** places agents in tiers to escalate
    through.
-3. **Secrets → New credential** for each device (SSH or SNMP), then **Let agents use it** (a custodian
-   confirms with their password). Until then an agent says it has no access and sets the case
-   *Pending connectivity*; it is woken the moment access is granted.
+3. **Customers → a customer → Access**: its devices' credentials, switched on for agents. Until
+   then an agent says it has no access and sets the case *Pending connectivity*; it is woken the
+   moment access is granted.
 
 An agent never receives a password: it leases a short-lived token for one device and the appliance
 runs the read-only command for it. Who stored, read or changed a credential, and which agent leased
-and used it, is in the audit log ([`security.md`](security.md#the-credential-vault-noc--secrets)). **Customers** holds each
-customer's instructions, workbook and circuits for the agents to read.
+and used it, is in the audit log ([`security.md`](security.md#the-credential-vault-noc--each-customers-access)).
+Credentials stored before they belonged to a customer are under **Vault access → Not assigned**:
+open each and choose its customer with **Change…**.
 
 ## 10. Before a team relies on it
 

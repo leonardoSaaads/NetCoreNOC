@@ -186,6 +186,7 @@ def create_app(
     routes.customers.register(app, ctx)
     routes.customer_docs.register(app, ctx)
     routes.circuits.register(app, ctx)
+    routes.customer_mail.register(app, ctx)  # ADR #481: each customer's email
     routes.mcp.register(app, ctx)  # ADR #466: the MCP endpoint, last — it calls the others
 
     # F40: the gate's completeness half. `DeclaredRoutes` refuses at registration and gives the

@@ -94,6 +94,8 @@ def author_label(kind: str, role: str | None) -> str:
         return "NetCoreNOC"
     if kind == "agent":
         return "NOC agent"
+    if kind == "customer":
+        return "Customer"
     return "NOC engineer" if role in ("editor", "admin") else "Operator"
 
 

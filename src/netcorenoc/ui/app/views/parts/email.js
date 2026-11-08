@@ -103,7 +103,7 @@ export class EmailPanel extends Component {
           ${data.recovery_available ? "Recovery by email is on" : data.enabled ? "Email on, recovery off" : "Email is off"}</span></p></div>
 
       <section class="panel-block">
-        <${SectionHeading} title="Provider" />
+        <${SectionHeading} icon="mail" title="Provider" />
         <div class="provider-grid" role="radiogroup" aria-label="Email provider">
           ${Object.entries(data.providers).map(([key, p]) => html`<button type="button" key=${key}
             role="radio" aria-checked=${form.provider === key} disabled=${!writable}
@@ -113,7 +113,7 @@ export class EmailPanel extends Component {
       </section>
 
       <section class="panel-block">
-        <${SectionHeading} title="Account" />
+        <${SectionHeading} icon="key" title="Account" />
         <div class="email-grid">
           <label class="pe-field"><span>Email address (sender)</span>
             <input type="email" value=${form.sender} placeholder="noc@example.com" disabled=${!writable}
