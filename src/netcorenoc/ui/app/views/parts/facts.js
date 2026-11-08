@@ -19,7 +19,7 @@ import { HARDENING, STRUCTURAL, RESTART_REQUIRED } from "../../parameters.js";
 /** Hardening-only: the floors, where they are enforced, and which of them have a write path. */
 export function Hardening({ scorer }) {
   return html`<section class=${`panel-block param-${HARDENING}`}>
-    <${SectionHeading} title="Hardening-only"
+    <${SectionHeading} icon="shield" title="Hardening-only"
       hint=${"resolved = max(project floor, deployment policy) — stricter only. A looser value " +
              "is refused here before it is sent, and by the appliance if it is sent anyway."} />
     ${scorer ? html`<${DataTable}
@@ -72,7 +72,7 @@ export function Structural({ config, scorer }) {
      "Which scoring contract the running engine implements."],
   ];
   return html`<section class=${`panel-block param-${STRUCTURAL}`}>
-    <${SectionHeading} title="Structural — facts, not settings"
+    <${SectionHeading} icon="settings" title="Structural — facts, not settings"
       hint="No edit control, because these are not choices. A greyed-out field would say “you may
             not”; these say “this is what is true”." />
     <dl class="facts">
@@ -99,7 +99,7 @@ export function RestartRequired({ config }) {
     },
   }));
   return html`<section class=${`panel-block param-${STRUCTURAL}`}>
-    <${SectionHeading} title="Read at startup — a change needs a restart"
+    <${SectionHeading} icon="bolt" title="Read at startup — a change needs a restart"
       hint=${"Read once at process start and never mutated. Shown rather than editable: a form " +
              "that accepted a new trap port while the receiver kept the old one would leave an " +
              "operator believing traps were arriving."} />

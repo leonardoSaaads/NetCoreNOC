@@ -99,7 +99,7 @@ database on a host.
 | `NETCORENOC_DATABASE_OWNER_PASSWORD_FILE` | *(unset)* | The owner's password, from a file, as for the runtime role |
 | `NETCORENOC_DB_RUNTIME_ROLE` | *(unset)* | For `db migrate` run as the owner: the role to grant the runtime privileges to (Compose: `netcorenoc_app`) |
 | `NETCORENOC_SECRET_KEY_FILE` | `<NETCORENOC_DATA_DIR>/secret.key` | The key that seals personal data and secrets in the database and keys the password hashes and the audit chain (ADR #453). Created owner-only (`0600`) on the first start; a file any user may read is refused. **Back it up apart from the database**: without it every sealed value and every password is unreadable |
-| `NETCORENOC_SECRETS_KEY_FILE` | `<NETCORENOC_DATA_DIR>/secrets.key` (the image: `/var/lib/netcorenoc-vault/secrets.key`, on a volume of its own) | The **second** key the NOC's device credentials are sealed under (ADR #455): a credential opens only with the database row, `secret.key` **and** this file. Created owner-only on the first start; a file any user may read is refused. Keep it **apart** from `secret.key` — in one directory, a copy of that directory opens every credential, and the Secrets screen says so. Back it up separately: without it every stored credential is lost (store them again) |
+| `NETCORENOC_SECRETS_KEY_FILE` | `<NETCORENOC_DATA_DIR>/secrets.key` (the image: `/var/lib/netcorenoc-vault/secrets.key`, on a volume of its own) | The **second** key the NOC's device credentials are sealed under (ADR #455): a credential opens only with the database row, `secret.key` **and** this file. Created owner-only on the first start; a file any user may read is refused. Keep it **apart** from `secret.key` — in one directory, a copy of that directory opens every credential, and the vault's screens say so. Back it up separately: without it every stored credential is lost (store them again) |
 | `NETCORENOC_NOC_CHECK_S` | `300` | How often, in seconds, the vault checks that each monitored credential's endpoint answers (the status light, ADR #457). Sixteen checks at once, 5 s each, never on the trap path; `0` turns scheduled checks off (a custodian can still press *Check now*) |
 
 The maintenance CLI (`python -m netcorenoc …`) reads the same variables and **refuses a schema
@@ -235,7 +235,7 @@ work (ADR #462).
 The NOC's **AI agents** (ADRs #465-#467) need nothing to configure in the environment: an admin
 hires them in *NOC → Agents*. An agent the appliance runs itself (**Claude**) needs the optional
 `anthropic` package — `pip install "netcorenoc[agents]"`; the Docker image includes it, and with
-the Nix package add `anthropic` to the environment — and an Anthropic API key stored in *Secrets*
+the Nix package add `anthropic` to the environment — and an Anthropic API key stored under *Agents → AI providers*
 as an API token with agent access on. An agent run elsewhere connects to the **MCP endpoint**,
 `<console URL>/api/mcp` (Streamable HTTP), with its own key as a Bearer token; put TLS in front of
 the console (`NETCORENOC_TLS_CERT` / `NETCORENOC_TLS_KEY`, or a reverse proxy) before an agent

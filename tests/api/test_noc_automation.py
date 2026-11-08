@@ -148,6 +148,7 @@ async def _open_case(store: Store, device: str) -> int:
         alarm = await store.ingest(util.event(device=device, ts=now))
         await store.add_alarm_to_situation(sid, alarm.alarm_id)
         await store.promote_situation(sid, now, "promote")
+        await store.noc_case_open(sid, now)  # ADR #480
         await store.commit()
     return sid
 

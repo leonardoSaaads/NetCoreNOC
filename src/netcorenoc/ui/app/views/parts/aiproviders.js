@@ -1,4 +1,4 @@
-/* NOC → Secrets → AI providers: the keys agents think with (ADR #471).
+/* NOC → Agents → AI providers: the keys agents think with (ADRs #471, #481).
  *
  * One card per provider — Anthropic (Claude), OpenAI, Google AI Studio (Gemini), xAI (Grok), Meta
  * (Llama), Ollama and Ollama Cloud — with its logo, whether it is connected, and one button.

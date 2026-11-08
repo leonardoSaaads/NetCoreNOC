@@ -1,7 +1,7 @@
 """What a credential is: its kinds, fields, access levels and binding (ADRs #455, #471).
 
-A credential is a **kind** (SSH with a password, SSH with a key, SFTP, SNMP v1/v2c or v3, an API
-token, SMTP, or something else — or, in the ``ai`` group, one AI provider's API key,
+A credential is a **kind** (SSH with a password, SSH with a key, SFTP, SNMP v1/v2c or v3, Telnet,
+an API token, SMTP or IMAP, or something else — or, in the ``ai`` group, one AI provider's API key,
 `providers.py`), a set of **fields** — all sealed, some masked even after a step-up
 because they are the secret itself — a **host and port**, a **protocol version**, and the **access
 level** it grants on the device. The catalogue is served to the console and to agents
@@ -64,7 +64,9 @@ class Kind:
     versions: tuple[str, ...] = ()
     #: At least one of these fields must be given (SFTP: a password or a key).
     one_of: tuple[str, ...] = ()
-    #: ``device`` — what reaches equipment; ``ai`` — an AI provider's key (ADR #471).
+    #: ``device`` — what reaches equipment; ``ai`` — an AI provider's key (ADR #471); ``mail`` — a
+    #: customer's mail server, which the appliance sends and reads through and no agent leases
+    #: (ADR #481).
     group: str = "device"
 
 
@@ -154,8 +156,38 @@ KINDS: dict[str, Kind] = {
             ),
             ("HTTPS", "HTTP"),
         ),
+        # ADR #481: secure Telnet — Telnet over TLS first, plain Telnet for equipment with nothing
+        # else — for the devices whose only management access it is. The username is optional:
+        # some prompt for a password alone.
         Kind(
-            "smtp", "SMTP", 587, "tcp", "smtp", (_USER, _PASSWORD), ("STARTTLS", "SMTPS", "plain")
+            "telnet",
+            "Telnet — username and password",
+            992,
+            "tcp",
+            "tcp",
+            (Field("username", "Username", required=False, max_len=128), _PASSWORD),
+            ("Telnet over TLS", "Telnet"),
+        ),
+        Kind(
+            "smtp",
+            "SMTP",
+            587,
+            "tcp",
+            "smtp",
+            (_USER, _PASSWORD),
+            ("STARTTLS", "SMTPS", "plain"),
+            group="mail",
+        ),
+        # ADR #481: a customer's mailbox, whose inbox is read for replies to its customer updates.
+        Kind(
+            "imap",
+            "IMAP — mailbox",
+            993,
+            "tcp",
+            "tcp",
+            (_USER, _PASSWORD),
+            ("IMAPS", "STARTTLS"),
+            group="mail",
         ),
         Kind(
             "other",

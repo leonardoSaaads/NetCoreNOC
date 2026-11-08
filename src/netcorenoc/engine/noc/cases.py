@@ -1,12 +1,13 @@
 """A NOC case: what the NOC does with a situation once the broker hands it over (ADR #459).
 
 **A case is the situation, worked.** A situation is the broker's — phase 1 groups traps into it,
-and a trap belongs to one situation only. When a situation becomes `open` (an operator, or
-autonomy, accepted the grouping as something to work), the database gives it a case in the same
-transaction (`migrations/0034_noc_cases.sql`), so there is never an open situation without one and
-never a case without its situation. The case carries what the NOC adds: an owner, a status, the
-customer update (title, description, executive summary, current analysis, NOC next step, customer
-next step, next update), a feed, and the clocks the NOC is measured by.
+and a trap belongs to one situation only. It becomes `open` when somebody confirms or corrects
+its grouping; it gets a case only when somebody presses *Start working this* on it (ADR #480 —
+until migration 0043 the database opened one for every situation that opened). So there may be an
+open situation the NOC does not work, and never a case without its situation. The case carries
+what the NOC adds: an owner, a status, the customer update (title, description, executive summary,
+current analysis, NOC next step, customer next step, next update), a feed, and the clocks the NOC
+is measured by.
 
 The lifecycle follows the NOC handbook's super-states, renamed where the appliance's own words are
 clearer:
@@ -107,6 +108,7 @@ CYCLE_REASONS: dict[str, str] = {
     "escalated": "Escalated past the agents to the NOC team",
     "alarm": "An alarm of its situation raised again or joined while it was pending",
     "access": "The agents were given access to one of its devices",
+    "customer_email": "The customer answered by email",
 }
 
 #: How a case came to be resolved.

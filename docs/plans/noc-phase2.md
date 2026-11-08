@@ -3,7 +3,7 @@
 Phase 2 is the half of the product that works a situation once phase 1 (the **Broker**) has made
 one: people and AI agents diagnosing and, later, remediating, with a time budget and an escalation
 (`architecture.md`, "The three phases"). This page is the plan for it, written as measurements and
-open questions (`CONTRIBUTING.md`). What is built is described by ADRs #454-#479, not here.
+open questions (`CONTRIBUTING.md`). What is built is described by ADRs #454-#481, not here.
 
 ## 1. Where it stands
 
@@ -31,6 +31,8 @@ open questions (`CONTRIBUTING.md`). What is built is described by ADRs #454-#479
 | **Customers** — each customer's book: instructions, memory, workbook, documents, circuits | built (#473) |
 | A case hears its alarms; vendor fault/recovery pairs; a lab of three vendors | built (#474-#476) |
 | A local Ollama without a key; agents woken when a case returns or access is granted; pending pauses the restore clock; sending the customer update | built (#477, #478) |
+| A case opened on request (*Start working this* on an open situation) | built (#480) |
+| Each customer's credentials and email: the update emailed, replies read into the feed, the case back to the least-loaded agent; secure Telnet | built (#481) |
 | Scoring a playbook (did it resolve cases that stayed resolved) | not built |
 | A stdio adapter for desktop MCP clients; OAuth 2.1 for agents beyond the management LAN | not built |
 

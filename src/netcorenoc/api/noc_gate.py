@@ -34,7 +34,7 @@ if TYPE_CHECKING:
 
 NOT_CUSTODIAN = (
     "Only an admin, or an editor an admin has named a custodian, may open the vault — signed in "
-    "as a person. Ask an admin (NOC → Secrets → Custodians & agents)."
+    "as a person. Ask an admin (NOC → Vault access → Custodians & agents)."
 )
 NOT_AGENT = (
     "Only a service token an admin has named an agent may lease a credential, and only one a "
@@ -42,7 +42,7 @@ NOT_AGENT = (
 )
 NOT_LEAD = (
     "Only an admin, an editor an admin has named a NOC lead, or an agent may open the NOC's "
-    "measures and its playbooks. Ask an admin (NOC → Secrets → People & agents)."
+    "measures and its playbooks. Ask an admin (NOC → Vault access → Custodians & agents)."
 )
 STEP_UP_REQUIRED = "stepup: confirm your username and password to do this"
 
@@ -202,6 +202,9 @@ def view(row: Mapping[str, Any], checks: Sequence[Mapping[str, Any]]) -> dict[st
         "revealed_by": row["revealed_by"],
         # ADR #462: whether the executor has pinned this device's SSH host key, and when.
         "host_key_at": row.get("host_key_at"),
+        # ADR #481: whose equipment it reaches.
+        "customer_id": row.get("organization_id"),
+        "customer_name": row.get("customer_name"),
         "status": health.status(
             checks,
             checkable=kind is not None and kind.check is not None,

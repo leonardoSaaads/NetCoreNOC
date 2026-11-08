@@ -95,9 +95,11 @@ async def tick(store: Store, *, now: Callable[[], float] = time.time) -> dict[st
     async with store.lock:
         at = now()
         for sid in unrouted:
-            entry = routing.pick_entry(everyone, loads)
             case = await store.noc_case(sid)
-            if entry is None or case is None or case["status"] != "queue" or case["agent_id"]:
+            if case is None or case["status"] != "queue" or case["agent_id"]:
+                continue
+            entry = routing.pick_entry(everyone, loads, int(case.get("tier") or 1))
+            if entry is None:
                 continue
             await routing.assign(store, case, entry, SYSTEM, at, note="Routed from the queue.")
             loads[int(entry["id"])] = loads.get(int(entry["id"]), 0) + 1

@@ -188,7 +188,7 @@ export class Overview extends Component {
         ${can("mw.read") ? html`<div class="ov-12 ov-slot"><${PlannedWork} /></div>` : null}
         <section class="panel-block ov-5 ov-fill"><${Severity} census=${stats.severity} /><//>
         <section class="panel-block ov-7">
-          <${SectionHeading} title="What is happening" />
+          <${SectionHeading} icon="pulse" title="What is happening" />
           <${Happening} data=${activity} rangeS=${rangeS} error=${activityError}
                         retry=${() => this.readActivity()} />
         <//>
@@ -198,7 +198,7 @@ export class Overview extends Component {
         <div class="ov-5 ov-slot"><${Estate} nodes=${nodes} edges=${(live.graph && live.graph.edges) || []} /></div>
         <div class="ov-7 ov-slot"><${Keeping} stats=${stats} rate=${live.trapRate} rangeS=${rangeS} tick=${tick} /></div>
         <section class="panel-block ov-12 ov-models">
-          <${SectionHeading} title="The models" />
+          <${SectionHeading} icon="scorer" title="The models" />
           <${ModelHealth} admin=${can("model.register")} />
           <p class="learned-line">
             <b>${count(stats.devices)}</b>${" "}devices${" "}·${" "}

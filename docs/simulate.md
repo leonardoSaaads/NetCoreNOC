@@ -283,8 +283,9 @@ python tests/lab/noc_devices.py cut --target 127.0.0.1:1162            # the tru
 python tests/lab/noc_devices.py repair --target 127.0.0.1:1162         # the splice is done
 ```
 
-Store each device in *NOC → Secrets* — an SSH password credential (port 2222) and an SNMP v1/v2c
-community (port 1161), agent access on — and the cut's situation becomes a case an agent can work:
+Put both devices in a customer and store each in its *Access* — an SSH password credential (port
+2222) and an SNMP v1/v2c community (port 1161), agent access on; confirm the cut's situation and
+press *Start working this* — and its case is one an agent can work:
 `/interface ethernet monitor ether5 once` on the MikroTik, `show alarm list` and
 `show xcvr status port 3` on the Ciena, read only. What each answers follows the cut and the repair.
 

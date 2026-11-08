@@ -73,7 +73,7 @@ export class Autonomy extends Component {
 function Status({ status, onStopped }) {
   const a = status.agreement || {};
   return html`<section class="panel-block">
-    <${SectionHeading} title="Autonomy now"
+    <${SectionHeading} icon="auto" title="Autonomy now"
       hint=${status.model_decider
         ? `Acts are made by ${status.decider}.`
         : "The additive formula is deciding: autonomy acts only on a trained model's decisions."} />
@@ -145,7 +145,7 @@ class Form extends Component {
   render(_props, { values, reason, busy, error, saved }) {
     const set = (key, value) => this.setState({ values: { ...values, [key]: value } });
     return html`<section class="panel-block param-mechanism">
-      <${SectionHeading} title="Grades"
+      <${SectionHeading} icon="shield" title="Grades"
         hint="Each grade is its own switch. Every act is recorded with its explanation and the model that made it." />
       <form class="stack" onSubmit=${(e) => this.save(e)}>
         <div class="grade-list">
@@ -186,7 +186,7 @@ function explain(text) {
 
 function Decisions({ rows }) {
   return html`<section class="panel-block">
-    <${SectionHeading} title="Recent acts"
+    <${SectionHeading} icon="pulse" title="Recent acts"
       hint="What autonomy did, which model did it, on what evidence, and what the operators made of it." />
     <${DataTable} empty="Autonomy has not acted." columns=${[
       { key: "when", label: "when" }, { key: "what", label: "act" },
@@ -211,7 +211,7 @@ function Decisions({ rows }) {
 function History({ rows }) {
   if (!rows || !rows.length) return null;
   return html`<section class="panel-block">
-    <${SectionHeading} title="Changes" hint="Append-only. A row by “autonomy” is autonomy stopping itself." />
+    <${SectionHeading} icon="audit" title="Changes" hint="Append-only. A row by “autonomy” is autonomy stopping itself." />
     <${DataTable} columns=${[
       { key: "when", label: "when" }, { key: "on", label: "grades on" },
       { key: "by", label: "by" }, { key: "reason", label: "reason" },

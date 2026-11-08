@@ -230,6 +230,6 @@ def setup(
         "ai_provider": any(KINDS[str(c["kind"])].group == "ai" for c in usable),
         "agent": bool(live),
         "entry": any(a["entry"] and a["status"] in WORKING for a in live),
-        "device_access": any(KINDS[str(c["kind"])].group != "ai" for c in usable),
+        "device_access": any(KINDS[str(c["kind"])].group == "device" for c in usable),
     }
     return {**steps, "ready": all(steps.values())}

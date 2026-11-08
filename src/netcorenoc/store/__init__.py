@@ -60,6 +60,7 @@ from netcorenoc.store.noc_circuits import NocCircuitMixin
 from netcorenoc.store.noc_customers import NocCustomerMixin
 from netcorenoc.store.noc_feed import NocFeedMixin
 from netcorenoc.store.noc_hearing import NocHearingMixin
+from netcorenoc.store.noc_mail import NocMailMixin
 from netcorenoc.store.noc_overview import NocOverviewMixin
 from netcorenoc.store.noc_playbooks import NocPlaybookMixin
 from netcorenoc.store.noc_priority import NocPriorityMixin
@@ -123,6 +124,8 @@ class Store(
     NocRoutingMixin,
     NocCustomerMixin,
     NocCircuitMixin,
+    # ADR #481: each customer's mailbox and the messages sent to it or read from it.
+    NocMailMixin,
     AutonomyMixin,
     # v0.27.0: the league's decisions and pin, and pending proposals (ADRs #425, #428). Plain
     # `StoreBase` mixins that override nothing.

@@ -101,7 +101,7 @@ export class Keeping extends Component {
       ? `measured for the last ${spanText(history.to - history.measured_from)}`
       : null;
     return html`<section class="panel-block">
-      <${SectionHeading} title="The host" />
+      <${SectionHeading} icon="cpu" title="The host" />
       ${/* v0.24.0: only a problem is worth a line; the all-clear is what the charts already show. */
         verdict.tone === "bad" || verdict.tone === "warn"
           ? html`<p class=${`verdict verdict-${verdict.tone}`}>${verdict.text}</p>` : null}

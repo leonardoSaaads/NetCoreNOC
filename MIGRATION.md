@@ -80,6 +80,25 @@ Two rules that have held since v0.1.0 and are not going to change:
 
 *(This table has no rows for v0.17.0 or v0.18.0: neither release wrote one, and inventing upgrade notes for a release somebody else built would be describing an upgrade nobody tested.)*
 
+## Unreleased — each customer's credentials and email (#481)
+
+Migration **0044** applies at start and is additive. **What to do**: the device credentials you
+stored before belong to no customer; open each under *NOC → Vault access → Not assigned* and choose
+its customer with *Change…* (a step-up) — until then it still works for agents, but is listed
+there rather than in a customer's book. To email customer updates and read the replies, fill each
+customer's *Email* tab and store its SMTP and IMAP credentials under its *Access*. API: a
+credential carries `customer_id`; `GET /api/noc/secrets` takes `customer_id` or `unassigned`;
+`POST /api/noc/cases/{sid}/customer-update` answers `email` as a list of sentences (was `false`);
+the SMTP credential kind is no longer leasable by agents; the AI providers' keys are under *Agents*.
+
+## Unreleased — the case is opened on request (#480)
+
+Migration **0043** drops the trigger that opened a NOC case for every situation that became open.
+**Behaviour you will notice**: confirming a grouping opens the situation and **no case** — press
+*Start working this* on the open situation (`POST /api/noc/cases/{sid}/open`). Existing cases are
+untouched. A program that relied on `POST /api/situations/{sid}/promote` to create a case must call
+the new route after it.
+
 ## Unreleased — the console's identity (#479)
 
 Nothing to do: no migration and no setting. The console looks different (neutral greys, Inter, a new

@@ -120,7 +120,7 @@ export class RunSettings extends Component {
               ${mine.map((k) => html`<option key=${k.id} value=${k.id}>${local ? `${k.name} — ${k.host}:${k.port}` : k.name}</option>`)}
             </select>`
           : html`<p class="warnbox" id=${`${p}-key`}>No ${what} agents may use yet.${" "}
-              <a href="#/secrets?tab=ai">Connect ${provider.label} under Secrets → AI providers</a>${local
+              <a href="#/agents?tab=providers">Connect ${provider.label} under Agents → AI providers</a>${local
                 ? " — no key: only where it runs" : ""}.</p>`,
           local ? "The appliance calls it for each run; it needs no key."
             : "The appliance unseals it for each run and calls the provider; the agent never sees it.")}

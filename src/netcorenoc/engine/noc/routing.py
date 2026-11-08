@@ -9,7 +9,8 @@ agent loop (routing a queued case, escalating one that was not concluded in time
 * **escalate** sends the case to the next agent up — the first manager in the chain who can still
   work, at the next tier (the handbook's "With NOC Tier 2…4") — and past the top to the NOC team:
   a case the agent had taken goes back to the queue for the people, a new cycle (`escalated`);
-* **route** picks the entry agent for a queued case: the one with the fewest live cases.
+* **route** picks the agent for a queued case: the one with the fewest live cases — an entry
+  agent, or one at the case's tier when it had climbed (ADR #481).
 
 Each act posts an `internal` event to the case feed. The caller holds the lock and commits; nothing
 here commits or audits (as `case_ops`).
@@ -108,9 +109,17 @@ async def escalate(
 
 
 def pick_entry(
-    everyone: Mapping[int, Mapping[str, Any]], loads: Mapping[int, int]
+    everyone: Mapping[int, Mapping[str, Any]], loads: Mapping[int, int], tier: int = 1
 ) -> Mapping[str, Any] | None:
-    """The entry agent with the fewest live cases (the lowest id on a tie), or None."""
+    """The agent with the fewest live cases (the lowest id on a tie), or None: an entry agent for
+    a case at tier 1; for a case that had climbed (ADR #481: back from the customer), an agent at
+    its tier, else an entry agent."""
+    if tier > 1:
+        at_tier = [
+            a for a in everyone.values() if int(a["tier"]) == tier and a["status"] in WORKING
+        ]
+        if at_tier:
+            return min(at_tier, key=lambda a: (loads.get(int(a["id"]), 0), int(a["id"])))
     ready = [a for a in everyone.values() if a["entry"] and a["status"] in WORKING]
     if not ready:
         return None

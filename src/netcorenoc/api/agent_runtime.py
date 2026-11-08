@@ -38,7 +38,7 @@ from netcorenoc.api.agent_tools import (
     toolbox,
 )
 from netcorenoc.api.case_close import automation_broker
-from netcorenoc.engine.noc import agent_loop, agents, runbook
+from netcorenoc.engine.noc import agent_loop, agents, mail_loop, runbook
 from netcorenoc.engine.noc.agent_loop import Outcome, Runner
 from netcorenoc.store import Store
 
@@ -142,11 +142,12 @@ def claude_runner(
 
 
 def loops(store: Store, engine: Engine, app: Any) -> dict[str, Callable[[], Awaitable[None]]]:
-    """The NOC's automation loops for the runner's supervisor: playbooks (ADR #463) and agents
-    (ADR #467)."""
+    """The NOC's automation loops for the runner's supervisor: playbooks (ADR #463), agents
+    (ADR #467) and the customers' mailboxes, read for replies (ADR #481)."""
     broker = automation_broker(store, engine)
     return {
         "noc-playbooks": lambda: runbook.run_loop(store, broker),
+        "noc-mail": lambda: mail_loop.mail_loop(store),
         "noc-agents": lambda: agent_loop.agent_loop(
             store, claude_runner(app, store), agent_openai.openai_runner(app, store)
         ),

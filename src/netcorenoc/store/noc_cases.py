@@ -1,8 +1,9 @@
 """NOC cases: the case row, its queue cycles and its per-organization summaries (ADRs #459, #460).
 
 Storage only. What a case may do is `engine/noc/cases.py`; what its clocks say is
-`engine/noc/kpi.py`; who may do it is `api/routes/cases.py`. A case is created by the database,
-in the transaction that opens its situation (`migrations/0034_noc_cases.sql`), never here.
+`engine/noc/kpi.py`; who may do it is `api/routes/cases.py`. A case is created on request —
+*Start working this* on an `open` situation (:meth:`NocCaseMixin.noc_case_open`, ADR #480); until
+0043 the database created one for every situation that opened.
 """
 
 from __future__ import annotations
@@ -54,6 +55,23 @@ IN_SCOPE = (
 
 
 class NocCaseMixin(StoreBase):
+    # -- the case itself -----------------------------------------------------------------------
+
+    async def noc_case_open(self, situation_id: int, now: float) -> bool:
+        """Open the situation's case (ADR #480): ``new``, its priority the situation's severity
+        (critical, major, else minor — the mapping 0034's trigger used), its clocks from ``now``.
+        False when it already has one. The caller holds the lock, commits and audits."""
+        cur = await self.conn.execute(
+            "INSERT INTO noc_case (situation_id, status, priority, opened_at, status_at, "
+            "created_at, updated_at) "
+            "SELECT id, 'new', CASE severity WHEN 'critical' THEN 'critical' "
+            "WHEN 'major' THEN 'major' ELSE 'minor' END, to_timestamp(?), to_timestamp(?), "
+            "to_timestamp(?), to_timestamp(?) FROM situation WHERE id = ? "
+            "ON CONFLICT (situation_id) DO NOTHING RETURNING situation_id",
+            (now, now, now, now, situation_id),
+        )
+        return await cur.fetchone() is not None
+
     # -- reads ---------------------------------------------------------------------------------
 
     async def noc_case(self, situation_id: int) -> dict[str, Any] | None:

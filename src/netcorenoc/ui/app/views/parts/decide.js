@@ -41,7 +41,7 @@ import { age, plural, timeTitle } from "../../format.js";
  */
 export function Decide({
   status, judged, adjusting, grouping, restructurable, sending, marked,
-  activeCount, markedActive, confirmingClear,
+  activeCount, markedActive, confirmingClear, kase, canWork,
   onAdjust, onPromote, onVerdict, onClose, onAskClear, onClearMany,
 }) {
   return html`<div>
@@ -56,10 +56,18 @@ export function Decide({
     </div>` : null}
 
     <div class="decide">
-      ${status === "new" ? html`<button type="button" class="tap promote"
+      ${/* ADR #480: *Start working this* opens the NOC case, and only an OPEN situation —
+            one whose grouping somebody confirmed or corrected — offers it. Of ten situations a
+            storm opens, the NOC works the one the others propagate from; a new situation is
+            still a question about the grouping. Once the case exists the button is its link. */ null}
+      ${status === "open" && !kase && canWork ? html`<button type="button" class="tap promote"
         disabled=${sending} title=${PROMOTE_TITLE} onClick=${onPromote}>
-        <${Icon} name="chevron" /> Start working this
+        <${Icon} name="headset" /> Start working this
       </button>` : null}
+      ${kase ? html`<a class="btn-link case-link" href=${`#/cases/${kase.sid}`}
+        title="This situation's case in the NOC">
+        <${Icon} name="headset" /> Case in the NOC · ${CASE_WORDS[kase.status] ?? kase.status}
+      </a>` : null}
 
       ${/* **The two answers to one question**, and the question is "is this grouping right?"
             (v0.20.0, DECISIONS #359). The second button read `Split (wrong grouping)`, which the
@@ -97,16 +105,23 @@ export function Decide({
                    onAsk=${onAskClear} onGo=${onClearMany} />`
         : null}
     </div>
-    ${/* ADR #476: a merge opened a case nobody meant to open. Every gesture on a new situation
-          promotes it, and an open situation is a case in the NOC queue — said once, here. */ null}
-    ${status === "new" ? html`<p class="hint decide-note">Starting it — or confirming, correcting,
-      merging or clearing by hand — opens it, and opens its case in the NOC queue.</p>` : null}
+    ${/* ADR #480: what each step does, said once where it is decided. */ null}
+    ${status === "new" ? html`<p class="hint decide-note">Confirm or correct the grouping to open
+      it. The NOC works an open situation once somebody presses Start working this.</p>` : null}
+    ${status === "open" && !kase && canWork ? html`<p class="hint decide-note">Open, and no NOC case
+      yet. Start working this when this is the situation the NOC should work.</p>` : null}
   </div>`;
 }
 
 const PROMOTE_TITLE =
-  "Moves this to Open so the shift can see somebody has it, and opens its case in the NOC " +
-  "queue. It records nothing about whether the grouping is right — Confirm is how you say that.";
+  "Opens this situation's case in the NOC queue, where a person or an AI agent takes it. It " +
+  "records nothing about whether the grouping is right — Confirm is how you say that.";
+
+/** A case's status in a word, for the link (`engine/noc/cases.py` STATUSES, shortened). */
+const CASE_WORDS = {
+  new: "opening", auto: "automated checks", queue: "in the queue", working: "working",
+  validate: "validate resolution", resolved: "resolved", closed: "closed",
+};
 
 /* What is already on record, in the words of the gesture that recorded it.
  *

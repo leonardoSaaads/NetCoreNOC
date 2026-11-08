@@ -8,17 +8,20 @@
  * given its key once, in the answer, with what its MCP client needs to reach this appliance.
  */
 
-import { html, cx } from "../dom.js";
+import { html, Component, cx } from "../dom.js";
 import { get } from "../api.js";
 import { Loader, Empty } from "../widgets.js";
 import { can } from "../session.js";
 import { relative, timeTitle } from "../format.js";
+import { Icon } from "../icons.js";
 import { orgOrder, refreshRoster } from "../roster.js";
 import { AgentGlyph, AgentState, Tier, money } from "./parts/nocui.js";
 import { BrandMark } from "../brands.js";
 import { AgentDetail } from "./parts/agentdetail.js";
 import { AgentForm } from "./parts/agentform.js";
 import { KeyOnce, McpConnect } from "./parts/agentkey.js";
+import { AiProviders } from "./parts/aiproviders.js";
+import { SecretDetail } from "./parts/secretdetail.js";
 
 const FILTERS = [["all", "All"], ["running", "Running"], ["idle", "Idle"], ["paused", "Paused"],
   ["error", "Error"]];
@@ -70,7 +73,16 @@ export class Agents extends Loader {
         onCancel=${() => this.props.navigate("#/agents")}
         onSaved=${(answer) => { this.setState({ hired: answer }); this.refresh(); }} />`;
     }
-    return this.list(data);
+    const providers = this.props.query && this.props.query.get("tab") === "providers";
+    return html`<div class="agents-page">
+      <div class="seg agents-tabs" role="tablist" aria-label="Agents">
+        <button type="button" role="tab" aria-selected=${!providers} class=${cx("seg-btn", !providers && "on")}
+          onClick=${() => this.props.navigate("#/agents")}><${Icon} name="bot" /> Agents</button>
+        <button type="button" role="tab" aria-selected=${providers} class=${cx("seg-btn", providers && "on")}
+          onClick=${() => this.props.navigate("#/agents?tab=providers")}><${Icon} name="sparkle" /> AI providers</button>
+      </div>
+      ${providers ? html`<${Providers} query=${this.props.query} navigate=${this.props.navigate} />` : this.list(data)}
+    </div>`;
   }
 
   list(data) {
@@ -147,5 +159,45 @@ export class Agents extends Loader {
             <span class="muted"> of ${money(budget)}</span>` : null}
       </span>
     </a>`;
+  }
+}
+
+/** The AI providers' keys the agents think with (ADRs #471, #481): moved here from the vault's
+ *  screen, since they are what an agent runs on, not what reaches equipment. Who stores and reads
+ *  them is still the vault's rule — a custodian, behind a step-up. */
+class Providers extends Component {
+  constructor(props) {
+    super(props);
+    this.state = { data: null, error: null };
+  }
+
+  componentDidMount() { this.load(); }
+
+  async load() {
+    try {
+      this.setState({ data: await get("/api/noc/secrets"), error: null });
+    } catch (error) {
+      this.setState({ error: error.message });
+    }
+  }
+
+  selected() { return Number(this.props.query && this.props.query.get("key")) || null; }
+
+  open(id) { this.props.navigate(id ? `#/agents?tab=providers&key=${id}` : "#/agents?tab=providers"); }
+
+  render(_, { data, error }) {
+    if (error) return html`<p class="err" role="alert">${error}</p>`;
+    if (!data) return html`<p class="muted">Reading the AI providers…</p>`;
+    if (!data.custodian) {
+      return html`<${Empty} title="Only the vault's custodians connect AI providers" will=${data.explanation} />`;
+    }
+    const selected = this.selected();
+    return html`<div class="agents-providers">
+      <${AiProviders} data=${data} selected=${selected} onOpen=${(id) => this.open(id)}
+        onChanged=${() => this.load()} />
+      ${selected ? html`<${SecretDetail} key=${selected} id=${selected} catalogue=${data.catalogue}
+        secondFactor=${data.second_factor} onClose=${() => this.open(null)}
+        onChanged=${() => this.load()} onDeleted=${() => { this.open(null); this.load(); }} />` : null}
+    </div>`;
   }
 }

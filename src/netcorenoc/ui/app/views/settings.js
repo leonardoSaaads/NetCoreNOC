@@ -42,16 +42,17 @@ import { Autonomy } from "./parts/autonomy.js";
 import { SearchPanel } from "./parts/searchpanel.js";
 import { SnmpPanel } from "./parts/snmp.js";
 import { EmailPanel } from "./parts/email.js";
+import { Icon } from "../icons.js";
 
 // The key stays `correlation` so every address written since v0.26.0 (and `#/scorer`) still lands
 // here; the label says what the tab is about now (v0.27.0): the models and how one is chosen.
 const TABS = [
-  ["correlation", "Models", "scorer.read", Correlation],
-  ["autonomy", "Autonomy", "scorer.read", Autonomy],
-  ["search", "Site training", "model.read", SearchPanel],
-  ["snmp", "SNMP", "config.read", SnmpPanel],
-  ["email", "Email", "config.read", EmailPanel],
-  ["system", "System", "config.read", null],
+  ["correlation", "Models", "scorer.read", Correlation, "scorer"],
+  ["autonomy", "Autonomy", "scorer.read", Autonomy, "auto"],
+  ["search", "Site training", "model.read", SearchPanel, "cpu"],
+  ["snmp", "SNMP", "config.read", SnmpPanel, "signal"],
+  ["email", "Email", "config.read", EmailPanel, "mail"],
+  ["system", "System", "config.read", null, "settings"],
 ];
 
 export function Settings(props) {
@@ -62,9 +63,9 @@ export function Settings(props) {
   const Body = tab[3] || SystemSettings;
   return html`<div class="settings">
     <div class="access-tabs" role="tablist" aria-label="Settings">
-      ${allowed.map(([key, label]) => html`<button type="button" key=${key} role="tab"
+      ${allowed.map(([key, label, , , icon]) => html`<button type="button" key=${key} role="tab"
         aria-selected=${tab[0] === key} class=${cx("access-tab", tab[0] === key && "on")}
-        onClick=${() => props.navigate(`#/settings?tab=${key}`)}>${label}</button>`)}
+        onClick=${() => props.navigate(`#/settings?tab=${key}`)}><${Icon} name=${icon} /> ${label}</button>`)}
     </div>
     <${Body} key=${tab[0]} />
   </div>`;

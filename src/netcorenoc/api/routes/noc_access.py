@@ -46,15 +46,19 @@ def _summary(row: Mapping[str, Any]) -> dict[str, Any]:
             "port",
             "protocol_version",
             "version",
+            # ADR #481: whose equipment it reaches — the agent finds the case's customer's.
+            "organization_id",
+            "customer_name",
         )
     }
 
 
 def _device(row: Mapping[str, Any]) -> bool:
     """A credential an agent may lease: switched on for agents, and for a device. An AI provider's
-    key is the appliance's to call the model with (ADR #471), never a device's (ADR #478)."""
+    key is the appliance's to call the model with (ADR #471), never a device's (ADR #478); a
+    customer's mail server is the appliance's to send and read through (ADR #481)."""
     known = kinds.KINDS.get(str(row["kind"]))
-    return bool(row["agent_access"]) and known is not None and known.group != "ai"
+    return bool(row["agent_access"]) and known is not None and known.group == "device"
 
 
 def register(app: FastAPI, ctx: AppContext) -> None:

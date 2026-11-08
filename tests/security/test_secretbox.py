@@ -188,7 +188,8 @@ def test_the_catalogue_refuses_unknown_fields_and_missing_secrets_by_name_only()
             },
             "priv_key: required when privacy is on",
         ),
-        ("telnet", {}, "kind: one of"),
+        # Telnet became a kind (ADR #481); rlogin never will.
+        ("rlogin", {}, "kind: one of"),
     ]:
         with pytest.raises(kinds.CredentialError, match=message) as caught:
             kinds.clean_fields(kind_id, given, version="")

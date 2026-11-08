@@ -2073,7 +2073,8 @@ async def test_every_gesture_stays_reachable_in_every_status_the_server_accepts_
     sid, _count = uifixtures.largest_situation(routes["editor"])
     editor = routes["editor"]
 
-    # The promote belongs to `new` alone and is reported separately from `.fb`. Until v0.20.0 it
+    # ADR #480: the promote — *Start working this*, which opens the NOC case — belongs to an
+    # `open` situation with no case, and is reported separately from `.fb`. Until v0.20.0 it
     # was a `.fb` row of its own above the judged note and this filtered it back out by label;
     # it now sits in the same decision bar as the verdicts and outside `.fb`, which is the
     # distinction the disclosure already turned on — `.fb` is what folds, and a promote asserts
@@ -2086,12 +2087,12 @@ async def test_every_gesture_stays_reachable_in_every_status_the_server_accepts_
     )["before"]
     assert fresh["judged"] is None and fresh["adjust"] is False
     assert "Confirm grouping" in fresh["grouping"], fresh["grouping"]
-    assert fresh["promote"], "a new situation offers no promote"
+    assert not fresh["promote"], "a new situation offers Start working this (ADR #480)"
     assert fresh["restructure"] and fresh["nameField"] and fresh["selectAll"]
     assert fresh["marks"] > 0 and fresh["declares"] >= 3 * fresh["marks"]
 
-    # `open`, promoted or renamed, nothing judged. Identical to `new` but for the promote button,
-    # and THAT is the reading of `open` the decision turns on.
+    # `open`, promoted or renamed, nothing judged. Identical to `new` but for the promote button
+    # (ADR #480: an open situation with no case offers Start working this, a new one does not).
     promoted = domdriver.run_scenario(
         "actionSurface",
         {"routes": _in_state(editor, sid, status="open", events=NOT_A_JUDGEMENT), "sid": sid},
@@ -2102,7 +2103,7 @@ async def test_every_gesture_stays_reachable_in_every_status_the_server_accepts_
         f"not on the status."
     )
     assert judging(promoted) == judging(fresh), (promoted["grouping"], fresh["grouping"])
-    assert not promoted["promote"], "an open situation offers a promote"
+    assert promoted["promote"], "an open situation without a case offers no Start working this"
     assert promoted["restructure"] is True
 
     # `open`, judged: folded, and then unfolded to exactly the same controls.

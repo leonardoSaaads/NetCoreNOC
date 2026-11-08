@@ -19,14 +19,16 @@ export const KINDS = {
   snmp_community: { icon: "signal", family: "snmp", help: "Read counters and state with an SNMP v1/v2c community string." },
   snmp_v3: { icon: "signal", family: "snmp", help: "SNMP with a user, authentication and privacy (encryption)." },
   api_token: { icon: "code", family: "api", help: "A REST API's token: a controller, an orchestrator, a ticketing tool." },
-  smtp: { icon: "mail", family: "smtp", help: "Send email through a mail server: a username and a password." },
+  telnet: { icon: "terminal", family: "telnet", help: "Equipment whose management is Telnet: over TLS (secure Telnet) where it can, plain where it cannot." },
+  smtp: { icon: "mail", family: "mail", help: "Send the customer's updates through its mail server: a username and a password." },
+  imap: { icon: "mail", family: "mail", help: "Read the customer's replies from its mailbox (IMAP): a username and a password." },
   other: { icon: "more", family: "other", help: "Anything else: a web console, a jump host, a vendor portal." },
 };
 
 /** The list's filter: each family of device credential, with its mark. */
 export const FAMILIES = [
-  ["ssh", "SSH & SFTP", "terminal"], ["snmp", "SNMP", "signal"], ["api", "API", "code"],
-  ["smtp", "SMTP", "mail"], ["other", "Other", "more"],
+  ["ssh", "SSH & SFTP", "terminal"], ["snmp", "SNMP", "signal"], ["telnet", "Telnet", "terminal"],
+  ["api", "API", "code"], ["mail", "Mail", "mail"], ["other", "Other", "more"],
 ];
 
 /** What each access level lets its holder do on the device, with a mark. */

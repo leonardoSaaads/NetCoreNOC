@@ -215,7 +215,7 @@ export class Cases extends Loader {
         ? html`<${Empty} title="No case matches these filters"
             will="Clear a filter to see the rest of this view." />`
         : html`<${Empty} title="Nothing here"
-            will="A situation the Broker opens arrives in the queue with its take clock running." />`;
+            will="A case opens when someone presses Start working this on an open situation in the Broker; it arrives here with its take clock running." />`;
     }
     const rows = this.rows(data);
     if (!rows.length) return html`<p class="muted">No case on screen matches “${this.state.find}”.</p>`;

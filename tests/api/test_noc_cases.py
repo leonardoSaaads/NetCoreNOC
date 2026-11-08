@@ -2,8 +2,9 @@
 
 What the NOC asked of a case, each answered by driving the real routes and the real loop:
 
-* a situation that becomes `open` has a case, in the same transaction; the loop puts it in the NOC
-  queue, and the take clock counts from the instant it opened — met, or late by how much;
+* an `open` situation gets its case when somebody presses *Start working this* (ADR #480) — a new
+  one is refused, opening is no longer enough; the loop puts the case in the NOC queue, and the
+  take clock counts from the instant it opened — met, or late by how much;
 * only someone who works cases takes one; only its owner edits, sets pending or resolves it;
 * pending needs the complete customer update and a next update in the future; when that update
   comes, or a person posts on the feed, the case is back in the NOC queue — an agent's post is not;
@@ -46,6 +47,7 @@ async def _open_situation(
         if severity is not None:
             await store.conn.execute("UPDATE situation SET severity=? WHERE id=?", (severity, sid))
         await store.promote_situation(sid, now, "promote")
+        await store.noc_case_open(sid, now)  # ADR #480
         await store.commit()
     return sid
 
@@ -70,6 +72,44 @@ COMPLETE = {
     "noc_next_step": "Check the far end's Tx and the patch panel.",
     "customer_next_step": "Schedule a maintenance window for a technician.",
 }
+
+
+async def test_start_working_this_opens_the_case_of_an_open_situation_only(store: Store) -> None:
+    """ADR #480: opening a situation no longer opens a case; the button does, on an open one."""
+    now = time.time()
+    async with store.lock:
+        fresh = await store.create_situation(now, None)
+        alarm = await store.ingest(util.event(device="10.0.0.9", instance="1", ts=now))
+        await store.add_alarm_to_situation(fresh, alarm.alarm_id)
+        await store.conn.execute("UPDATE situation SET severity='major' WHERE id=?", (fresh,))
+        await store.commit()
+    _app, clients = await _clients(store)
+    try:
+        refused = await clients["editor"].post(f"/api/noc/cases/{fresh}/open")
+        assert refused.status_code == 409 and "grouping first" in refused.json()["detail"]
+        assert (await clients["editor"].post(f"/api/situations/{fresh}/promote")).status_code == 200
+        async with store.reading():
+            assert await store.noc_case(fresh) is None, "an open situation waits for the button"
+        card = (await clients["editor"].get(f"/api/situations/{fresh}")).json()
+        assert card["status"] == "open" and card["case"] is None
+        assert (await clients["viewer"].post(f"/api/noc/cases/{fresh}/open")).status_code == 403
+        opened = await clients["editor"].post(f"/api/noc/cases/{fresh}/open")
+        assert opened.status_code == 200, opened.text
+        assert opened.json()["status"] == "new" and opened.json()["priority"] == "major"
+        again = await clients["editor"].post(f"/api/noc/cases/{fresh}/open")
+        assert again.status_code == 200, "a second press returns the case that exists"
+        card = (await clients["editor"].get(f"/api/situations/{fresh}")).json()
+        assert card["case"]["status"] == "new"
+        async with store.reading():
+            cur = await store.conn.execute(
+                "SELECT COUNT(*) FROM audit_log WHERE action='noc.case.open' AND object_id=?",
+                (str(fresh),),
+            )
+            audited = await cur.fetchone()
+            assert audited is not None and audited[0] == 1, "the opening press is audited, once"
+        assert (await clients["editor"].post("/api/noc/cases/999999/open")).status_code == 404
+    finally:
+        await _close(clients)
 
 
 async def test_an_opened_situation_is_queued_and_the_take_clock_runs(store: Store) -> None:

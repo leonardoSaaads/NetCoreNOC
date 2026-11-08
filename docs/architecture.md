@@ -261,7 +261,7 @@ resolving a case; a new case one matches goes to `auto`, a loop of its own walks
 nothing held across I/O, and the leaf resolves the case, sets it pending, or queues it — only while
 nobody has taken it. This is the script library's first form: what it lacks is the score.
 
-**What exists** (ADRs #454-#458): the console's **Broker | NOC** switch; the NOC's **Secrets**
+**What exists** (ADRs #454-#458): the console's **Broker | NOC** switch; the NOC's credential
 screen; a vault that seals each device credential twice, under two keys and two ciphers, bound to
 the host it works for; custodians, a step-up for every act on a secret, and a stated placeholder for
 the second factor; status lights from checks that never open the seal; and **leases** — what an AI
@@ -272,6 +272,13 @@ OpenAI-compatible API, a local Ollama, or a webhook), instructions and a budget;
 (`POST /api/mcp`) whose every tool is a route called with the agent's own key; routing from the
 queue to an entry agent and escalation through the tiers; each customer's book for the agents to
 read; and an agent woken when its case returns to the queue or access to its devices is granted.
+
+**Customers and their email** (ADRs #480, #481): a case is opened on request — *Start working
+this* on an `open` situation — not by opening the situation. Each customer's book holds the
+credentials that reach its equipment (SSH, SNMP, secure Telnet, APIs) and its mailbox: a sent
+customer update is emailed through the customer's SMTP credential, and a mail loop off the ingest
+path reads its IMAP inbox every minute, posts each reply from a registered address to its case's
+feed and puts a waiting case back in the queue for the least-loaded agent at its tier.
 
 **What does not exist, yet**: write commands on a device, and scoring a playbook by whether its
 resolutions held. Their design and the review of the API for agents are in

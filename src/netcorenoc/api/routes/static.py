@@ -248,6 +248,10 @@ _UI_MODULES = (
     "app/brands.js",
     "app/views/parts/vaultui.js",
     "app/views/parts/aiproviders.js",
+    # ADR #481: a customer's Access and Email, and the credential list both they and the vault use.
+    "app/views/parts/credlist.js",
+    "app/views/parts/custaccess.js",
+    "app/views/parts/custmail.js",
     "app/views/parts/agentrun.js",
     # ADR #477: what a local Ollama has, and moving an agent in the chart.
     "app/views/parts/ollamamodels.js",

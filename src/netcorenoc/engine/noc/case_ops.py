@@ -328,15 +328,28 @@ async def dispatch(store: Store, sid: int, now: float, *, automate: bool = False
     await event(store, sid, f"Entered the NOC queue ({cases.PRIORITIES[priority]}).", now)
 
 
-async def requeue(store: Store, sid: int, reason: str, now: float, *, note: str = "") -> None:
+async def requeue(
+    store: Store, sid: int, reason: str, now: float, *, note: str = "", rebalance: bool = False
+) -> None:
     """Back to the NOC queue — a pending case's next update came, a person posted on it, an alarm
-    came back, access to its device was granted, or automation did not conclude. A case still
-    with an agent goes back to that agent, woken (:func:`_back_to_agent`)."""
+    came back, access to its device was granted, the customer answered by email, or automation did
+    not conclude. A case still with an agent goes back to that agent, woken (:func:`_back_to_agent`)
+    — unless ``rebalance`` (ADR #481: the customer answered), when it leaves its agent and the
+    routing gives it to whichever agent at its tier has the fewest cases."""
     await reprioritize(store, sid, now)
     await store.noc_case_enqueue(sid, reason, now)
-    back = await _back_to_agent(store, sid, now)
+    back = await (_rebalanced(store, sid, now) if rebalance else _back_to_agent(store, sid, now))
     text = f"Back in the NOC queue: {cases.CYCLE_REASONS[reason]}. {note} {back}"
     await event(store, sid, " ".join(text.split()), now)
+
+
+async def _rebalanced(store: Store, sid: int, now: float) -> str:
+    """Off its agent and back to the routing (ADR #481). A case with the people stays theirs."""
+    case = await store.noc_case(sid)
+    if case is None or case["agent_id"] is None or case["with_people"]:
+        return ""
+    await store.noc_case_assign(sid, None, now)
+    return "It goes to the agent at its tier with the fewest cases."
 
 
 async def _back_to_agent(store: Store, sid: int, now: float) -> str:

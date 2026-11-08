@@ -173,6 +173,18 @@ REFERENCE: dict[tuple[str, str], Entry] = {
     ("GET", "/api/noc/overview"): Entry(CASES, "The NOC now: queue, working, pending by tier"),
     ("GET", "/api/noc/cases/{sid}"): Entry(CASES, "One case: customer update, clocks, cycles"),
     ("POST", "/api/noc/cases/{sid}"): Entry(CASES, "Edit a case's customer update"),
+    ("GET", "/api/noc/customers/{customer_id}/mail"): Entry(
+        CUSTOMERS, "A customer's email: recipients, mailbox, messages"
+    ),
+    ("POST", "/api/noc/customers/{customer_id}/mail"): Entry(
+        CUSTOMERS, "Set whom the customer update is emailed to"
+    ),
+    ("POST", "/api/noc/customers/{customer_id}/mail/test"): Entry(
+        CUSTOMERS, "Send a test email to a customer's recipients"
+    ),
+    ("POST", "/api/noc/cases/{sid}/open"): Entry(
+        CASES, "Start working an open situation: open its case"
+    ),
     ("POST", "/api/noc/cases/{sid}/take"): Entry(CASES, "Take a case: it becomes yours, Working"),
     ("POST", "/api/noc/cases/{sid}/release"): Entry(CASES, "Put your case back in the NOC queue"),
     ("POST", "/api/noc/cases/{sid}/status"): Entry(CASES, "Set your case pending until its update"),

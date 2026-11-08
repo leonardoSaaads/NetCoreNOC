@@ -19,7 +19,7 @@
 
 import { html, cx } from "../dom.js";
 import { get } from "../api.js";
-import { Loader } from "../widgets.js";
+import { Loader, SectionMark } from "../widgets.js";
 import { age, count, plural } from "../format.js";
 import { Icon } from "../icons.js";
 import { Avatar } from "../avatar.js";
@@ -66,7 +66,7 @@ function LevelMatrix({ d }) {
   const levels = Object.entries(d.levels);
   const max = Math.max(1, ...levels.map(([lv]) => STATES.reduce((n, [s]) => n + d.states[s].by_level[lv], 0)));
   return html`<section class="panel-block nov-panel" aria-labelledby="nov-levels">
-    <h3 id="nov-levels">By tier</h3>
+    <h3 id="nov-levels"><${SectionMark} icon="org" />By tier</h3>
     <p class="muted nov-sub">Where each case is: the agents' tier it has climbed to, or the NOC team
       once it is past the agents.</p>
     <div class="table-scroll"><table class="data nov-matrix">
@@ -93,7 +93,7 @@ function LevelMatrix({ d }) {
 
 function PriorityMatrix({ d }) {
   return html`<section class="panel-block nov-panel" aria-labelledby="nov-prio">
-    <h3 id="nov-prio">By priority</h3>
+    <h3 id="nov-prio"><${SectionMark} icon="warn" />By priority</h3>
     <p class="muted nov-sub">The case's priority follows the Broker's severity until someone sets it.</p>
     <div class="table-scroll"><table class="data nov-matrix">
       <thead><tr><th scope="col">Priority</th>${STATES.map(([s, label]) => html`<th scope="col" key=${s}
@@ -120,7 +120,7 @@ function Fact({ value, label, tone, href }) {
 function Clocks({ d }) {
   const { takes, updates, resolved } = d;
   return html`<section class="panel-block nov-panel" aria-labelledby="nov-clocks">
-    <h3 id="nov-clocks">Clocks</h3>
+    <h3 id="nov-clocks"><${SectionMark} icon="kpi" />Clocks</h3>
     <h4 class="nov-h4">Take — the NOC's first promise</h4>
     <div class="nov-facts">
       <${Fact} value=${takes.late} label="past their target" tone="nov-bad" href=${casesHref("queue")} />
@@ -158,7 +158,7 @@ function Holders({ d }) {
   const words = { agent: "with an agent", person: "with a person", none: "with nobody yet" };
   const known = roster() || [];
   return html`<section class="panel-block nov-panel nov-holders" aria-labelledby="nov-holders">
-    <h3 id="nov-holders">Who holds what</h3>
+    <h3 id="nov-holders"><${SectionMark} icon="users" />Who holds what</h3>
     <span class="nov-mix" aria-hidden="true">${live ? kinds.filter(([, n]) => n).map(([k, n]) => html`<span
       key=${k} class=${`nov-kind-bar-${k}`} style=${`width:${((n / live) * 100).toFixed(1)}%`}></span>`) : null}</span>
     <p class="nov-kinds">${kinds.map(([k, n]) => html`<span key=${k} class=${`nov-kind nov-kind-${k}`}>
@@ -185,7 +185,7 @@ function Reach({ r }) {
   const shaky = r.trouble.length - down;
   return html`<section class=${cx("panel-block nov-panel nov-reach", down && "nov-reach-alert")}
       aria-labelledby="nov-reach">
-    <h3 id="nov-reach">Equipment reachability</h3>
+    <h3 id="nov-reach"><${SectionMark} icon="signal" />Equipment reachability</h3>
     <p class="muted nov-sub">The management endpoints the vault checks every few minutes. A switch
       that loses power or its management path sends no trap: this is where it shows.</p>
     <p class="nov-reach-sum"><b>${count(r.answering)}</b> of ${plural(r.monitored, "element")} answer${
@@ -209,18 +209,18 @@ function Reach({ r }) {
  * new install does it. Each step says done or to do in words, never by colour alone. */
 const SETUP = [
   ["ai_provider", "Connect an AI provider", "A model for the agents to think with — a local Ollama needs no key.",
-    "#/secrets?tab=ai", "Secrets → AI providers"],
+    "#/agents?tab=providers", "Agents → AI providers"],
   ["agent", "Hire an agent", "Its job comes prefilled; a name and a model are enough.", "#/agents?hire=1", "Hire an agent"],
   ["entry", "Make one agent the entry point", "Cases from the queue start with it. The first one hired is.",
     "#/agents", "Agents"],
-  ["device_access", "Let the agents reach your devices", "Store an SSH or SNMP credential for each device and switch agents on for it. Until then they set the case Pending connectivity.",
-    "#/secrets", "Secrets"],
+  ["device_access", "Let the agents reach your devices", "In each customer's Access, store an SSH, SNMP or Telnet credential for each device and switch agents on for it. Until then they set the case Pending connectivity.",
+    "#/customers", "Customers"],
 ];
 
 function Setup({ s }) {
   if (!s || s.ready) return null;
   return html`<section class="panel-block nov-setup" aria-labelledby="nov-setup">
-    <h3 id="nov-setup">Get the NOC's agents working</h3>
+    <h3 id="nov-setup"><${SectionMark} icon="bot" />Get the NOC's agents working</h3>
     <ol class="nov-setup-list">${SETUP.map(([key, title, why, href, link]) => html`<li key=${key}
         class=${cx("nov-setup-step", s[key] && "done")}>
       <span class="nov-setup-mark"><${Icon} name=${s[key] ? "check" : "info"} /></span>
@@ -258,8 +258,9 @@ export class NocOverview extends Loader {
         elements you can see.</p>` : null}
       <div class="nov-states">${STATES.map(([id, label, hint, icon]) => html`<${StateTile} key=${id}
         id=${id} label=${label} hint=${hint} icon=${icon} state=${d.states[id]} priorities=${d.priorities} />`)}</div>
-      ${live ? null : html`<p class="hint nov-quiet">No case is open. A situation the Broker opens
-        arrives in the queue with its take clock running.</p>`}
+      ${live ? null : html`<p class="hint nov-quiet">No case is open. A case opens when someone presses
+        Start working this on an open situation in the Broker, and arrives in the queue with its take
+        clock running.</p>`}
       <div class="nov-grid">
         <div class="nov-col-wide"><${LevelMatrix} d=${d} /><${PriorityMatrix} d=${d} /></div>
         <div class="nov-col"><${Reach} r=${d.reachability} /><${Clocks} d=${d} /><${Holders} d=${d} /></div>

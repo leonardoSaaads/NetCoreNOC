@@ -19,7 +19,7 @@
  */
 
 import { html, Component, cx } from "../../dom.js";
-import { post } from "../../api.js";
+import { get, post } from "../../api.js";
 import { PasswordInput } from "../../password.js";
 import { StepUp } from "./stepup.js";
 import { AccessCards, KINDS, KindMark, providerOf } from "./vaultui.js";
@@ -58,6 +58,8 @@ export class SecretForm extends Component {
       port: s ? String(s.port) : "", protocol_version: s ? s.protocol_version : "",
       monitor: s ? s.monitor : true, fields: blank(kind), replace: !s,
       stepping: false, busy: false, error: null,
+      // ADR #481: whose equipment it reaches — fixed by a customer's Access tab, chosen otherwise.
+      customer_id: props.customerId ?? (s ? s.customer_id ?? null : null), customers: null,
     };
   }
 
@@ -83,6 +85,7 @@ export class SecretForm extends Component {
       access_level: st.access_level, host: st.host.trim(),
       port: st.port ? Number(st.port) : null, protocol_version: st.protocol_version,
       monitor: st.monitor, fields: st.replace ? st.fields : null,
+      customer_id: st.customer_id ?? null,
     };
   }
 
@@ -157,11 +160,30 @@ export class SecretForm extends Component {
             onChange=${(e) => this.setState({ protocol_version: e.currentTarget.value })}>
             ${kind.versions.map((v) => html`<option key=${v} value=${v}>${v}</option>`)}
           </select></div>` : null}
+        ${this.props.chooseCustomer && kind.group !== "ai" ? html`<div class="pe-field">
+          <label for=${`${p}-customer`}>Customer</label>
+          <select id=${`${p}-customer`} value=${st.customer_id ?? ""}
+            onChange=${(e) => this.setState({ customer_id: e.currentTarget.value ? Number(e.currentTarget.value) : null })}>
+            <option value="">Not assigned yet</option>
+            ${(st.customers || []).map((c) => html`<option key=${c.id} value=${c.id}>${c.name}</option>`)}
+          </select></div>` : null}
+        ${kind.id === "telnet" && (st.protocol_version || kind.versions[0]) === "Telnet" ? html`<p
+          class="warnbox sf-plain">Plain Telnet sends the password in the clear. Choose Telnet over TLS
+          wherever the device can do it.</p>` : null}
         <div class="pe-field secret-desc"><label for=${`${p}-desc`}>Description (optional)</label>
           <input id=${`${p}-desc`} value=${st.description} maxlength="300"
             onInput=${(e) => this.setState({ description: e.currentTarget.value })} /></div>
       </div>
     </fieldset>`;
+  }
+
+  /** ADR #481: the customers a credential may move to, when this form offers the choice. */
+  async componentDidMount() {
+    if (!this.props.chooseCustomer) return;
+    try {
+      const answer = await get("/api/noc/customers");
+      this.setState({ customers: answer.customers || [] });
+    } catch { /* the select keeps its current customer */ }
   }
 
   render({ catalogue, secret, onCancel, secondFactor }, st) {
