@@ -45,7 +45,6 @@ log = logging.getLogger(__name__)
 LOOK_EVERY_S = 60.0
 #: The most messages read from one mailbox per pass.
 PER_PASS = 20
-CUSTOMER = case_ops.Actor("customer", "The customer", "system", None)
 
 
 async def open_credential(

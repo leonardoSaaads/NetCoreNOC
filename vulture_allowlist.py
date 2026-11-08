@@ -386,3 +386,7 @@ _.bandwidth  # unused variable (netcorenoc/api/models_customers.py)
 _.service  # unused variable (netcorenoc/api/models_customers.py)
 _.rfs_date  # unused variable (netcorenoc/api/models_customers.py)
 _.cease_date  # unused variable (netcorenoc/api/models_customers.py)
+open_case  # unused function (netcorenoc/api/routes/cases.py) — ADR #480
+get_mail  # unused function (netcorenoc/api/routes/customer_mail.py) — ADR #481
+set_mail  # unused function (netcorenoc/api/routes/customer_mail.py)
+test_mail  # unused function (netcorenoc/api/routes/customer_mail.py)
