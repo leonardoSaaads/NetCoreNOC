@@ -492,7 +492,7 @@ UI_HASHES: dict[str, str] = {
         "df0e7f19f834c13fc31289316898f814d87963a3f5b52b644c336b338ccccbfe"
     ),
     "app/views/parts/custmail.js": (
-        "25899550bacf2f14ba7adcd71360747fa165dd9a43360a9a6a9add4968c2cf17"
+        "91303b22a06b5bda94937c748f38ee52daaf8c9c4a54f6db5dbcb8e48f969c64"
     ),
     "app/views/parts/decide.js": "8f251c644c3517df0561a9b9b9d4fb1800f8d774cafbf2bde3c16142a120207e",
     "app/views/parts/decider.js": (
@@ -737,7 +737,7 @@ UI_SIZES: dict[str, int] = {
     "app/views/parts/custbook.js": 6_421,
     "app/views/parts/custcontacts.js": 9_060,
     "app/views/parts/custdocs.js": 8_190,
-    "app/views/parts/custmail.js": 8_869,
+    "app/views/parts/custmail.js": 8_900,
     "app/views/parts/decide.js": 7_904,
     "app/views/parts/decider.js": 9_886,
     "app/views/parts/declare.js": 13_092,

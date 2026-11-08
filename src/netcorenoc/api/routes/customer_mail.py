@@ -230,13 +230,14 @@ def register(app: FastAPI, ctx: AppContext) -> None:
             ok, detail = True, f"sent to {', '.join(to)}"
         except mail.MailError as exc:
             ok, detail = False, str(exc)
-        await audit_row(
-            request,
-            principal,
-            "noc.customer.mail",
-            "ok" if ok else "error",
-            object_type="organization",
-            object_id=str(customer_id),
-            details={"test": True, "sent": ok},
-        )
+        async with write_txn():
+            await audit_row(
+                request,
+                principal,
+                "noc.customer.mail",
+                "ok" if ok else "error",
+                object_type="organization",
+                object_id=str(customer_id),
+                details={"test": True, "sent": ok},
+            )
         return {"ok": ok, "detail": detail}

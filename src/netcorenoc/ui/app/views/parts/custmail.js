@@ -139,10 +139,11 @@ export class CustomerMail extends Component {
             <th scope="col">Subject</th><th scope="col">From / to</th><th scope="col">Case</th></tr></thead>
           <tbody>${data.messages.map((m) => {
             const [word, tone] = OUTCOME[m.outcome] || [m.outcome, ""];
+            const mark = m.direction === "out" ? "send" : "mail";
             return html`<tr key=${m.id}>
               <td title=${timeTitle(m.at)}>${relative(m.at)}</td>
               <td><span class="cm-dir" title=${m.direction === "out" ? "Sent" : "Received"}><${Icon}
-                name=${m.direction === "out" ? "send" : "mail"} /></span></td>
+                name=${mark} /></span></td>
               <td><span class=${cx("badge", tone && `badge-${tone}`)} title=${m.detail || ""}>${word}</span></td>
               <td class="cm-subject">${m.subject || html`<span class="muted">(no subject)</span>`}</td>
               <td class="muted">${m.direction === "out" ? m.recipients : m.sender}</td>
