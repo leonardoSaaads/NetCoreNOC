@@ -232,7 +232,8 @@ async def test_the_email_settings_name_the_customers_own_credentials(store: Stor
             cur = await store.conn.execute(
                 "SELECT count(*) FROM audit_log WHERE action = 'noc.customer.mail'"
             )
-            assert (await cur.fetchone())[0] == 2
+            counted = await cur.fetchone()
+            assert counted is not None and counted[0] == 2
     finally:
         await admin.aclose()
         await editor.aclose()
@@ -361,7 +362,9 @@ async def test_the_update_is_emailed_and_the_reply_requeues_the_case(
                 "SELECT reason FROM noc_case_cycle WHERE situation_id = ? ORDER BY id DESC LIMIT 1",
                 (sid,),
             )
-            reason = (await cur.fetchone())[0]
+            last = await cur.fetchone()
+            assert last is not None
+            reason = last[0]
         assert case is not None and case["status"] == "queue" and case["agent_id"] is None, (
             "back in the queue, off its agent, for the routing to balance"
         )

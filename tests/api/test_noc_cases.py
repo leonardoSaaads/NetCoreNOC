@@ -105,7 +105,8 @@ async def test_start_working_this_opens_the_case_of_an_open_situation_only(store
                 "SELECT COUNT(*) FROM audit_log WHERE action='noc.case.open' AND object_id=?",
                 (str(fresh),),
             )
-            assert (await cur.fetchone())[0] == 1, "the press that opened it is audited, once"
+            audited = await cur.fetchone()
+            assert audited is not None and audited[0] == 1, "the opening press is audited, once"
         assert (await clients["editor"].post("/api/noc/cases/999999/open")).status_code == 404
     finally:
         await _close(clients)
