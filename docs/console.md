@@ -38,9 +38,8 @@ disabled controls.
 
 | View | The question it answers |
 |---|---|
-| **Labelling** | Confirm or split a grouping, and what your labels have produced |
-| **Corpus** | What capture costs in rows, and the three retention tiers |
-| **Judge & promotion** | Since v0.29.0: **Who decides** (the champion, its score, and the two loops as five icons with a line each), **the league** table (six held-out suites plus the corpus), and **Learning and comparison** in three rows — *how good* (score, corpus, ROC on a log false-positive axis, precision–recall), *how honest* (calibration, residual) and *what it costs* (search history on a log loss axis, training time on a log axis, scoring cost per pair on a log axis). Before that, chart-first since v0.26.0: the shipped model on generated data (headline quantities beside the formula's, with intervals and n; precision–recall against its baseline; ROC; calibration; confusion; the search that chose it; one shape per feature), then this site's labels (sufficiency, the latest comparison, the latest search), then the live monitor. Every chart names its dataset and its n, and generated, site and live data never share an axis. The v0.11.0 record — seal, decisions, versions — is folded below, unchanged. |
+| **Learning** | ADR #484: one screen where Labelling and Corpus were. A UML class diagram says how a judgement teaches the models — `Alarm` (2..*) into a `Situation`, a judgement yields `Label`s (`PositivePair` from confirm, `NegativePair` from split), labels kept in the `Corpus`, the `Model` reading it — with this appliance's numbers in its compartments; each class is a button. Tabs: **To judge** (proposals and groupings, one list, each with its action) and **Corpus** (admins: what capture holds, and the three retention tiers). `#/labelling` and `#/corpus` still open it |
+| **Judge & promotion** | ADR #485: five tabs — **Overview** (who decides, the league table), **Charts** (every model on shared axes, or one model's ten, chosen from a row of pills; ROC on linear axes with its chance line from (0, 0) to (1, 1)), **Site labels**, **Live** and **Record** (the legacy challenger path); `?tab=` in the address, `?model=` opens Charts on that model. Since v0.29.0: **Who decides** (the champion, its score, and the two loops as five icons with a line each), **the league** table (six held-out suites plus the corpus), and **Learning and comparison** in three rows — *how good* (score, corpus, ROC on a log false-positive axis, precision–recall), *how honest* (calibration, residual) and *what it costs* (search history on a log loss axis, training time on a log axis, scoring cost per pair on a log axis). Before that, chart-first since v0.26.0: the shipped model on generated data (headline quantities beside the formula's, with intervals and n; precision–recall against its baseline; ROC; calibration; confusion; the search that chose it; one shape per feature), then this site's labels (sufficiency, the latest comparison, the latest search), then the live monitor. Every chart names its dataset and its n, and generated, site and live data never share an axis. The v0.11.0 record — seal, decisions, versions — is folded below, unchanged. |
 
 ## Administer — the machine itself
 
@@ -49,7 +48,7 @@ disabled controls.
 | **People & access** | Who can sign in, what each person and program may do, and what they see — four tabs: **People** (accounts, each with a photo, a name, a recovery email, a role and its own capability grid), **Roles** (what every person of a role holds by default), **Service tokens** (credentials for programs, each with a purpose, shown once — with a three-step start and the **API reference**) and **Visibility** (which network elements viewers and editors see, with worked examples) |
 | **Settings** | Six tabs: **Models** (what decides links — the league's champion, chosen by the judge or pinned), **Autonomy** (four grades, the self-suspension trigger, every act and its verdict), **Site training** (the budget, start and stop), **SNMP** (which versions and communities the receiver accepts, and the SNMPv3 users), **Email** (the SMTP server recovery links go through) and **System** (every parameter, in three classes, with its precedence and its impact) |
 | **Quarantine** | Datagrams the parser refused. **Reading this list is audited** |
-| **Audit log** | The hash-chained record of every change, and its verification state |
+| **Audit log** | ADR #486: every change, found by **period** (1 h to 30 days, or two dates), **person**, **section** (sign-in, people, situations, models, settings, NOC, audit — each with its count), **outcome** and a text; rows open in place (source address, details); *Load older* pages back; *Download view* saves the rows on screen as CSV; *Export all* the whole chain as NDJSON |
 
 ## NOC — Work
 
@@ -174,6 +173,12 @@ Studio, xAI, Meta, a local Ollama and Ollama Cloud, each a card with its mark, k
 NOC's agents think with; a cloud key goes only to its own API, and a custodian lists the models it
 may use. **A local Ollama takes no key** (ADR #477): it is connected by where it runs, and opens on
 the models pulled there — which can call tools, and so work a case, the one to try first named.
+Since ADR #487 **Connect Ollama finds it by itself** (this host, `host.docker.internal`, a compose
+service `ollama`, the Docker bridge, the container's gateway) and lists the servers that answered,
+with their models; each model can be **tried** — one timed turn with one tool, "Called the tool ·
+2.1 s" or "Answered without the tool" — before an agent is hired on it. An Ollama agent has a
+**context window** (16k by default; 8k to 64k), which is what lets a local model read its whole
+instructions and tools.
 
 Every credential, wherever it is listed, shows a status light (green answers, yellow intermittent
 or slow, red does not answer, grey not checked), the name, where it works, what it grants and
@@ -201,11 +206,27 @@ whether agents may use it.
   says when; a different key later is refused. After replacing a device, *Forget…* (a step-up)
   lets the next connection pin the new one. Changing the host or port forgets it too.
 
-**Your account** opens from your photo and name in the top bar: your photo, display name and
-recovery email, your password (and where two-factor sign-in stands), and what you can do, by
-category, with each capability one click away.
+**Your account** opens from your photo and name in the top bar (ADR #482): a header with your photo
+(the camera badge or *Upload photo* changes it), your name, role and whether two-factor is on; then
+three tabs — **Profile** (display name, recovery email), **Security** (two-factor sign-in: when it
+was set up and last used, recovery codes left, *New recovery codes* and *Move to a new phone*, each
+asking for your password and a current code; and your password) and **Permissions** (what you can
+do, by category, with each capability one click away).
 
-### Signing in (v0.30.0)
+**The Overview before the first trap** (ADR #483) is three pictures instead of a paragraph: point
+your equipment's traps here (the destination to copy, and a live "waiting" mark), confirm the
+situation and open a case, and the NOC works it. It turns into the real Overview by itself.
+
+### Signing in (v0.30.0; two steps since ADR #482)
+
+**Two steps.** The password first; the card then locks and moves aside, and the second step slides
+in beside it: the **six-digit code** from your authenticator app (or "Lost your phone? Use a
+recovery code"). The first time — and after an admin reset — the second step is the set-up instead:
+a **QR code** to scan (the key as text on request), **ten recovery codes** to copy or save (ticking
+"I saved my recovery codes" unlocks the code), and the first code. The codes and the key are hidden
+by default: Copy and Save .txt need nothing on screen; *Show codes* draws dots and a warning to
+check no one is looking, and only *I'm ready — show them* reveals them. Only a right code opens the
+session.
 
 The sign-in screen is the card and nothing else it does not need: username, password, and — once an
 admin has set up **Settings → Email** — **Forgot your password?**, which emails a single-use link to

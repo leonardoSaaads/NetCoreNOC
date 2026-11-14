@@ -94,8 +94,11 @@ In the console: **Situations** for what was grouped, the health control in the t
 counters. From the terminal:
 
 ```sh
-curl -c cookies -H 'Content-Type: application/json' \
+# two steps (ADR #482): the password, then the code from your authenticator app
+curl -s -H 'Content-Type: application/json' \
   -d '{"username":"admin","password":"<your password>"}' http://localhost:8081/api/login
+curl -c cookies -H 'Content-Type: application/json' \
+  -d '{"challenge":"<challenge from above>","code":"<6 digits>"}' http://localhost:8081/api/login/code
 curl -b cookies http://localhost:8081/api/stats
 ```
 

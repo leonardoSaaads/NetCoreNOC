@@ -143,8 +143,13 @@ export class RunSettings extends Component {
           "How hard it thinks before acting: higher is slower and costs more.") : null}
         ${field(`${p}-turns`, "Most steps per run", html`<input id=${`${p}-turns`} type="number"
           min="1" max="60" value=${st.max_turns} onInput=${set("max_turns")} />`)}
+        ${provider.id === "ollama" ? field(`${p}-ctx`, "Context window", html`<select id=${`${p}-ctx`}
+          value=${String(st.num_ctx || 16384)} onChange=${set("num_ctx")}>
+            ${[8192, 16384, 32768, 65536].map((n) => html`<option key=${n} value=${String(n)}>${n / 1024}k tokens</option>`)}
+          </select>`, "How much of the case the model reads at once. 16k fits the instructions and a dozen tool results; larger needs more memory on that machine.") : null}
       </div>
       ${details ? html`<div class="run-models"><${OllamaModels} answer=${details} provider=${provider}
+        secretId=${Number(st.secret_id) || null}
         picked=${st.model} onPick=${(model) => this.props.onChange({ model })} /></div>` : null}
       ${provider.adapter === "claude" ? html`<p class="hint">Priced at Anthropic's published rates;
         its monthly budget, below, pauses it when reached.</p>` : html`<div class="pe-fields">

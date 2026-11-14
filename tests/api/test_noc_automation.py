@@ -25,7 +25,7 @@ import authutil
 import util
 
 PASSWORD = "Backbone-r00t-only-the-executor-sees"
-STEP = {"username": "adm", "password": authutil.PW}
+STEP = {"username": "adm", "password": authutil.PW, "otp": authutil.OTP}
 ANSWER = {"show alarm list active-alarms type ALL": "No active alarms\n"}
 
 

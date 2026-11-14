@@ -430,6 +430,62 @@ const scenarios = {
    * no block holds another dataset's chart. The block is the unit because "generated data and site
    * data never on one unlabelled axis" is a statement about which block a chart sits in.
    */
+  /**
+   * **Signing in, in two steps** (ADR #482). Types the username and password and submits; reports
+   * what the second step drew (the panel, the QR code's path, the recovery codes, whether the
+   * password card locked); ticks "I saved my recovery codes" when asked; then — with `/api/me`
+   * now answering as the session the code opens — types the code, and reports the requests made
+   * and whether the console left the sign-in screen.
+   */
+  async twoStep(params) {
+    const env = await boot(params);
+    const q = (selector) => env.document.querySelector(selector);
+    const type = async (selector, value) => {
+      const node = q(selector);
+      if (!node) throw new Error(`nothing matched ${selector}`);
+      node.value = value;
+      node.dispatchEvent(new env.DomEvent("input"));
+      await settle(env);
+    };
+    await type("#lu", params.username);
+    await type("#lp", params.password);
+    q("form.login-card").dispatchEvent(new env.DomEvent("submit"));
+    await settle(env);
+    const panel = q(".tf-panel");
+    const out = {
+      panel: Boolean(panel),
+      enrol: Boolean(panel && String(panel.getAttribute("class")).includes("is-enrol")),
+      qrPaths: panel ? panel.querySelectorAll(".qr-code path").length : 0,
+      recovery: panel ? panel.querySelectorAll(".recovery-codes li").length : 0,
+      cardLocked: q("#lu")?.getAttribute("disabled") != null,
+      codeLockedUntilSaved: q("#tfCode")?.getAttribute("disabled") != null,
+      step: dumpTree(env.document.getElementById("root")).join("\n"),
+    };
+    // The recovery codes are hidden until asked for, twice: "Show codes", then "I'm ready".
+    const press = async (selector) => {
+      q(selector).dispatchEvent(new env.DomEvent("click"));
+      await settle(env);
+      return dumpTree(env.document.getElementById("root")).join("\n");
+    };
+    out.masked = await press(".recovery-show");
+    out.shown = await press(".recovery-ready");
+    if (params.saved) {
+      const box = q(".tf-saved input");
+      box.checked = true;
+      box.dispatchEvent(new env.DomEvent("change"));
+      await settle(env);
+    }
+    env.network.routes["GET /api/me"] = params.me;
+    await type("#tfCode", params.code);
+    await settle(env);
+    return {
+      ...out,
+      posts: env.network.requests.filter((r) => r.method === "POST").map((r) => ({ path: r.path, body: r.body })),
+      signedIn: !q("#login"),
+      proof: proofOf(env),
+    };
+  },
+
   async judge(params) {
     const env = await boot(params);
     env.navigate(params.navigate ?? "#/promotion");
@@ -1406,7 +1462,10 @@ const scenarios = {
     if (!form) throw new Error("the step-up did not open");
     const requestsBeforeSubmit = env.network.requests.length - before;
     const inputs = form.querySelectorAll("input");
-    for (const [index, value] of [[0, params.username], [1, params.password]]) {
+    // ADR #482: the third field is the authenticator code, typed when the scenario gives one.
+    const typed = [[0, params.username], [1, params.password]];
+    if (params.otp) typed.push([2, params.otp]);
+    for (const [index, value] of typed) {
       inputs[index].value = value;
       inputs[index].dispatchEvent(new env.DomEvent("input"));
       await settle(env);

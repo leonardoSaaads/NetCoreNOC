@@ -77,7 +77,7 @@ class Models extends Component {
     return html`<section class="ai-models">
       <h4>${local ? "Models on this Ollama" : "Models this key may use"}</h4>
       ${rich ? html`<${ModelAdvice} answer=${answer} provider=${provider} />
-          <${OllamaModels} answer=${answer} provider=${provider} />`
+          <${OllamaModels} answer=${answer} provider=${provider} secretId=${this.props.id} />`
         : answer ? html`<p class="muted">${answer.count} model${answer.count === 1 ? "" : "s"}.</p>
           <ul class="model-chips">${answer.models.map((m) => html`<li key=${m}><code>${m}</code></li>`)}</ul>`
         : html`<button type="button" disabled=${busy} onClick=${() => this.ask()}>

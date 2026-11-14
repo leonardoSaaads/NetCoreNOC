@@ -49,7 +49,8 @@ from typing import Any
 
 import httpx
 
-from netcorenoc.crosscutting import auth
+from netcorenoc.crosscutting import auth, totp
+from netcorenoc.engine.noc import providers
 from netcorenoc.store import Store
 
 import paths
@@ -162,7 +163,17 @@ UNDRIVEN_QUERY_PARAMS: dict[tuple[str, str], tuple[str, ...]] = {
     # `tests/support/uifixtures.py` and asserted by the DOM invariants instead.
     ("GET", "/api/timeline"): ("buckets", "limit", "ne_id", "range_s", "since", "until"),
     ("GET", "/api/quarantine"): ("limit",),
-    ("GET", "/api/audit"): ("limit",),
+    # ADR #486: the audit log's filters, recorded at their defaults like the timeline's.
+    ("GET", "/api/audit"): (
+        "actor",
+        "before",
+        "limit",
+        "outcome",
+        "q",
+        "section",
+        "since",
+        "until",
+    ),
     # v0.21.0. The window list's filters, undriven for the reason every entry above is: this
     # record builds each URL from the path template alone, so the route is recorded at its
     # defaults — an empty estate's first page. **`offset` and `limit` are the two worth naming**:
@@ -412,6 +423,22 @@ class Recorder:
                 minted := value.split("=", 1)[1].split(";", 1)[0]
             ):
                 self._substitute_session(minted)
+        # ADR #482: the sign-in's challenge is 256 random bits, by design; its presence and the
+        # rest of the answer are recorded, its value cannot be.
+        if (method, path) == ("POST", "/api/login") and response.status_code == 200:
+            challenge = response.json().get("challenge")
+            if (
+                isinstance(challenge, str)
+                and challenge
+                and not any(sub.literal == challenge for sub in self.substitutions)
+            ):
+                self.substitutions.append(
+                    Substitution(
+                        challenge,
+                        f"<challenge:{self.role}>",
+                        "a sign-in challenge from secrets.token_urlsafe; random by design",
+                    )
+                )
         # A minted service token is the only other value `secrets` produces that reaches a body.
         if (method, path) == ("POST", "/api/tokens") and response.status_code == 200:
             payload = response.json()
@@ -578,8 +605,17 @@ def _frozen_clock() -> Iterator[None]:
 
     real_time, real_n = time.time, auth.SCRYPT_N
     real_latency = league_judge.measure_latency
+    real_guard = totp.REPLAY_GUARD
     time.time = lambda: EPOCH
     auth.SCRYPT_N = SCRYPT_N
+    # ADR #482: every sign-in takes an authenticator code, and the record signs each role in more
+    # than once inside one frozen 30-second step. The suite lets a code be reused for the same
+    # reason (`conftest._frozen_authenticator`); the codes are still checked against the secret.
+    totp.REPLAY_GUARD = False
+    # ADR #487: "Detect" dials the usual addresses of a local Ollama; what answers depends on the
+    # machine the record is made on, so the record is made with none to try.
+    real_candidates = providers.ollama_candidates
+    providers.ollama_candidates = list
     # v0.27.0: each league member's scoring time is MEASURED at engine start (ADR #423) and shows
     # in `/api/decider` and `/api/judge`. A measurement is a clock reading, so it is pinned with the
     # clock: every member reads one fixed figure, inside the budget, and the record still serves the
@@ -590,6 +626,8 @@ def _frozen_clock() -> Iterator[None]:
     finally:
         time.time = real_time
         auth.SCRYPT_N = real_n
+        totp.REPLAY_GUARD = real_guard
+        providers.ollama_candidates = real_candidates
         league_judge.measure_latency = real_latency
 
 

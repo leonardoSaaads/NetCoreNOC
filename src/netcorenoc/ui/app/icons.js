@@ -180,6 +180,11 @@ const ICONS = {
   circuit: { d: ["M3 12h4.5M16.5 12H21", "M7.5 9h3v6h-3V9Z", "M13.5 9h3v6h-3V9Z", "M10.5 12h3"] },
   upload: { d: ["M12 15V4M7.5 8.5 12 4l4.5 4.5", "M4.5 14.5v5h15v-5"] },
   download: { d: ["M12 4v11M7.5 10.5 12 15l4.5-4.5", "M4.5 14.5v5h15v-5"] },
+
+  // -- ADR #482: two-factor sign-in — the phone the authenticator lives on, copying a code -------
+  smartphone: { d: ["M7.5 3.5h9v17h-9v-17Z", "M10.5 17.5h3"] },
+  copy: { d: ["M8.5 8.5h11v11h-11v-11Z", "M15.5 8.5v-4h-11v11h4"] },
+  lock: { d: ["M6 10.5h12v9.5H6v-9.5Z", "M8.5 10.5V8a3.5 3.5 0 0 1 7 0v2.5"], c: [[12, 15, 1]] },
 };
 
 /** Every name this module can draw. Read by `tests/ui/test_icons.py`, never for dispatch. */

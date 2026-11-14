@@ -1,9 +1,12 @@
 """Sign in, sign out, who am I, change my password.
 
-`POST /api/login` is the one route in `rbac.PUBLIC_ROUTES`: it is how a principal comes to exist,
-so it cannot require one. Everything else here is `self.read` — it acts on the caller's own
-session or account and names no network element, which is why three of the four are declared
-`unscoped` in `rbac.ROUTE_SCOPE` and `/api/me` is not (it reports the caller's own scope).
+`POST /api/login` is in `rbac.PUBLIC_ROUTES`: it is how a principal comes to exist, so it cannot
+require one. Since ADR #482 it is the **first** of two steps: a right password answers with a
+challenge, never a session, and `POST /api/login/code` (`routes/two_factor.py`) opens the session
+once the authenticator code is right. Everything else here is `self.read` — it acts on the
+caller's own session or account and names no network element, which is why three of the four are
+declared `unscoped` in `rbac.ROUTE_SCOPE` and `/api/me` is not (it reports the caller's own
+scope).
 """
 
 from __future__ import annotations
@@ -17,21 +20,18 @@ from netcorenoc.api.context import AppContext
 from netcorenoc.api.declare import DeclaredRoutes
 from netcorenoc.api.models import LoginIn, PasswordIn
 from netcorenoc.api.perimeter import _client_ip
-from netcorenoc.crosscutting import auth
+from netcorenoc.crosscutting import auth, twostep
 
 
 def register(app: FastAPI, ctx: AppContext) -> None:
     """Register the auth routes on `app`."""
-    store, security, tls_enabled = ctx.store, ctx.security, ctx.tls_enabled
+    store, security = ctx.store, ctx.security
     throttle, scope_for = ctx.throttle, ctx.scope_for
     audit_row, write_txn = ctx.perimeter.audit_row, ctx.write_txn
     route = DeclaredRoutes(app)
 
-    def _cookie_kwargs() -> dict[str, Any]:
-        return {"httponly": True, "samesite": "strict", "path": "/", "secure": tls_enabled}
-
     @route.post("/api/login")
-    async def login(body: LoginIn, request: Request, response: Response) -> dict[str, Any]:
+    async def login(body: LoginIn, request: Request) -> dict[str, Any]:
         source_ip = _client_ip(request)
         async with write_txn():
             outcome = await auth.perform_login(
@@ -79,7 +79,7 @@ def register(app: FastAPI, ctx: AppContext) -> None:
                     "must_change_password": True,  # nosec B105 - response flag, not a secret
                     "password_policy": auth.password_policy(),
                 }
-            assert outcome.principal is not None and outcome.session_token is not None
+            assert outcome.principal is not None and outcome.principal.user_id is not None
             if body.new_password:
                 await audit_row(
                     request,
@@ -89,20 +89,12 @@ def register(app: FastAPI, ctx: AppContext) -> None:
                     object_type="user",
                     object_id=str(outcome.principal.user_id),
                 )
-            await audit_row(
-                request,
-                outcome.principal,
-                "login.ok",
-                "ok",
-                object_type="user",
-                object_id=str(outcome.principal.user_id),
+            # ADR #482: the password is right, so the second step begins — no session, no cookie
+            # yet. `POST /api/login/code` answers it.
+            begun = await twostep.begin(
+                store, int(outcome.principal.user_id), body.username, source_ip, time.time()
             )
-        response.set_cookie(auth.COOKIE_NAME, outcome.session_token, **_cookie_kwargs())
-        return {
-            "user": outcome.principal.actor,
-            "role": outcome.principal.role,
-            "must_change_password": False,  # nosec B105 - response flag, not a secret
-        }
+        return {"must_change_password": False, **begun.response()}  # nosec B105 - a flag
 
     @route.post("/api/logout")
     async def logout(
@@ -128,10 +120,11 @@ def register(app: FastAPI, ctx: AppContext) -> None:
         """
         capabilities: frozenset[str] = request.state.capabilities
         scope = await scope_for(principal)
-        person = None
+        person = factor = None
         if principal.user_id is not None:
             async with store.reading():
                 person = await store.person(int(principal.user_id))
+                factor = await store.second_factor(int(principal.user_id))
         return {
             "user": principal.actor,
             # v0.25.0 (ADR #401, #402): who you are as a person — your id, the name you chose and
@@ -149,6 +142,16 @@ def register(app: FastAPI, ctx: AppContext) -> None:
                 "ne_count": None if scope.unrestricted else len(scope.ne_ids),
             },
             "password_policy": auth.password_policy(),
+            # ADR #482: this person's authenticator — whether one is enrolled, since when, last
+            # used, and how many recovery codes are left. Never the secret. Null for a token.
+            "two_factor": None
+            if principal.user_id is None
+            else {
+                "enrolled": factor is not None,
+                "enrolled_at": factor["enrolled_at"] if factor else None,
+                "last_used_at": factor["last_used_at"] if factor else None,
+                "recovery_left": int(factor["recovery_left"]) if factor else 0,
+            },
         }
 
     @route.post("/api/password")

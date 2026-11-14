@@ -428,10 +428,10 @@ ROUTE_ORDER_BASELINE: list[tuple[str, str]] = [
     ("GET", "/app/views/account.js"),
     ("GET", "/app/views/audit.js"),
     ("GET", "/app/views/classes.js"),
-    ("GET", "/app/views/corpus.js"),
     ("GET", "/app/views/entities.js"),
     ("GET", "/app/views/graph.js"),
-    ("GET", "/app/views/labelling.js"),
+    ("GET", "/app/views/learning.js"),
+    ("GET", "/app/views/parts/learnuml.js"),
     ("GET", "/app/views/overview.js"),
     ("GET", "/app/views/promotion.js"),
     ("GET", "/app/views/maintenance.js"),
@@ -504,6 +504,7 @@ ROUTE_ORDER_BASELINE: list[tuple[str, str]] = [
     ("GET", "/app/views/parts/leaguecharts.js"),
     ("GET", "/app/views/parts/leaguecompare.js"),
     ("GET", "/app/recover.js"),
+    ("GET", "/app/twofactor.js"),
     ("GET", "/app/views/parts/snmp.js"),
     ("GET", "/app/views/parts/snmpuser.js"),
     ("GET", "/app/views/parts/email.js"),
@@ -546,6 +547,7 @@ ROUTE_ORDER_BASELINE: list[tuple[str, str]] = [
     ("GET", "/app/views/parts/agentrun.js"),
     ("GET", "/app/views/parts/ollamamodels.js"),
     ("GET", "/app/views/parts/orgmove.js"),
+    ("GET", "/app/views/parts/firstrun.js"),
     ("GET", "/app/views/customers.js"),
     ("GET", "/app/views/parts/custbook.js"),
     ("GET", "/app/views/parts/custcontacts.js"),
@@ -563,6 +565,10 @@ ROUTE_ORDER_BASELINE: list[tuple[str, str]] = [
     ("POST", "/api/logout"),
     ("GET", "/api/me"),
     ("POST", "/api/password"),
+    ("POST", "/api/login/code"),
+    ("POST", "/api/me/recovery-codes"),
+    ("POST", "/api/me/two-factor/reset"),
+    ("POST", "/api/users/{uid}/two-factor/reset"),
     ("GET", "/api/stats"),
     ("GET", "/api/graph"),
     ("GET", "/api/classes"),
@@ -635,6 +641,7 @@ ROUTE_ORDER_BASELINE: list[tuple[str, str]] = [
     ("POST", "/api/scope"),
     ("GET", "/api/quarantine"),
     ("GET", "/api/audit"),
+    ("GET", "/api/audit/facets"),
     ("GET", "/api/audit/export"),
     ("POST", "/api/audit/prune"),
     ("POST", "/api/maintenance-windows/preview"),
@@ -696,6 +703,8 @@ ROUTE_ORDER_BASELINE: list[tuple[str, str]] = [
     ("POST", "/api/noc/secrets/{secret_id}/lease"),
     ("POST", "/api/noc/leases/introspect"),
     ("POST", "/api/noc/leases/{lease_id}/revoke"),
+    ("GET", "/api/noc/providers/ollama/detect"),
+    ("POST", "/api/noc/secrets/{secret_id}/try"),
     ("POST", "/api/noc/secrets/{secret_id}/models"),
     ("GET", "/api/noc/cases"),
     ("GET", "/api/noc/cases/kpis"),
@@ -883,7 +892,10 @@ async def test_the_api_route_order_is_unchanged_by_the_ui_rewrite(store: Store) 
     # **ADR #478: 188 -> 189.** `POST …/cases/{sid}/customer-update`, a concrete segment below the
     # case's id, shadowing nothing.
     # ADR #480: +1 (Start working this); ADR #481: +3 (a customer's email) — 193.
-    assert len(live) == 193, (
+    # ADR #482: +4 (the sign-in's second step, recovery codes, and two resets of an authenticator,
+    # each a concrete path shadowing nothing) — 197. ADR #486: +1 (`/api/audit/facets`, a
+    # concrete segment below `/api/audit`); ADR #487: +2 (Ollama's detect, a model's try) — 200.
+    assert len(live) == 200, (
         f"the /api surface is {len(live)} pairs; v0.16.0 adds exactly five, v0.16.2 exactly one, "
         f"v0.16.3 exactly one, v0.16.5 exactly one — `POST /api/alarms/clear` — v0.18.0 exactly "
         f"one, `GET /api/correlation`, and v0.21.0 exactly thirteen for maintenance windows, "
@@ -1531,8 +1543,8 @@ def test_the_queue_put_on_the_hot_path_is_non_blocking() -> None:
 #: `engine/noc/` `commands`, `executor`, `playbook` and `runbook`, `store/noc_playbooks.py`,
 #: migration `0035_noc_automation.sql`, the `noc_exec` and `playbooks` routes, and the
 #: `views/playbooks` console module.
-SRC_TREE_DIGEST = "f7c78f1e408d1b82a6d34d1042898efcf264c38ddf86eee8cc7a1e6c8342dd5f"
-SRC_FILE_COUNT = 517
+SRC_TREE_DIGEST = "c0a40b225c9fd9ef493f6133ea72c2145b31e6e81499e74a99122abf3c0e18a8"
+SRC_FILE_COUNT = 529
 SRC_VERSION_FILE = "src/netcorenoc/__init__.py"
 
 

@@ -15,7 +15,6 @@
 
 import { html } from "../../dom.js";
 import { Bars } from "../../compare.js";
-import { Legend } from "../../charts.js";
 import { Curve, Scatter } from "../../modelcharts.js";
 import { GEN, suiteRows } from "./leaguecharts.js";
 
@@ -51,8 +50,10 @@ export function CompareCharts({ models }) {
   // is drawn and nothing else; the axis that spans decades is logarithmic and says so.
   const scores = trained.map(meanF1).filter((v) => v != null);
   const floor = scores.length ? Math.max(0, Math.floor((Math.min(...scores) - 0.05) * 20) / 20) : 0;
-  return html`<div class="league-compare">
-    <${Legend} series=${legend} />
+  // ADR #485: the model pills above are the legend; a second row of the same swatches was noise.
+  const precisions = trained.flatMap((m) => (iidPairs(m).pr_curve || []).map(([, p]) => p));
+  const pFloor = precisions.length ? Math.max(0, Math.floor((Math.min(...precisions) - 0.02) * 20) / 20) : 0;
+  return html`<div class="league-compare" data-models=${legend.length}>
     <h4 class="league-group">How good</h4>
     <div class="judge-grid">
       <${Bars} title="Score (mean pairwise F1)" max=${1} from=${floor} unit="ratio"
@@ -61,11 +62,11 @@ export function CompareCharts({ models }) {
       <${Bars} title="Hand-labelled corpus" max=${1} unit="ratio"
         rows=${bars((m) => (m.suites || {}).corpus ?? null)}
         source="eval/corpus, hand-labelled" span="mean over scenarios" note="higher is better" />
-      <${Curve} title="ROC" xLabel="false positive rate" yLabel="true positive rate" xLog=${true} keyed=${false}
-        xRange=${[0, 1]} reference="diagonal"
+      <${Curve} title="ROC" xLabel="false positive rate" yLabel="true positive rate" keyed=${false}
+        xRange=${[0, 1]} yRange=${[0, 1]} reference="diagonal"
         series=${curve((m) => (iidPairs(m).roc_curve || []).map(([f, t]) => [f, t]))}
         source=${GEN} n=${span} note="up and left is better" />
-      <${Curve} title="Precision–recall" xLabel="recall" yLabel="precision" xRange=${[0, 1]} keyed=${false}
+      <${Curve} title="Precision–recall" xLabel="recall" yLabel="precision" xRange=${[0, 1]} yRange=${[pFloor, 1]} keyed=${false}
         reference=${{ y: iidPairs(trained[0]).positive_rate_weighted }}
         series=${curve((m) => (iidPairs(m).pr_curve || []).map(([r, p]) => [r, p]))}
         source=${GEN} n=${span} note="up and right is better" />
@@ -81,7 +82,7 @@ export function CompareCharts({ models }) {
         source=${GEN} span=${span} note="lower is better" />
     </div>
     <h4 class="league-group">What it costs</h4>
-    <div class="judge-grid">
+    <div class="judge-grid judge-grid-3">
       <${Curve} title="Search: best validation loss" xLabel="fit, in order" yLog=${true} keyed=${false}
         yLabel="log loss" series=${curve((m) => bestSoFar((m.search || {}).trials || []))}
         source=${VALID} n="same validation rows for every model" note="lower is better" />

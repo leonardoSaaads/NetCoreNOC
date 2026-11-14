@@ -24,7 +24,7 @@ from netcorenoc.api import noc_gate as gate
 from netcorenoc.api.context import AppContext
 from netcorenoc.api.declare import DeclaredRoutes
 from netcorenoc.api.models_noc import GrantIn, IntrospectIn, LeaseIn
-from netcorenoc.crosscutting import auth
+from netcorenoc.crosscutting import auth, stepup
 from netcorenoc.engine.noc import kinds, lease
 
 #: The live leases one agent may hold at once: enough for a diagnosis across a dozen devices.
@@ -67,8 +67,8 @@ def register(app: FastAPI, ctx: AppContext) -> None:
     audit_row, write_txn = ctx.perimeter.audit_row, ctx.write_txn
     route = DeclaredRoutes(app)
 
-    @route.get("/api/noc/grants", dependencies=ctx.guarded)
-    async def list_grants() -> dict[str, Any]:
+    @route.get("/api/noc/grants")
+    async def list_grants(principal: auth.Principal = Depends(security)) -> dict[str, Any]:
         """Every enabled editor and admin with whether they hold the vault, and every live token
         with whether it is an agent."""
         async with store.reading():
@@ -99,7 +99,8 @@ def register(app: FastAPI, ctx: AppContext) -> None:
             for t in tokens
             if not t["revoked"]
         ]
-        return {"people": people, "tokens": agents, "second_factor": "not-enrolled"}
+        factor = await stepup.enrolment(store, principal)
+        return {"people": people, "tokens": agents, "second_factor": factor}
 
     @route.post("/api/noc/grants")
     async def set_grant(

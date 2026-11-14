@@ -32,7 +32,10 @@ ORG, MCP = "NOC — Organization", "NOC — MCP"
 CUSTOMERS = "NOC — Customers"
 
 REFERENCE: dict[tuple[str, str], Entry] = {
-    ("POST", "/api/login"): Entry(PUBLIC, "Sign in with a username and password (sets a cookie)"),
+    ("POST", "/api/login"): Entry(PUBLIC, "Sign in: the password step (answers with a challenge)"),
+    ("POST", "/api/login/code"): Entry(
+        PUBLIC, "Second step of signing in: the authenticator code (sets a cookie)"
+    ),
     ("GET", "/api/login/options"): Entry(PUBLIC, "What the sign-in screen may offer"),
     ("POST", "/api/password-reset"): Entry(PUBLIC, "Ask for a password-reset link by email"),
     ("POST", "/api/password-reset/confirm"): Entry(PUBLIC, "Set a new password from a reset link"),
@@ -43,6 +46,8 @@ REFERENCE: dict[tuple[str, str], Entry] = {
     ("POST", "/api/me/avatar"): Entry(ACCOUNT, "Upload your photo (PNG, WebP or JPEG)"),
     ("DELETE", "/api/me/avatar"): Entry(ACCOUNT, "Remove your photo"),
     ("POST", "/api/me/profile"): Entry(ACCOUNT, "Set your display name and recovery address"),
+    ("POST", "/api/me/recovery-codes"): Entry(ACCOUNT, "New recovery codes for your authenticator"),
+    ("POST", "/api/me/two-factor/reset"): Entry(ACCOUNT, "Forget your authenticator (new phone)"),
     ("GET", "/api/stats"): Entry(MONITOR, "Counters, health and warnings for the Overview"),
     ("GET", "/api/graph"): Entry(MONITOR, "The learned network graph: elements and links"),
     ("GET", "/api/classes"): Entry(CATALOGUE, "Alarm classes seen so far"),
@@ -76,6 +81,9 @@ REFERENCE: dict[tuple[str, str], Entry] = {
     ("POST", "/api/users/{uid}/profile"): Entry(ADMIN, "Set a person's name and recovery address"),
     ("POST", "/api/users/{uid}/password-reset"): Entry(
         ADMIN, "Replace a person's password with a one-time one"
+    ),
+    ("POST", "/api/users/{uid}/two-factor/reset"): Entry(
+        ADMIN, "Forget a person's authenticator; they enrol again"
     ),
     ("POST", "/api/users/{uid}/avatar"): Entry(ADMIN, "Upload a person's photo"),
     ("DELETE", "/api/users/{uid}/avatar"): Entry(ADMIN, "Remove a person's photo"),
@@ -117,7 +125,8 @@ REFERENCE: dict[tuple[str, str], Entry] = {
     ("POST", "/api/search/stop"): Entry(MODELS, "Stop the running search"),
     ("GET", "/api/judge"): Entry(MODELS, "The judge: the league, ranked on this site's labels"),
     ("GET", "/api/quarantine"): Entry(AUDIT, "Datagrams the receiver refused, and why"),
-    ("GET", "/api/audit"): Entry(AUDIT, "The audit log"),
+    ("GET", "/api/audit"): Entry(AUDIT, "The audit log, by period, person, section and outcome"),
+    ("GET", "/api/audit/facets"): Entry(AUDIT, "Who and what the audit log holds, as counts"),
     ("GET", "/api/audit/export"): Entry(AUDIT, "Export the audit log as JSON lines"),
     ("POST", "/api/audit/prune"): Entry(AUDIT, "Prune audit rows past retention"),
     ("GET", "/api/maintenance-windows"): Entry(MAINT, "List maintenance windows"),
@@ -161,6 +170,8 @@ REFERENCE: dict[tuple[str, str], Entry] = {
     ("POST", "/api/noc/secrets/{secret_id}/agents"): Entry(VAULT, "Switch agent access on or off"),
     ("POST", "/api/noc/secrets/{secret_id}/check"): Entry(VAULT, "Check a credential's endpoint"),
     ("POST", "/api/noc/secrets/{secret_id}/models"): Entry(VAULT, "Models an AI key may use"),
+    ("POST", "/api/noc/secrets/{secret_id}/try"): Entry(VAULT, "Try a model: answers, calls tools"),
+    ("GET", "/api/noc/providers/ollama/detect"): Entry(VAULT, "Find a local Ollama"),
     ("GET", "/api/noc/grants"): Entry(VAULT, "Custodians, leads and agents"),
     ("POST", "/api/noc/grants"): Entry(VAULT, "Name or withdraw a custodian, a lead or an agent"),
     ("GET", "/api/noc/access"): Entry(VAULT, "What you hold in the NOC: custodian, lead, agent"),

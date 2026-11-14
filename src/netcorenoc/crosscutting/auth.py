@@ -346,7 +346,7 @@ async def resolve_bearer(
 
 @dataclass(frozen=True)
 class LoginOutcome:
-    status: str  # "ok" | "fail" | "locked" | "must_change" | "policy"
+    status: str  # "second_factor" | "fail" | "locked" | "must_change" | "policy"
     principal: Principal | None = None
     session_token: str | None = None
     message: str | None = None
@@ -362,7 +362,8 @@ async def perform_login(
     source_ip: str,
     now: float,
 ) -> LoginOutcome:
-    """Authenticate and (on success) open a session. Auditing/cookies are the caller's job.
+    """Check the password (and make the forced change). A right one opens **no session**: the
+    second factor does (ADR #482). Auditing is the caller's job.
 
     Timing and the failure message are identical for "no such user" and "wrong password".
     """
@@ -390,6 +391,7 @@ async def perform_login(
         await store.update_user_password(user_id, hash_password(new_password), now)
         await store.revoke_user_sessions(user_id)
 
-    token = await open_session(store, user_id, source_ip, now)
+    # ADR #482: no session yet. The password is right; the authenticator code comes next
+    # (`twostep.begin` / `twostep.finish`), and only that opens the session.
     principal = Principal(actor=username, role=user["role"], kind="session", user_id=user_id)
-    return LoginOutcome("ok", principal=principal, session_token=token)
+    return LoginOutcome("second_factor", principal=principal)

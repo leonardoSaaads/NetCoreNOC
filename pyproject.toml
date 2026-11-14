@@ -133,6 +133,7 @@ known-local-folder = [
 "tools/*" = ["T20"]  # replay tool talks to the operator on stdout
 "src/netcorenoc/__main__.py" = ["T20"]  # the audit CLI talks to the operator on stdout
 "src/netcorenoc/store/cli.py" = ["T20"]  # and its database commands (ADR #452)
+"src/netcorenoc/store/account_cli.py" = ["T20"]  # and its account-recovery commands (ADR #482)
 "eval/synth/*" = ["T20"]  # `make train` reports each stage to the person running it (v0.26.0)
 
 [tool.mypy]
@@ -169,6 +170,9 @@ markers = [
     # report how many were EXECUTED. They skip — loudly, with a reason naming the requirement —
     # when Node is absent, and a skipped DOM suite must never be read as a green one.
     "dom: drives the DOM harness in a Node subprocess (skipped when Node >= 22 is absent)",
+    # ADR #482. The suite freezes the authenticator's clock and lets a code be reused; a test
+    # with this marker gets the real clock and the replay guard, as production has them.
+    "real_authenticator: the authenticator's real clock and replay guard (no frozen step)",
 ]
 
 [tool.coverage.run]

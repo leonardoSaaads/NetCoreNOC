@@ -55,6 +55,7 @@ function Frame({ title, latest, children, caption, legend, xLabel, yLabel, yTop,
       ${latest != null ? html`<p class="chart-latest">${latest}</p>` : null}
     </div>
     <div class=${cx("chart", tall && "mchart-tall")}>
+      ${yLabel ? html`<p class="mchart-ylabel">${yLabel}</p>` : null}
       <div class="chart-plot">
         ${children}
         <div class="chart-y" aria-hidden="true"><span>${yTop}</span><span>${yBottom}</span></div>
@@ -64,7 +65,6 @@ function Frame({ title, latest, children, caption, legend, xLabel, yLabel, yTop,
         <span class="chart-x-tick mchart-axis">${xLabel}</span>
         <span class="chart-x-tick">${xHigh}</span>
       </div>
-      ${yLabel ? html`<p class="mchart-ylabel">${yLabel}</p>` : null}
     </div>
     ${legend ? html`<${Legend} series=${legend} />` : null}
     ${caption}
@@ -97,7 +97,12 @@ export function Curve({ title, series, reference, xRange, yRange, xLabel, yLabel
   const sy0 = scaler(y0, y1, H, { invert: true, log: yLog });
   const sx = (x) => sx0(Math.max(x, x0));
   const sy = (y) => sy0(Math.min(Math.max(y, y0), y1));
-  const ref = Array.from({ length: 25 }, (_, i) => (xLog ? x0 * (x1 / x0) ** (i / 24) : x0 + (x1 - x0) * i / 24));
+  // ADR #485: y = x only where both axes cover it; clamped, it ran along an edge.
+  const dLo = Math.max(x0, y0);
+  const dHi = Math.min(x1, y1);
+  const ref = dHi > dLo
+    ? Array.from({ length: 25 }, (_, i) => (xLog ? dLo * (dHi / dLo) ** (i / 24) : dLo + (dHi - dLo) * i / 24))
+    : [];
   const label = `${title}. ${drawn.map((s) => `${s.name}: ${s.points.length} points`).join("; ")}.`;
   return html`<${Frame} title=${title} latest=${latest} tall=${tall}
       yTop=${tick(y1)} yBottom=${tick(y0)} xLow=${tick(x0)} xHigh=${tick(x1)}
@@ -106,7 +111,7 @@ export function Curve({ title, series, reference, xRange, yRange, xLabel, yLabel
       caption=${html`<${Caption} source=${source} span=${n} note=${note} />`}>
     <svg viewBox=${`0 0 ${W} ${H}`} preserveAspectRatio="none" role="img" aria-label=${label}
          class="mchart-svg" focusable="false">
-      ${reference === "diagonal"
+      ${reference === "diagonal" && ref.length
         ? html`<polyline class="mchart-ref" fill="none" points=${ref.map((v) => `${sx(v).toFixed(2)},${sy(v).toFixed(2)}`).join(" ")} />`
         : reference && reference.y != null
           ? html`<line class="mchart-ref" x1="0" y1=${sy(reference.y)} x2=${W} y2=${sy(reference.y)} />`
@@ -143,7 +148,7 @@ export function Scatter({ title, points, step, xLabel, yLabel, source, n, note, 
     });
   }
   return html`<${Frame} title=${title} latest=${latest}
-      yTop=${fmt(y1, 3)} yBottom=${fmt(y0, 3)} xLow=${fmt(x0, logX ? 3 : 1)} xHigh=${fmt(x1, logX ? 3 : 1)}
+      yTop=${fmt(y1, 3)} yBottom=${fmt(y0, 3)} xLow=${fmt(x0, x0 >= 10 ? 0 : logX ? 3 : 1)} xHigh=${fmt(x1, x1 >= 10 ? 0 : logX ? 3 : 1)}
       xLabel=${xLabel} yLabel=${yLabel}
       caption=${html`<${Caption} source=${source} span=${n} note=${note} />`}>
     <svg viewBox=${`0 0 ${W} ${H}`} preserveAspectRatio="none" role="img" class="mchart-svg"

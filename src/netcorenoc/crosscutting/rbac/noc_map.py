@@ -32,6 +32,10 @@ NOC_ROUTE_PERMISSIONS: dict[tuple[str, str], str] = {
     ("POST", "/api/noc/secrets/{secret_id}/check"): "secrets.read",
     # The models an AI provider key may use: custodian-gated; the handler opens the key.
     ("POST", "/api/noc/secrets/{secret_id}/models"): "secrets.read",
+    # ADR #487: one short timed turn on an AI key's model — custodian-gated; the handler opens it.
+    ("POST", "/api/noc/secrets/{secret_id}/try"): "secrets.read",
+    # ADR #487: where a local Ollama answers, tried at the appliance's own fixed list of addresses.
+    ("GET", "/api/noc/providers/ollama/detect"): "secrets.read",
     ("GET", "/api/noc/grants"): "secrets.grants",
     # What the caller holds in the NOC: every principal who reads cases may ask about themselves.
     ("GET", "/api/noc/access"): "cases.read",
@@ -135,6 +139,10 @@ NOC_ROUTE_SCOPE: dict[tuple[str, str], Literal["scoped", "unscoped", "admin_only
     # An AI provider's model list: custodian-gated, asked of the provider; scope does not reach
     # the vault.
     ("POST", "/api/noc/secrets/{secret_id}/models"): "unscoped",
+    # Trying an AI key's model: custodian-gated, a call to the provider; names no element.
+    ("POST", "/api/noc/secrets/{secret_id}/try"): "unscoped",
+    # Finding a local Ollama: the appliance's own addresses, custodian-gated; names no element.
+    ("GET", "/api/noc/providers/ollama/detect"): "unscoped",
     ("GET", "/api/noc/grants"): "admin_only",
     # The caller's own grants: a statement about them, naming no element.
     ("GET", "/api/noc/access"): "unscoped",

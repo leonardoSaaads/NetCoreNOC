@@ -1,16 +1,17 @@
-/* The step-up: your username, your password and — once two-factor sign-in exists — a code from
- * your authenticator app, asked again before the vault does anything that matters (ADR #456).
+/* The step-up: your username, your password and a code from your authenticator app, asked again
+ * before the vault does anything that matters (ADRs #456, #482).
  *
  * The server decides; this collects. It is shown inline beside the act it authorises (reveal,
  * change, delete, agents on, a custodian named) and its values go out in that act's own request,
  * so nothing outlives the one thing it was typed for. The fields are remounted empty after every
  * attempt, right or wrong.
  *
- * ## The second factor is a placeholder, and looks like one
+ * ## The second factor is the authenticator code (ADR #482)
  *
- * The server says whether an account can use one (`secondFactor`, from the vault's own answer).
- * Until two-factor sign-in ships the code field is drawn **disabled**, with the sentence why —
- * never enabled and quietly ignored, which would teach an operator that six digits were checked.
+ * The same six digits signing in asks for, from the same app. The server says whether the account
+ * has an authenticator (`secondFactor`, from the vault's own answer); every account that can reach
+ * this has one, since every session is opened by a code. A code already used is refused, so the
+ * field asks for the one the app shows now.
  */
 
 import { html, Component } from "../../dom.js";
@@ -55,13 +56,12 @@ export class StepUpFields extends Component {
         <label for=${this.ids.otp}>Authenticator code</label>
         <input id=${this.ids.otp} value=${otp} inputmode="numeric" maxlength="8"
           autocomplete="one-time-code" disabled=${!enrolled}
-          placeholder=${enrolled ? "123456" : "not enabled yet"}
+          placeholder=${enrolled ? "123456" : "no authenticator"}
           aria-describedby=${`${this.ids.otp}-note`}
           onInput=${(e) => this.update({ otp: e.currentTarget.value })} />
         <p class="hint stepup-note" id=${`${this.ids.otp}-note`}>${enrolled
-          ? "From Google Authenticator, Authy or another authenticator app."
-          : "Two-factor sign-in (Google Authenticator, Authy) is not available on this appliance " +
-            "yet. When it is, this code will be required here too."}</p>
+          ? "The 6 digits your authenticator app shows now — not the ones you signed in with."
+          : "This account has no authenticator. Sign out and in again to set one up."}</p>
       </div>
     </div>`;
   }

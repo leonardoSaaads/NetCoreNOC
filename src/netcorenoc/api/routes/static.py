@@ -77,10 +77,10 @@ _UI_MODULES = (
     "app/views/account.js",
     "app/views/audit.js",
     "app/views/classes.js",
-    "app/views/corpus.js",
     "app/views/entities.js",
     "app/views/graph.js",
-    "app/views/labelling.js",
+    "app/views/learning.js",
+    "app/views/parts/learnuml.js",
     "app/views/overview.js",
     "app/views/promotion.js",
     "app/views/maintenance.js",
@@ -207,6 +207,8 @@ _UI_MODULES = (
     # v0.30.0: recovery on the sign-in card, Settings → SNMP and Email, the API reference and the
     # visibility examples (ADRs #444-#446).
     "app/recover.js",
+    # ADR #482: two-factor sign-in on screen (the QR code, the code field, recovery codes).
+    "app/twofactor.js",
     "app/views/parts/snmp.js",
     "app/views/parts/snmpuser.js",
     "app/views/parts/email.js",
@@ -256,6 +258,8 @@ _UI_MODULES = (
     # ADR #477: what a local Ollama has, and moving an agent in the chart.
     "app/views/parts/ollamamodels.js",
     "app/views/parts/orgmove.js",
+    # ADR #483: the Overview before the first trap — three pictures of what to do.
+    "app/views/parts/firstrun.js",
     # ADR #473: the customers' books.
     "app/views/customers.js",
     "app/views/parts/custbook.js",

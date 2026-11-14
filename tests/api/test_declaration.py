@@ -33,6 +33,7 @@ from netcorenoc.api.app import create_app
 from netcorenoc.api.declare import DeclaredRoutes, UndeclaredRouteError, require_declaration
 from netcorenoc.api.routes import static as routes_static
 from netcorenoc.crosscutting import auth, rbac
+from netcorenoc.crosscutting.rbac import account_map as _account_map
 from netcorenoc.crosscutting.rbac import noc_map as _noc_map
 from netcorenoc.crosscutting.rbac import route_map as _route_map  # noqa: F401  (rbac.route_map)
 from netcorenoc.store import Store
@@ -715,11 +716,16 @@ async def test_f43_every_path_served_today_still_registers(store: Store) -> None
     # Unreleased: 341 -> 348 and 189 -> 193 — Start working this opens a case (ADR #480: one /api
     # pair), a customer's email (ADR #481: three /api pairs) and three UI modules (a customer's
     # Access and Email, and the credential list they share with the vault).
-    assert len(served) == 348, f"the served surface moved: {len(served)} method/path pairs"
+    # Unreleased: 348 -> 354 and 193 -> 197 — two-factor sign-in (ADR #482: four /api pairs and
+    # one UI module), the Overview before the first trap (ADR #483: one UI module), and Learning
+    # (ADR #484: two UI modules in, Labelling's and Corpus's out).
+    # Unreleased: 354 -> 357 and 197 -> 200 — the audit log's facets (ADR #486), and finding and
+    # trying a local Ollama (ADR #487).
+    assert len(served) == 357, f"the served surface moved: {len(served)} method/path pairs"
     api_pairs = {(method, path) for method, path in served if path.startswith("/api")}
     # **v0.19.0: 53 -> 55.** `GET /api/models` and `POST /api/models/register`: what the
     # models are doing, and turning one of this appliance's own fits into an artefact.
-    assert len(api_pairs) == 193, (
+    assert len(api_pairs) == 200, (
         f"the /api surface moved: {len(api_pairs)} pairs. v0.16.0 adds exactly five — the "
         f"operator's five gestures — v0.16.2 adds exactly one, `POST …/promote` (DECISIONS #273), "
         f"v0.16.5 adds exactly one, `POST /api/alarms/clear` (DECISIONS #301), "
@@ -909,11 +915,16 @@ async def test_f42_every_path_served_today_still_registers(store: Store) -> None
     # Unreleased: 341 -> 348 and 189 -> 193 — Start working this opens a case (ADR #480: one /api
     # pair), a customer's email (ADR #481: three /api pairs) and three UI modules (a customer's
     # Access and Email, and the credential list they share with the vault).
-    assert len(served) == 348, f"the served surface moved: {len(served)} method/path pairs"
+    # Unreleased: 348 -> 354 and 193 -> 197 — two-factor sign-in (ADR #482: four /api pairs and
+    # one UI module), the Overview before the first trap (ADR #483: one UI module), and Learning
+    # (ADR #484: two UI modules in, Labelling's and Corpus's out).
+    # Unreleased: 354 -> 357 and 197 -> 200 — the audit log's facets (ADR #486), and finding and
+    # trying a local Ollama (ADR #487).
+    assert len(served) == 357, f"the served surface moved: {len(served)} method/path pairs"
     api_pairs = {(method, path) for method, path in served if path.startswith("/api")}
     # **v0.19.0: 53 -> 55.** `GET /api/models` and `POST /api/models/register`: what the
     # models are doing, and turning one of this appliance's own fits into an artefact.
-    assert len(api_pairs) == 193, (
+    assert len(api_pairs) == 200, (
         f"the /api surface moved: {len(api_pairs)} pairs. v0.16.0 adds exactly five — the "
         f"operator's five gestures — v0.16.2 adds exactly one, `POST …/promote` (DECISIONS #273), "
         f"v0.16.5 adds exactly one, `POST /api/alarms/clear` (DECISIONS #301), "
@@ -985,8 +996,9 @@ def test_every_unscoped_declaration_carries_a_written_justification() -> None:
     # 400-line guard. The guard follows the table rather than the filename.
     # ADR #454: and the NOC plane's table, in `noc_map.py`, which `route_map.py` folds in — the
     # guard follows the table into the file that holds it.
+    # ADR #482: and the caller's own account's table, in `account_map.py`, folded in the same way.
     lines: list[str] = []
-    for module in (rbac.route_map, _noc_map):
+    for module in (_account_map, rbac.route_map, _noc_map):
         source = Path(str(module.__file__)).read_text(encoding="utf-8")
         lines += source.split("ROUTE_SCOPE: dict[", 1)[1].split("\n}\n", 1)[0].splitlines()
     entries = [i for i, line in enumerate(lines) if line.strip().endswith(': "unscoped",')]
@@ -1012,7 +1024,9 @@ def test_every_unscoped_declaration_carries_a_written_justification() -> None:
     # ADRs #465-#467: 45 -> 59 — the five playbook routes (a tree names no element; writing one is
     # gated by the agent grant), the nine agent routes and the MCP door (staff, not elements).
     # ADRs #470, #471: 59 -> 61 — the caller's own NOC grants, and an AI key's models (custody).
-    assert len(entries) == 61, entries
+    # ADR #482: 61 -> 63 — the caller's own recovery codes and authenticator: an account.
+    # ADR #487: 63 -> 65 — finding a local Ollama and trying a model: custody, not scope.
+    assert len(entries) == 65, entries
     unjustified = [lines[i].strip() for i in entries if not lines[i - 1].strip().startswith("#")]
     assert not unjustified, (
         "every `unscoped` route must be preceded by a comment saying why it is not scoped:\n  "
@@ -1192,7 +1206,9 @@ def test_the_three_postures_are_all_populated() -> None:
     # ADRs #465-#467: 51 -> 50. The playbook routes leave (`playbooks.*` is editor now, the write
     # gated by the agent grant); hiring, changing, terminating an agent and its key arrive.
     # ADR #477: 50 -> 51. Ending a customer is inventory structure, as creating one is.
-    assert len(ADMIN_ONLY) == 51, len(ADMIN_ONLY)
+    # ADR #482: 51 -> 52. Forgetting a person's authenticator, by `users.manage`.
+    # ADR #486: 52 -> 53. The audit log's facets, by `audit.read`, as the log itself.
+    assert len(ADMIN_ONLY) == 53, len(ADMIN_ONLY)
     # v0.18.0: 6 -> 7. `GET /api/correlation` is `unscoped` for `GET /api/scorer`'s reason
     # — counters over the scorer's own decisions are a statement about arithmetic and
     # name no network element (Part II).
@@ -1211,7 +1227,9 @@ def test_the_three_postures_are_all_populated() -> None:
     # Unreleased: 43 -> 45, `POST /api/noc/exec` and `POST …/hostkey` (ADR #462).
     # Unreleased: 45 -> 59, the playbooks, agents and MCP routes named above (ADRs #465-#467).
     # ADRs #470, #471: 59 -> 61, the two named at the justification test above.
-    assert len(UNSCOPED) == 61, UNSCOPED
+    # ADR #482: 61 -> 63, the two named at the justification test above.
+    # ADR #487: 63 -> 65, the two named there too.
+    assert len(UNSCOPED) == 65, UNSCOPED
     # v0.16.0: 12 -> 17. Every one of the five gestures names a network element and every one
     # is below `admin`, so every one is `scoped` — the write perimeter F34 established,
     # widened by exactly the routes this release adds.

@@ -42,6 +42,8 @@ export function setSession(me) {
     capabilities: new Set(me.capabilities || []),
     scope: me.scope || { scoped: false, ne_count: null },
     mustChangePassword: !!me.must_change_password,
+    // ADR #482: the person's authenticator — enrolled, since when, recovery codes left.
+    twoFactor: me.two_factor || null,
   };
   if (me && me.password_policy) setPasswordPolicy(me.password_policy);
   for (const listener of listeners) listener(current);

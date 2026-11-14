@@ -7030,3 +7030,117 @@ From this release an entry is about six lines: decision, reason, release.*
   instructions in one place; a customer that answers by email is heard by the case it answered;
   and a reply that brings a case back is work for whichever agent is free, not for the one that
   happened to have it.
+
+## 482. Two-factor sign-in for every person: an authenticator code after the password (unreleased)
+
+- **Context**: the password was every account's only factor; ADR #456 left a placeholder for the
+  second in the vault's step-up. The owner asked for two-factor sign-in, **mandatory**, set up at
+  the first sign-in with a QR code, recovery codes to keep, and the first code to prove it works.
+- **Decision** (`crosscutting/totp.py`): codes are TOTP (RFC 6238 — HMAC-SHA1, six digits, 30
+  seconds, one step either side accepted), standard library only, so Google Authenticator, Authy,
+  1Password and Microsoft Authenticator all read the same `otpauth://` link. A code is accepted
+  **once**: the step it was accepted for is recorded and a code for that step or an earlier one is
+  refused (`REPLAY_GUARD`, on in production and asserted). Ten **recovery codes** per enrolment,
+  single-use, stored as keyed digests (HMAC under the appliance's key), never in clear.
+- **Decision** (`crosscutting/qrcode.py`): the QR code is drawn **by the appliance** — byte mode,
+  level M, versions 1–20, masks scored by the standard's penalty — and sent as rows of modules the
+  console draws as one inline SVG path. No new dependency, no third-party script near the secret,
+  and the page's CSP (`img-src 'self'`) is untouched. Its output is identical, bit for bit, to
+  Project Nayuki's reference encoder over 768 sizes and masks; the test pins one digest.
+- **Decision** (`migrations/0045_two_factor.sql`, `crosscutting/twostep.py`,
+  `api/routes/two_factor.py`): `POST /api/login` checks the password and opens **no session**: it
+  answers with a challenge (256 random bits; only its SHA-256 is stored; ten minutes; five wrong
+  codes). `POST /api/login/code` answers it — the authenticator's code, or a recovery code — and
+  only then is the session opened and its cookie set. A person without an authenticator (everyone
+  the first time, anyone an admin reset) is shown a new secret, its QR code and ten recovery codes
+  in the challenge; the secret becomes theirs only when the first code from the app is right, so an
+  abandoned enrolment enrols nothing. Wrong codes count against **a throttle of their own** that a
+  right password does not reset. Every session open at the migration ends (they were opened by a
+  password alone). Service tokens are untouched.
+- **Decision**: the vault's step-up (ADR #456) checks the code for real: `stepup.second_factor`
+  answers `verified`, `failed` or `not-enrolled`, records the step, and a refusal says so.
+- **Decision**: a person manages their own authenticator under *Your account → Security*: when it
+  was set up and last used, recovery codes left, **new recovery codes** and **move to a new phone**
+  (each asks for the password and a current code). An admin can **reset someone else's**
+  (`POST /api/users/{uid}/two-factor/reset`, never their own); the CLI's
+  `python -m netcorenoc admin reset-two-factor <user>` is the break-glass for the only admin.
+  Audited as `twofactor.enroll`, `twofactor.recovery_codes`, `twofactor.reset`, and `login.ok`
+  records how the second factor was given.
+- **Decision** (`ui/app/login.js`, `ui/app/twofactor.js`): on screen, the password card moves left
+  and locks; the second step slides in beside it — the QR code, the key as text on request, the
+  recovery codes (copy, save as text) with "I saved them" required before the code — hidden by
+  default, as dots after "Show codes", in clear only after "I'm ready — show them", so a screen in
+  a public place gives nothing away (the key as text likewise) — and the code as
+  six boxes over one real input (one-time-code autofill). An enrolled person sees only the six
+  boxes and "Lost your phone? Use a recovery code". Below 900 px the card steps aside.
+- **Reason**: a password is one stolen string away from an account; a code from a phone is not.
+
+## 483. The Overview before the first trap: three pictures instead of a paragraph (unreleased)
+
+- **Decision** (`ui/app/views/parts/firstrun.js`): with no device, alarm or situation yet, the
+  Overview shows three panels, each a drawing first — (1) equipment pointing its traps at the
+  appliance, with the trap destination to copy and a live "waiting" mark; (2) alarms grouped into a
+  situation, confirmed, then *Start working this* opening a NOC case; (3) the NOC working it to the
+  end. A test trap command and where to look when nothing arrives are folded below. The screen
+  becomes the real Overview by itself when the first trap arrives.
+- **Reason**: the person who sees this screen is the one who knows least; a paragraph was the
+  wrong medium for three steps.
+
+## 484. Learning: Labelling and Corpus as one screen, around a UML diagram (unreleased)
+
+- **Decision** (`ui/app/views/learning.js`, `ui/app/views/parts/learnuml.js`): one screen where
+  there were two. A class diagram says once how a judgement teaches the models — `Alarm` (2..*)
+  aggregates into a `Situation`; a judgement yields `Label`s, each a `PositivePair` (confirm) or a
+  `NegativePair` (split); labels are kept in the `Corpus`; the `Model` reads the corpus — with this
+  appliance's numbers in the attribute compartments. Each class is a button that says what it is
+  and opens where to act. Two tabs follow: **To judge** (proposals and groupings in one list, each
+  with its action) and **Corpus** (admins: what capture holds, and the three retention tiers).
+  `#/labelling` and `#/corpus` still open the screen on their tab.
+- **Reason**: neither screen said much on its own; together they answer one question.
+
+## 485. Judge & promotion in five tabs; the ROC chart's reference line (unreleased)
+
+- **Decision** (`ui/app/views/promotion.js`, `ui/app/views/parts/league.js`): Overview (who
+  decides, the league table), Charts (every model on shared axes, or one model's ten), Site labels,
+  Live, Record (the legacy challenger path, no longer folded at the bottom). The tab is in the
+  address; `?model=` opens Charts on that model. The model switch on Charts is a row of pills.
+- **Decision** (`ui/app/modelcharts.js`): the ROC chart has linear axes from 0 to 1, and the
+  dashed chance line `y = x` is drawn **only where both axes cover it**. It was a log FPR axis
+  with a padded y axis, and the line, clamped into the box, ran along the bottom edge before rising
+  — the "incorrect dashed line". Precision-recall stops at 1.0. Every chart is a card in a grid of
+  two columns (three for "what it costs"), one height per row; the y axis's name sits above the
+  plot.
+
+## 486. The audit log, found by period, person, section and outcome (unreleased)
+
+- **Decision** (`store/audit_log.py`, `api/routes/audit.py`, `crosscutting/audit_sections.py`):
+  `GET /api/audit` takes `since`, `until`, `actor`, `section`, `outcome`, `q` (a substring of the
+  action, the actor or the object; wildcards escaped) and `before` (a cursor), each a bound
+  parameter; the read is audited **with the filters it used**. `GET /api/audit/facets` returns the
+  people in the log with their counts, each section with its count, and the period covered. Every
+  action in the catalogue is filed under one of seven sections — sign-in, people, situations,
+  models, settings, the NOC, the audit log — and a test fails if a new one is left out.
+- **Decision** (`ui/app/views/audit.js`): the filters are the screen; rows open in place (source
+  address, details); "Load older" pages back; "Download view" saves the rows on screen as CSV; the
+  whole chain still exports as NDJSON. Chain integrity is one line, prune is folded under Retention.
+
+## 487. A local Ollama that works: its own API with a context window, found and tried (unreleased)
+
+- **Context**: the owner's agents on a local Ollama answered but did not act, while AnythingLLM
+  on the same model worked. The agent loop reached Ollama through its OpenAI-compatible endpoint,
+  which **cannot set the context window**: Ollama used its default (2–4k tokens) and silently cut
+  the start of a prompt several times longer — the instructions and the NOC's tool definitions.
+- **Decision** (`engine/noc/ollama_chat.py`, `engine/noc/llm_http.py`): an Ollama turn goes to its
+  native `POST /api/chat` with `options.num_ctx` (16 384 unless the agent's admin chose 8k, 32k or
+  64k), `keep_alive` (the model stays loaded between a case's turns) and the tools in Ollama's
+  format; the answer is turned back into the Chat Completions shape, so the loop is the same for
+  every provider.
+- **Decision** (`GET /api/noc/providers/ollama/detect`): **Detect**, as AnythingLLM does — the
+  appliance tries the addresses a local Ollama usually answers at (this host,
+  `host.docker.internal`, a compose service `ollama`, the Docker bridge, the container's gateway) and
+  lists what answered, version and models. The list is the appliance's own: nothing a caller types
+  is dialled. When nothing answers, the panel says the three things to check.
+- **Decision** (`POST /api/noc/secrets/{id}/try`): **Try**, per model — one short timed turn with
+  one tool: did it answer, did it call the tool, in how many seconds. Audited as `noc.secret.use`.
+- **Reason**: a local model should be as easy here as elsewhere, and "answers but never acts" was
+  a context window, not the model.

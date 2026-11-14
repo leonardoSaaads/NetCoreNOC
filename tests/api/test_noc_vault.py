@@ -27,7 +27,7 @@ import authutil
 
 PW = authutil.PW
 SECRET = "Backbone-r00t-only-the-vault-knows"
-STEP = {"username": "adm", "password": PW}
+STEP = {"username": "adm", "password": PW, "otp": authutil.OTP}
 
 
 def _new(
@@ -108,15 +108,18 @@ async def test_a_reveal_takes_a_step_up_and_both_outcomes_are_audited(store: Sto
         assert wrong.status_code == 403 and SECRET not in wrong.text
         other = await admin.post(url, json={"stepup": {"username": "edt", "password": PW}})
         assert other.status_code == 403, "a colleague's password does not borrow their custody"
-        shown = await admin.post(url, json={"stepup": {**STEP, "otp": "123456"}})
+        wrong_code = authutil.code("ONSWG4TFOQZGKZDTMVSWYZLDN5SGK3TU")  # another app's code
+        bad = await admin.post(url, json={"stepup": {**STEP, "otp": wrong_code}})
+        assert bad.status_code == 403, "a code from another authenticator is refused"
+        shown = await admin.post(url, json={"stepup": STEP})
         assert shown.status_code == 200
         assert shown.json()["fields"] == {"username": "noc", "password": SECRET}
         assert shown.headers["cache-control"] == "no-store"
         rows = [r for r in await _audit(store) if r["action"] == "noc.secret.reveal"]
-        assert [r["outcome"] for r in rows] == ["denied", "denied", "ok"]
+        assert [r["outcome"] for r in rows] == ["denied", "denied", "denied", "ok"]
         assert all(r["actor"] == "adm" and r["object_id"] == str(sid) for r in rows)
         details = json.loads(rows[-1]["details"])
-        assert details["second_factor"] == "not-enrolled", "the placeholder says what it is"
+        assert details["second_factor"] == "verified", "the authenticator code was checked"
         history = (await admin.get(f"/api/noc/secrets/{sid}")).json()["history"]
         assert [h["action"] for h in history][:1] == ["noc.secret.reveal"]
         assert history[-1]["action"] == "noc.secret.create" and history[-1]["actor"] == "adm"

@@ -6,9 +6,10 @@ from pathlib import Path
 import pytest
 from hypothesis import settings
 
-from netcorenoc.crosscutting import auth, secretbox, vault
+from netcorenoc.crosscutting import auth, secretbox, totp, vault
 from netcorenoc.store import Store
 
+import authutil
 import paths
 import pgtemp
 
@@ -86,6 +87,23 @@ def _fast_scrypt(monkeypatch: pytest.MonkeyPatch) -> None:
     (2**17), asserted by test_auth.test_production_scrypt_parameters; verification always
     reads the parameters embedded in each stored hash, so this only affects test cost."""
     monkeypatch.setattr(auth, "SCRYPT_N", 2**14)
+
+
+@pytest.fixture(autouse=True)
+def _frozen_authenticator(request: pytest.FixtureRequest, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Freeze the authenticator's clock and let a code be used more than once (ADR #482).
+
+    Every person signs in with a code now, and the suite signs the same role in many times a
+    second. Production refuses a code twice (`totp.REPLAY_GUARD`, asserted by a policy test) and
+    moves with the clock; here every code is the one for `authutil.FROZEN_TOTP_STEP`, so a
+    step-up body written once (`authutil.OTP`) stays right. The codes are still checked against
+    the secret: a wrong code is refused exactly as in production. A test marked
+    ``real_authenticator`` gets the real clock and the replay guard back.
+    """
+    if request.node.get_closest_marker("real_authenticator") is not None:
+        return
+    monkeypatch.setattr(totp, "REPLAY_GUARD", False)
+    monkeypatch.setattr(totp, "step_at", lambda _now: authutil.FROZEN_TOTP_STEP)
 
 
 @pytest.fixture(autouse=True)

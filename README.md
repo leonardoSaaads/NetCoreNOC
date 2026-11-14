@@ -32,6 +32,8 @@
   OpenAI-compatible model, a local Ollama or Claude) take the case, read the customer's devices with
   read-only commands (SSH, SNMP, secure Telnet) and email the customer update; the customer's reply
   comes back to the case. Agents lease short-lived tokens and never see a password.
+* **Secure by default**: two-factor sign-in (an authenticator app) for every person, credentials
+  sealed twice, a hash-chained audit log you can search by period, person and section.
 * One appliance: three Python processes, PostgreSQL and a web console. No accepted trap is lost to a
   slow model or a restart.
 
@@ -46,14 +48,15 @@ docker compose up -d --build
 docker compose logs netcorenoc | grep -A4 "bootstrap admin"   # the one-time password for `admin`
 ```
 
-1. Open `http://127.0.0.1:8080/` (or `http://<host>:8080/`), sign in as `admin` and choose a new
-   password.
+1. Open `http://127.0.0.1:8080/` (or `http://<host>:8080/`), sign in as `admin`, choose a new
+   password and set up two-factor sign-in: scan the QR code with an authenticator app, keep the
+   recovery codes, type the code.
 2. Point the devices' **SNMP trap destination** at the host, UDP **162** (v1/v2c; SNMPv3 users go in
    **Settings → SNMP**).
 3. Watch **Situations**.
 
 AI agents (optional): switch the top bar to **NOC**. Its Overview lists what is missing, each item a
-link: connect a model under **Agents → AI providers**, hire an agent, and in each customer's
+link: connect a model under **Agents → AI providers** (a local Ollama is found by itself), hire an agent, and in each customer's
 **Access** store its devices' credentials and switch agents on; its **Email** sends the customer
 updates and reads the replies. No equipment yet? [`docs/simulate.md`](docs/simulate.md) sends real
 traps from simulated devices.

@@ -32,7 +32,7 @@ from netcorenoc.api.agent_tools import (
     system_prompt,
     toolbox,
 )
-from netcorenoc.engine.noc import llm_http, providers
+from netcorenoc.engine.noc import llm_http, ollama_chat, providers
 from netcorenoc.engine.noc.agent_loop import Outcome, Runner
 from netcorenoc.engine.noc.llm_http import ProviderCallError
 from netcorenoc.engine.noc.providers import Provider
@@ -99,6 +99,9 @@ def openai_runner(app: Any, store: Store, *, chat: Chat = llm_http.chat) -> Runn
             }
             if functions:
                 payload |= {"tools": functions, "tool_choice": "auto"}
+            if keys.provider.ollama:
+                # ADR #487: the context window, which only Ollama's own API takes.
+                payload["num_ctx"] = int(config.get("num_ctx") or ollama_chat.DEFAULT_NUM_CTX)
             try:
                 answer = await chat(
                     keys.provider, keys.base_url, keys.api_key, payload, timeout=left

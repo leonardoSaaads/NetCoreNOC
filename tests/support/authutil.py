@@ -3,11 +3,12 @@
 from __future__ import annotations
 
 import asyncio
+import time
 
 import httpx
 
 from netcorenoc.api import create_app
-from netcorenoc.crosscutting import administration, auth
+from netcorenoc.crosscutting import administration, auth, totp
 from netcorenoc.ingest.receiver import QueueItem
 from netcorenoc.main import Engine
 from netcorenoc.store import Store
@@ -15,14 +16,39 @@ from netcorenoc.store import Store
 PW = "correct horse battery staple"  # 28 chars, satisfies the 12-char policy
 ROLE_USER = {"viewer": "vwr", "editor": "edt", "admin": "adm"}
 ORIGIN = "http://netcorenoc.test"
+#: The authenticator secret every ready-made account is enrolled with (ADR #482), and the code it
+#: shows at the suite's frozen step (`conftest.FROZEN_TOTP_STEP`): what a step-up body carries.
+TOTP_SECRET = "JBSWY3DPEHPK3PXPJBSWY3DPEHPK3PXP"
+
+
+def code(secret: str = TOTP_SECRET) -> str:
+    """The code ``secret`` shows now — at the suite's frozen step, unless the test is marked
+    ``real_authenticator``."""
+    return totp.code_at(secret, totp.step_at(time.time()))
+
+
+#: The 30-second step every authenticator in the suite lives at (`conftest._frozen_authenticator`).
+FROZEN_TOTP_STEP = 59_091_840
+OTP = totp.code_at(TOTP_SECRET, FROZEN_TOTP_STEP)
 
 
 async def make_users(store: Store) -> None:
-    """Bootstrap admin (forced-change) plus ready-to-use admin/editor/viewer accounts."""
+    """Bootstrap admin (forced-change) plus ready-to-use admin/editor/viewer accounts, each with an
+    authenticator already enrolled (:data:`TOTP_SECRET`, ADR #482)."""
     async with store.lock:
         await administration.bootstrap_admin(store, 0.0)
         for role, name in ROLE_USER.items():
-            await store.create_user(name, auth.hash_password(PW), role, False, 0.0)
+            uid = await store.create_user(name, auth.hash_password(PW), role, False, 0.0)
+            await store.enroll_second_factor(uid, TOTP_SECRET, 0, [], 0.0)
+        await store.commit()
+
+
+async def enroll(store: Store, username: str, secret: str = TOTP_SECRET) -> None:
+    """Give an account made by a test an authenticator, as signing in would."""
+    async with store.lock:
+        user = await store.get_user_by_name(username)
+        assert user is not None, username
+        await store.enroll_second_factor(int(user["id"]), secret, 0, [], 0.0)
         await store.commit()
 
 
@@ -77,8 +103,21 @@ def new_client(app: object) -> httpx.AsyncClient:
     )
 
 
+async def sign_in(
+    client: httpx.AsyncClient, username: str, password: str = PW, secret: str = TOTP_SECRET
+) -> httpx.Response:
+    """Both steps of signing in (ADR #482): the password, then the authenticator's code. Returns
+    the password step's response when it is refused, else the code step's."""
+    first = await client.post("/api/login", json={"username": username, "password": password})
+    if first.status_code != 200 or "challenge" not in first.json():
+        return first
+    return await client.post(
+        "/api/login/code", json={"challenge": first.json()["challenge"], "code": code(secret)}
+    )
+
+
 async def login(client: httpx.AsyncClient, role: str, password: str = PW) -> httpx.Response:
-    return await client.post("/api/login", json={"username": ROLE_USER[role], "password": password})
+    return await sign_in(client, ROLE_USER[role], password)
 
 
 async def client_as(app: object, role: str | None) -> httpx.AsyncClient:

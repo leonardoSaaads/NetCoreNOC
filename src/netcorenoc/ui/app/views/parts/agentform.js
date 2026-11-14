@@ -38,6 +38,7 @@ function initial(agent) {
     effort: config.effort || "high",
     secret_id: config.secret_id || "", max_turns: config.max_turns || 20,
     price_in: config.price_in || 0, price_out: config.price_out || 0,
+    num_ctx: config.num_ctx || 16384,
     url: config.url || "", timeout_s: config.timeout_s || 10,
   };
 }
@@ -50,7 +51,9 @@ function adapterConfig(st) {
   if (st.adapter === "openai") {
     return { provider: st.provider, model: st.model.trim(), secret_id: Number(st.secret_id) || null,
       max_turns: Number(st.max_turns) || 20, price_in: Number(st.price_in) || 0,
-      price_out: Number(st.price_out) || 0 };
+      price_out: Number(st.price_out) || 0,
+      // ADR #487: a local Ollama's context window; the server ignores it for any other provider.
+      ...(st.provider === "ollama" ? { num_ctx: Number(st.num_ctx) || 16384 } : {}) };
   }
   if (st.adapter === "webhook") return { url: st.url.trim(), timeout_s: Number(st.timeout_s) || 10 };
   return {};

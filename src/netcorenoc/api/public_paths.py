@@ -63,10 +63,10 @@ UNAUTHENTICATED_PATHS: frozenset[str] = frozenset(
         "/app/views/account.js",
         "/app/views/audit.js",
         "/app/views/classes.js",
-        "/app/views/corpus.js",
         "/app/views/entities.js",
         "/app/views/graph.js",
-        "/app/views/labelling.js",
+        "/app/views/learning.js",
+        "/app/views/parts/learnuml.js",
         "/app/views/overview.js",
         "/app/views/promotion.js",
         "/app/views/maintenance.js",
@@ -168,6 +168,9 @@ UNAUTHENTICATED_PATHS: frozenset[str] = frozenset(
         # exists — Settings → SNMP and Email, the API reference, the visibility examples, and the
         # sign-in artwork.
         "/app/recover.js",
+        # ADR #482: the sign-in's second step — the QR code, the code field, recovery codes. The
+        # sign-in card imports it, so it is fetched before any identity exists.
+        "/app/twofactor.js",
         "/app/views/parts/snmp.js",
         "/app/views/parts/snmpuser.js",
         "/app/views/parts/email.js",
@@ -214,6 +217,8 @@ UNAUTHENTICATED_PATHS: frozenset[str] = frozenset(
         # ADR #477: what a local Ollama has, and moving an agent in the chart.
         "/app/views/parts/ollamamodels.js",
         "/app/views/parts/orgmove.js",
+        # ADR #483: the Overview before the first trap.
+        "/app/views/parts/firstrun.js",
         # ADR #473: the customers' books.
         "/app/views/customers.js",
         "/app/views/parts/custbook.js",

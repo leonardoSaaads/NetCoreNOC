@@ -213,10 +213,17 @@ def _openai(config: Mapping[str, Any]) -> dict[str, Any]:
     secret = config.get("secret_id")
     if not isinstance(secret, int) or isinstance(secret, bool) or secret < 1:
         raise AgentError("adapter_config.secret_id: the vault credential with the provider's key")
+    window = (
+        # ADR #487: a local Ollama's context window; the API it is reached by takes one.
+        {"num_ctx": _int("adapter_config.num_ctx", config.get("num_ctx", 16_384), 2_048, 131_072)}
+        if provider == "ollama"
+        else {}
+    )
     return {
         "provider": provider,
         "model": model,
         "secret_id": secret,
+        **window,
         "max_turns": _int("adapter_config.max_turns", config.get("max_turns", 20), 1, 60),
         "max_tokens": _int(
             "adapter_config.max_tokens", config.get("max_tokens", 16000), 1024, 64000

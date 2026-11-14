@@ -92,14 +92,82 @@ class AuditLogMixin(StoreBase):
         )
         return [dict(r) for r in await cur.fetchall()]
 
-    async def list_audit(self, limit: int) -> list[dict[str, Any]]:
-        """Most-recent audit rows for the viewer (no hashes; details left as JSON text)."""
+    async def list_audit(
+        self,
+        limit: int,
+        *,
+        since: float | None = None,
+        until: float | None = None,
+        actor: str | None = None,
+        words: tuple[str, ...] | None = None,
+        outcome: str | None = None,
+        text: str | None = None,
+        before_id: int | None = None,
+    ) -> list[dict[str, Any]]:
+        """Most-recent audit rows for the viewer, newest first (no hashes; details as JSON text).
+
+        ADR #486: narrowed by a period (``since``/``until``, epoch seconds), a person (``actor``,
+        exact), a section (``words``: the first words of its actions), an ``outcome``, and
+        ``text`` — a case-insensitive substring of the action, the actor or the object; paged with
+        ``before_id``. Every value is a bound parameter; ``text`` has its LIKE wildcards escaped.
+        """
+        where: list[str] = []
+        params: list[Any] = []
+        if since is not None:
+            where.append("ts >= ?")
+            params.append(since)
+        if until is not None:
+            where.append("ts <= ?")
+            params.append(until)
+        if actor:
+            where.append("actor = ?")
+            params.append(actor)
+        if words:
+            where.append("split_part(action, '.', 1) = ANY(?)")
+            params.append(list(words))
+        if outcome:
+            where.append("outcome = ?")
+            params.append(outcome)
+        if text:
+            escaped = text.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+            needle = f"%{escaped}%"
+            where.append(
+                "(action ILIKE ? OR actor ILIKE ? OR coalesce(object_type, '') || '/' || "
+                "coalesce(object_id, '') ILIKE ?)"
+            )
+            params += [needle, needle, needle]
+        if before_id is not None:
+            where.append("id < ?")
+            params.append(before_id)
+        clause = f"WHERE {' AND '.join(where)} " if where else ""
         cur = await self.conn.execute(
             "SELECT id, ts, actor, role, source_ip, action, object_type, object_id, outcome, "
-            "details FROM audit_log ORDER BY id DESC LIMIT ?",
-            (limit,),
+            f"details FROM audit_log {clause}ORDER BY id DESC LIMIT ?",  # nosec B608 - fixed text
+            (*params, limit),
         )
         return [dict(r) for r in await cur.fetchall()]
+
+    async def audit_facets(self) -> dict[str, Any]:
+        """What the audit log's filters can offer: who appears in it and how often, each action's
+        count, and the first and last timestamps (ADR #486). Aggregates only."""
+        cur = await self.conn.execute(
+            "SELECT actor, COUNT(*) AS n FROM audit_log GROUP BY actor ORDER BY n DESC LIMIT 200"
+        )
+        actors = [{"actor": r[0], "count": int(r[1])} for r in await cur.fetchall()]
+        cur = await self.conn.execute(
+            "SELECT action, COUNT(*) AS n FROM audit_log GROUP BY action ORDER BY action"
+        )
+        actions = {str(r[0]): int(r[1]) for r in await cur.fetchall()}
+        cur = await self.conn.execute("SELECT MIN(ts), MAX(ts), COUNT(*) FROM audit_log")
+        row = await cur.fetchone()
+        assert row is not None
+        return {
+            "actors": actors,
+            "actions": actions,
+            "first": row[0],
+            "last": row[1],
+            "total": int(row[2]),
+        }
 
     async def prune_audit(self, cutoff: float) -> int:
         """Delete audit rows older than cutoff. The one sanctioned deleter (DECISIONS v0.2 #3),

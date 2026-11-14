@@ -390,3 +390,10 @@ open_case  # unused function (netcorenoc/api/routes/cases.py) — ADR #480
 get_mail  # unused function (netcorenoc/api/routes/customer_mail.py) — ADR #481
 set_mail  # unused function (netcorenoc/api/routes/customer_mail.py)
 test_mail  # unused function (netcorenoc/api/routes/customer_mail.py)
+login_code  # unused function (netcorenoc/api/routes/two_factor.py) — ADR #482
+new_recovery_codes  # unused function (netcorenoc/api/routes/two_factor.py)
+reset_my_two_factor  # unused function (netcorenoc/api/routes/two_factor.py)
+reset_user_two_factor  # unused function (netcorenoc/api/routes/two_factor.py)
+audit_facets  # unused function (netcorenoc/api/routes/audit.py) — ADR #486
+detect_ollama  # unused function (netcorenoc/api/routes/providers.py) — ADR #487
+try_model  # unused function (netcorenoc/api/routes/providers.py)

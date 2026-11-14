@@ -30,11 +30,19 @@ def _raw_client(app: object) -> httpx.AsyncClient:
     return httpx.AsyncClient(transport=transport, base_url=f"http://{HOST}")
 
 
-async def _login_admin(client: httpx.AsyncClient) -> None:
-    resp = await client.post(
+async def _login_admin(client: httpx.AsyncClient) -> httpx.Response:
+    """Both steps of signing in (ADR #482), each with the Origin a browser would send."""
+    first = await client.post(
         "/api/login", json={"username": "adm", "password": authutil.PW}, headers={"Origin": ORIGIN}
     )
+    assert first.status_code == 200, first.text
+    resp = await client.post(
+        "/api/login/code",
+        json={"challenge": first.json()["challenge"], "code": authutil.OTP},
+        headers={"Origin": ORIGIN},
+    )
     assert resp.status_code == 200, resp.text
+    return resp
 
 
 LABEL = {"kind": "ne", "id": 1, "label": "x"}
@@ -127,11 +135,7 @@ async def test_bearer_token_mutation_needs_no_csrf_header(store: Store) -> None:
 async def test_session_cookie_is_samesite_strict_and_httponly(store: Store) -> None:
     _e, _q, app = await authutil.make_env(store)
     async with _raw_client(app) as client:
-        resp = await client.post(
-            "/api/login",
-            json={"username": "adm", "password": authutil.PW},
-            headers={"Origin": ORIGIN},
-        )
+        resp = await _login_admin(client)
         set_cookie = resp.headers.get("set-cookie", "")
         assert "netcorenoc_session=" in set_cookie
         assert "samesite=strict" in set_cookie.lower()

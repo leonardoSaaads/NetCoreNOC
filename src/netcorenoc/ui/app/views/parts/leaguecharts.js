@@ -127,7 +127,7 @@ export class ModelCharts extends Component {
       <${Confusion} title=${T(6, "Confusion matrix")} matrix=${pairs.confusion} source=${GEN}
         n=${nPairs} />
       <${Curve} title=${T(7, "ROC")} xLabel="false positive rate" yLabel="true positive rate"
-        xRange=${[0, 1]} reference="diagonal" xLog=${true}
+        xRange=${[0, 1]} yRange=${[0, 1]} reference="diagonal"
         series=${[{ name: model.name, tone: null, points: (pairs.roc_curve || []).map(([f, t]) => [f, t]) }]}
         latest=${pairs.roc_auc ? `AUC ${pairs.roc_auc.point.toFixed(3)}` : null} source=${GEN} n=${nPairs}
         note="read beside precision–recall: under class imbalance ROC flatters" />

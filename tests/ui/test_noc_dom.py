@@ -123,14 +123,20 @@ async def test_a_reveal_carries_its_step_up_in_its_own_body(store: Store) -> Non
     }
     result = domdriver.run_scenario(
         "reveal",
-        {"routes": routes, "sid": sid, "username": "adm", "password": authutil.PW},
+        {
+            "routes": routes,
+            "sid": sid,
+            "username": "adm",
+            "password": authutil.PW,
+            "otp": authutil.OTP,
+        },
     )
     assert result["requestsBeforeSubmit"] == 0, "opening the step-up asks the server nothing"
-    assert result["otpOffered"] is False, "no authenticator field while 2FA does not exist"
+    assert result["otpOffered"] is True, "ADR #482: the authenticator code is asked for"
     assert result["posts"] == [
         {
             "path": f"/api/noc/secrets/{sid}/reveal",
-            "body": {"stepup": {"username": "adm", "password": authutil.PW, "otp": None}},
+            "body": {"stepup": {"username": "adm", "password": authutil.PW, "otp": authutil.OTP}},
         }
     ]
     assert result["revealedText"] is not None and "noc" in result["revealedText"]

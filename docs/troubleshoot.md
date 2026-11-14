@@ -47,8 +47,22 @@ appliance refuses to demote, disable or delete the last enabled admin, so this i
 
 ### `POST /api/login` returns 200 and sets no cookie
 
-The account must change its password, and the new one has to be in the **same** request
-(`new_password`). [`operate.md`](operate.md#1-first-sign-in) shows the request.
+That is the first of two steps (ADR #482): the answer carries a `challenge`, and
+`POST /api/login/code` with the authenticator's code sets the cookie. If the answer says
+`must_change_password`, the new password has to be in the **same** first request
+(`new_password`). [`operate.md`](operate.md#1-first-sign-in) shows both requests.
+
+### The authenticator code is refused
+
+- **The phone's clock is off.** Codes change every 30 seconds and one step either side is
+  accepted; a phone more than a minute off is refused. Turn on automatic time on the phone.
+- **The code was already used.** A code works once — to sign in or to confirm a vault action — so
+  wait for the next one the app shows.
+- **Five wrong codes** end the sign-in ("This sign-in has expired"): enter the password again.
+  More wrong codes lock the second step for a while, even with a right password.
+- **The phone is gone**: use a recovery code, or ask an admin to reset your two-factor
+  (People & access → the person → Reset two-factor). The only admin:
+  `python -m netcorenoc admin reset-two-factor <username>`.
 
 ### Sign-in works with `curl` but not in the browser, behind a proxy
 
@@ -309,9 +323,21 @@ this** on an open situation (ADR #480): a confirmed situation alone has no case.
 with the reason, until a person resumes it (ADR #472). Each agent's **Runs** tab shows every step
 it took and the error that ended a run.
 
+### An agent on a local Ollama answers but never acts
+
+Before ADR #487 an Ollama turn went through its OpenAI-compatible endpoint, which cannot set the
+context window: Ollama cut the start of the prompt — the agent's instructions and tools — and the
+model only chatted. Now the turn uses Ollama's own API with a window of 16k tokens; raise it to 32k
+in the agent's settings (*Context window*) for long cases. Then, in **Agents → AI providers →
+Ollama**, press **Try** beside the model: "Answered without the tool" means that model cannot work
+a case — pull one that calls tools (`ollama pull qwen3:8b`).
+
 ### An agent on a local Ollama never answers
 
-From the Compose container, a local Ollama is `host.docker.internal`, port 11434 (ADR #478). Ollama
+**Connect Ollama** looks for it by itself (ADR #487) at `127.0.0.1`, `host.docker.internal`, a
+compose service named `ollama`, `172.17.0.1` and the container's gateway, port 11434, and lists
+what answered. When nothing does: from the Compose container, a local Ollama is
+`host.docker.internal`, port 11434 (ADR #478). Ollama
 listens on `127.0.0.1` by default: start it with `OLLAMA_HOST=0.0.0.0`. A host firewall must let
 the Docker bridge reach that port — on NixOS, for example,
 `networking.firewall.trustedInterfaces = [ "docker0" ];`. To test from the container:

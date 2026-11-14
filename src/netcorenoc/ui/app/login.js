@@ -1,4 +1,11 @@
-/* Sign-in, the forced first password change, and — v0.30.0 — recovery by email.
+/* Sign-in, the forced first password change, two-factor (ADR #482), and recovery by email.
+ *
+ * ## Two steps (ADR #482)
+ *
+ * A right password opens no session: `POST /api/login` answers with a challenge, the card stays
+ * where it is with its fields locked, and the second step slides in beside it (`twofactor.js`) —
+ * the six-digit code for an enrolled person, or, the first time, the QR code, the recovery codes
+ * and the first code. Only `POST /api/login/code` opens the session. "Back" returns to the card.
  *
  * Unchanged in contract: a cookie session, no token box, and a `must_change_password` principal
  * who cannot reach anything but the change itself — the server's bootstrap gate
@@ -21,12 +28,14 @@
  * server's length rule shown as it is typed, and reveal — a typo committed there is unrecoverable.
  */
 
-import { html, Component } from "./dom.js";
+import { html, Component, cx } from "./dom.js";
 import { post, get, ApiError } from "./api.js";
 import { setPasswordPolicy } from "./session.js";
 import { PasswordInput, PasswordMeter, pairProblem } from "./password.js";
 import { CardHead, ForgotForm, ResetForm, resetToken } from "./recover.js";
+import { Icon } from "./icons.js";
 import { LogoMark } from "./logo.js";
+import { SecondStep } from "./twofactor.js";
 
 export class Login extends Component {
   constructor(props) {
@@ -35,7 +44,7 @@ export class Login extends Component {
     this.state = {
       username: "", password: "", newPassword: "", confirmPassword: "",
       mustChange: !!props.mustChange, error: "", notice: "", busy: false,
-      mode: token ? "reset" : "signin", token, recovery: false,
+      mode: token ? "reset" : "signin", token, recovery: false, second: null,
     };
     this.submit = this.submit.bind(this);
   }
@@ -65,10 +74,10 @@ export class Login extends Component {
         this.setState({ mustChange: true, busy: false, error: "", notice: "Choose your own password to continue." });
         return;
       }
-      // The login response predates capability resolution, so ask /api/me for the resolved set (F28).
-      const me = await get("/api/me");
-      this.setState({ busy: false, password: "", newPassword: "", confirmPassword: "" });
-      this.props.onSignedIn({ ...me, user: me.user ?? out.user, role: me.role ?? out.role });
+      // ADR #482: a right password opens no session — the second step does. A forced change is
+      // already made at this point, so "Back" returns to an ordinary sign-in with the new one.
+      this.setState({ busy: false, second: out, mustChange: false, notice: "",
+        newPassword: "", confirmPassword: "" });
     } catch (error) {
       this.setState({
         busy: false,
@@ -83,22 +92,35 @@ export class Login extends Component {
 
   back(notice = "") { this.setState({ mode: "signin", token: null, error: "", notice }); }
 
+  /** From the second step back to the card: a new challenge needs the password again. */
+  restart(notice) {
+    this.setState({ second: null, password: "", busy: false, error: "", notice });
+  }
+
+  signedIn(me) {
+    this.setState({ second: null, password: "" });
+    this.props.onSignedIn(me);
+  }
+
   card() {
-    const { mode, token, mustChange, error, notice, busy, recovery } = this.state;
+    const { mode, token, mustChange, error, notice, busy, recovery, second } = this.state;
     if (mode === "forgot") return html`<${ForgotForm} onBack=${(n) => this.back(n)} />`;
     if (mode === "reset") return html`<${ResetForm} token=${token} onBack=${(n) => this.back(n)} />`;
     return html`<form class="login-card" onSubmit=${this.submit} autocomplete="off">
-      <${CardHead} title=${mustChange ? "Choose your password" : "Sign in"}
-        hint=${mustChange ? "This account must set its own password before anything else."
+      <${CardHead} title=${second ? "Almost there" : mustChange ? "Choose your password" : "Sign in"}
+        hint=${second ? "Step 1 of 2 done. Step 2: your authenticator code."
+          : mustChange ? "This account must set its own password before anything else."
           : "Use the account an admin gave you."} />
       ${notice ? html`<p class="ok-note" role="status">${notice}</p>` : null}
       <label for="lu">Username</label>
       <input id="lu" name="username" autocomplete="username" autocapitalize="none"
-             spellcheck=${false} value=${this.state.username}
+             spellcheck=${false} value=${this.state.username} disabled=${!!second}
              onInput=${(e) => this.setState({ username: e.target.value })} />
+      ${second ? html`<p class="ok-note login-passed" role="status"><span class="login-tick"><${Icon} name="check" /></span>
+        Password accepted. Finish with your authenticator.</p>` : html`
       <${PasswordInput} id="lp" label=${mustChange ? "Current password" : "Password"}
         autocomplete="current-password" value=${this.state.password}
-        onInput=${(v) => this.setState({ password: v })} />
+        onInput=${(v) => this.setState({ password: v })} />`}
       ${mustChange ? html`
         <${PasswordInput} id="lp2" label="New password" autocomplete="new-password"
           describedBy="lp2-meter" value=${this.state.newPassword}
@@ -108,11 +130,11 @@ export class Login extends Component {
           value=${this.state.confirmPassword}
           onInput=${(v) => this.setState({ confirmPassword: v })} />
       ` : null}
-      <button type="submit" id="loginBtn" class="primary" disabled=${busy}>
-        ${busy ? "Signing in…" : mustChange ? "Set password and sign in" : "Sign in"}
-      </button>
+      ${second ? null : html`<button type="submit" id="loginBtn" class="primary" disabled=${busy}>
+        ${busy ? "Signing in…" : mustChange ? "Set password and continue" : "Continue"}
+      </button>`}
       ${error ? html`<div class="err" id="loginErr" role="alert">${error}</div>` : null}
-      ${mustChange ? null : html`<p class="login-foot">${recovery
+      ${mustChange || second ? null : html`<p class="login-foot">${recovery
         ? html`<button type="button" class="linkish" id="forgotBtn"
             onClick=${() => this.setState({ mode: "forgot", error: "", notice: "" })}>Forgot your password?</button>`
         : html`<span class="muted">Forgot your password? An admin can reset it —${" "}
@@ -121,7 +143,8 @@ export class Login extends Component {
   }
 
   render() {
-    return html`<div id="login" class="login">
+    const second = this.state.second;
+    return html`<div id="login" class=${cx("login", second && "has-second")}>
       <section class="login-hero" aria-hidden="true">
         <div class="login-brand"><span class="brand-mark"><${LogoMark} size=${44} /></span><span>Net<b>CoreNOC</b></span></div>
         <p class="login-tagline">SNMP trap correlation for telecom networks.</p>
@@ -132,6 +155,9 @@ export class Login extends Component {
         </ul>
       </section>
       <div class="login-panel">${this.card()}</div>
+      ${second ? html`<div class="login-second">
+        <${SecondStep} step=${second} onSignedIn=${(me) => this.signedIn(me)}
+          onRestart=${(n) => this.restart(n)} /></div>` : null}
     </div>`;
   }
 }

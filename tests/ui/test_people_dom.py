@@ -65,9 +65,12 @@ async def test_the_grid_is_grouped_named_and_locks_what_the_role_cannot_hold(
 
 @dom_test
 async def test_your_account_is_a_person_a_password_and_counts_not_a_wall(store: Store) -> None:
+    # ADR #482: a header, then three tabs — the profile, how you sign in, what you can do.
     dump = (await _render(store, "editor", "#/account"))["dump"]
-    assert ".acct-profile" in dump and ".avatar" in dump
-    assert "Change password" in dump
+    assert ".acct-header" in dump and ".avatar" in dump
+    security = (await _render(store, "editor", "#/account?tab=security"))["dump"]
+    assert "Change password" in security and "Two-factor sign-in" in security
+    dump = (await _render(store, "editor", "#/account?tab=permissions"))["dump"]
     assert ".acct-cats" in dump
     # The old page printed every identifier as text; now they are one disclosure away, as labels.
     visible = dump.split("<details")[0]

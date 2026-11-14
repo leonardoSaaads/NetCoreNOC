@@ -28,7 +28,7 @@ from netcorenoc.store import Store
 
 import authutil
 
-STEP = {"username": "adm", "password": authutil.PW}
+STEP = {"username": "adm", "password": authutil.PW, "otp": authutil.OTP}
 
 
 def _key(kind: str, host: str, *, port: int | None = None, **fields: str) -> dict[str, Any]:
@@ -210,6 +210,7 @@ async def test_the_appliance_runs_an_agent_on_a_local_ollama(store: Store) -> No
     assert first["base"] == "http://127.0.0.1:11434/v1" and first["key"] == ""
     assert first["model"] == "llama3.1" and first["messages"][0]["role"] == "system"
     assert "max_tokens" in first and "max_completion_tokens" not in first
+    assert first["num_ctx"] == 16384, "ADR #487: a local model's window travels with the turn"
     names = {t["function"]["name"] for t in first["tools"]}
     assert "noc_me" in names and "noc_hire_agent" not in names and "noc_finish_run" not in names
     assert model.calls[1]["messages"][-1]["role"] == "tool"

@@ -78,6 +78,7 @@ from netcorenoc.store.retention import RetentionMixin
 from netcorenoc.store.scoring_config import ScoringConfigMixin
 from netcorenoc.store.seal import SealMixin
 from netcorenoc.store.sealing import SealingMixin
+from netcorenoc.store.second_factor import SecondFactorMixin
 from netcorenoc.store.shadow import ShadowMixin
 from netcorenoc.store.situation_reads import SituationReadsMixin
 from netcorenoc.store.state_clears import StateClearMixin
@@ -143,6 +144,8 @@ class Store(
     PeopleMixin,
     # v0.30.0: a person's recovery address and the single-use reset links (ADR #445).
     RecoveryMixin,
+    # ADR #482: each person's authenticator, recovery codes and the sign-in's second step.
+    SecondFactorMixin,
     AuthMixin,
     ScoringConfigMixin,
     IngestGapMixin,

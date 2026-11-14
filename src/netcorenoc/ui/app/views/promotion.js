@@ -1,5 +1,12 @@
 /* Judge — **which model decides links, how each one learns, and how they compare** (v0.27.0).
  *
+ * ## Five tabs (ADR #485)
+ *
+ * Overview (who decides, the league table) · Charts (every model on shared axes, or one model's
+ * ten) · Site labels (this site's paired comparisons and site training) · Live (the running scorer
+ * and the shadow) · Record (the legacy challenger path). The tab is in the address (`?tab=`);
+ * `?model=` opens Charts on that model.
+ *
  * ## The league first (ADRs #423, #427)
  *
  * The screen leads with the league: who decides and why, the two loops in plain words, the table
@@ -29,9 +36,10 @@
  * it is a guarantee rather than a preference.
  */
 
-import { html, Component } from "../dom.js";
+import { html, Component, cx } from "../dom.js";
 import { post, readAll } from "../api.js";
-import { Loader, Empty, DataTable, SectionHeading, Stat, TimeCell, cell } from "../widgets.js";
+import { Loader, DataTable, SectionHeading, Stat, TimeCell, cell } from "../widgets.js";
+import { Icon } from "../icons.js";
 import { InfoTip } from "../info.js";
 import { count, plural } from "../format.js";
 import { can } from "../session.js";
@@ -55,73 +63,88 @@ export class Promotion extends Loader {
     return { ...got.promotion.value, judge: got.judge.ok ? got.judge.value : null };
   }
 
+  tab() {
+    const q = this.props.query;
+    const asked = q && q.get("tab");
+    if (TABS.some(([key]) => key === asked)) return asked;
+    return q && q.get("model") ? "charts" : "overview";
+  }
+
+  go(tab) { if (this.props.navigate) this.props.navigate(`#/promotion?tab=${tab}`); }
+
   view(data) {
+    const judge = data.judge;
+    const tab = this.tab();
+    return html`<div class="promotionview judgeview">
+      <div class="access-tabs" role="tablist" aria-label="Judge and promotion">
+        ${TABS.map(([key, label, icon]) => html`<button type="button" key=${key} role="tab"
+          aria-selected=${tab === key} class=${cx("access-tab", tab === key && "on")}
+          onClick=${() => this.go(key)}><${Icon} name=${icon} /> ${label}</button>`)}
+      </div>
+      ${tab === "record" ? this.record(data) : !judge
+        ? html`<p class="hint">The judge's measurements could not be read.</p>`
+        : tab === "site" ? html`<div class="league">
+            <${LeagueBoard} judge=${judge} section="site" />
+            <${SiteJudge} site=${judge.site} canSearch=${(judge.models || []).some((m) => m.kind === "gam")} /></div>`
+        : tab === "live" ? html`<div class="league">
+            <section class="judge-block">
+              <header class="judge-head"><h3>Live</h3>
+                <span class="dataset-chip dataset-live">live traffic</span></header>
+              <${CorrelationHealth} open=${true} />
+            </section>
+            <${LeagueBoard} judge=${judge} section="live" /></div>`
+        : html`<${LeagueBoard} judge=${judge} section=${tab}
+            initial=${this.props.query ? this.props.query.get("model") : null} />`}
+    </div>`;
+  }
+
+  /** The v0.11–v0.14 challenger path's record: the seal, every decision, the model versions. */
+  record(data) {
     const promotions = data.promotions || [];
     const versions = data.model_versions || [];
-    const judge = data.judge;
-    return html`<div class="promotionview judgeview">
-      ${judge ? html`<${LeagueBoard} judge=${judge}
-          initial=${this.props.query ? this.props.query.get("model") : null} />
-        <${SiteJudge} site=${judge.site} canSearch=${(judge.models || []).some((m) => m.kind === "gam")} />`
-        : html`<p class="hint">The judge's measurements could not be read.</p>`}
-      ${/* The running scorer, observed (v0.22.0, item 7): moved here from Situations. */ null}
+    return html`<div class="league">
       <section class="judge-block">
-        <header class="judge-head"><h3>Live</h3>
-          <span class="dataset-chip dataset-live">live traffic</span></header>
-        <${CorrelationHealth} open=${true} />
-      </section>
-      <details class="judge-record">
-      <summary>Legacy promotion record (v0.11–v0.14 challenger path) — seal, decisions, model versions</summary>
-      <section class="panel-block param-structural">
-        <${SectionHeading} title="The sealed holdout"
-          hint="Displayed, never actionable: the query count is a property of what has been read,
-                not a setting. There is no control because there is no choice." />
+        <header class="judge-head"><h3>The sealed holdout</h3>
+          <${InfoTip} label="About the seal">Displayed, never actionable: the query count is a
+            property of what has been read, not a setting. Every decision below records the plan
+            hash it was taken against: <code class="mono">${data.plan_sha256}</code><//></header>
         <div class="stat-row">
           <${Stat} label="seal query count" value=${data.seal_query_count}
                    tone=${data.seal_query_count === 0 ? "quiet" : "warn"}
-                   note=${data.seal_query_count === 0
-                     ? "the holdout has never been read"
-                     : "every read is counted and printed beside every holdout number"} />
+                   note=${data.seal_query_count === 0 ? "never read" : "every read is counted"} />
           <${Stat} label="active model version" value=${data.active_model_version_id ?? "—"} />
           <${Stat} label="active scorer configuration" value=${data.active_config_id ?? "—"} />
         </div>
-        <p class="hint">Ratified plan <code class="mono">${data.plan_sha256}</code>${" "}
-          <${InfoTip} label="About the ratified plan">Every decision below was taken against this
-            plan and records the hash it was taken against.<//></p>
       </section>
-
-      <${SectionHeading} title="Decisions"
-        hint=${"Refusals are included — that is the audit question this table exists to answer. " +
-               "A refusal writes a row exactly as an application does."} />
-      ${promotions.length
-        ? html`<${DataTable} columns=${DECISION_COLUMNS} rows=${promotions.map(toDecision)} />
-            <${Decision} row=${promotions[0]} />`
-        : html`<${Empty}
-            title="No promotion has been proposed."
-            will=${"Every proposal — applied or refused — is recorded here with its verdict, " +
-                   "the triggers that fired, and the reason. Nothing is promoted automatically."}
-            meanwhile=${"A proposal needs a registered model version with a challenger run " +
-                        "behind it, and the corpus has to have reached the pre-registered " +
-                        "floors. Both are visible on the Corpus screen."} />`}
-
-
-      <${SectionHeading} title="Model versions"
-        hint="The artefact inventory. A version without a challenger run behind it can be registered but never applied." />
-      ${versions.length
-        ? html`<${DataTable} columns=${VERSION_COLUMNS} rows=${versions.map(toVersion)} />`
-        : html`<p class="hint">No model versions have been registered.</p>`}
-
-      ${/* **Evidence over time** (v0.16.6, DECISIONS #308). Below the record rather than above
-            it: the tables say what the gate decided and this says how those decisions have moved,
-            which is the second question and not the first. It reads the same payload — no second
-            request, and therefore no way for the two halves of this screen to disagree. */ null}
+      <section class="judge-block">
+        <header class="judge-head"><h3>Decisions</h3>
+          <${InfoTip} label="About decisions">Refusals are included: a refusal writes a row exactly
+            as an application does.<//></header>
+        ${promotions.length
+          ? html`<${DataTable} columns=${DECISION_COLUMNS} rows=${promotions.map(toDecision)} />
+              <${Decision} row=${promotions[0]} />`
+          : html`<p class="muted">No promotion has been proposed. Nothing is promoted automatically.</p>`}
+      </section>
+      <section class="judge-block">
+        <header class="judge-head"><h3>Model versions</h3></header>
+        ${versions.length
+          ? html`<${DataTable} columns=${VERSION_COLUMNS} rows=${versions.map(toVersion)} />`
+          : html`<p class="muted">No model versions have been registered.</p>`}
+      </section>
       <${Evidence} data=${data} />
-
       ${can("promotion.write") && versions.length ? html`<${Propose} versions=${versions} onDone=${this.reload} />` : null}
-      </details>
     </div>`;
   }
 }
+
+/** ADR #485: the screen in five tabs instead of one long scroll. */
+const TABS = [
+  ["overview", "Overview", "promotion"],
+  ["charts", "Charts", "chart"],
+  ["site", "Site labels", "labelling"],
+  ["live", "Live", "pulse"],
+  ["record", "Record", "audit"],
+];
 
 const DECISION_COLUMNS = [
   { key: "when", label: "decided" },

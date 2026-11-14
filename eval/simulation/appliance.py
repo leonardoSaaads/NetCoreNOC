@@ -111,6 +111,18 @@ class Sender:
         self.sockets.clear()
 
 
+def _totp(secret: str, now: float) -> str:
+    """The six-digit code an authenticator app shows for ``secret`` at ``now`` (RFC 6238), here
+    rather than imported so `eval/` keeps to the standard library."""
+    import base64
+    import hmac
+
+    key = base64.b32decode(secret + "=" * (-len(secret) % 8))
+    mac = hmac.new(key, int(now // 30).to_bytes(8, "big"), "sha1").digest()
+    offset = mac[-1] & 0x0F
+    return str((int.from_bytes(mac[offset : offset + 4], "big") & 0x7FFF_FFFF) % 1_000_000).zfill(6)
+
+
 class Http:
     """The API over TCP, with a session cookie **or** a bearer token.
 
@@ -281,8 +293,8 @@ class Appliance:
         """Sign in as the bootstrap admin, **rotating the one-time password the banner demands.**
 
         Two calls, because that is the contract: a first-boot admin is `must_change_password`, so
-        the first `POST /api/login` carries `new_password` and the second is an ordinary sign-in.
-        The returned client holds the session cookie.
+        `POST /api/login` carries `new_password`, and then — ADR #482 — the authenticator is
+        enrolled by answering `POST /api/login/code`. The returned client holds the session cookie.
         """
         assert self.bootstrap_password is not None, "start() first"
         client = Http(self.base, console=True)
@@ -295,7 +307,14 @@ class Appliance:
             },
         )
         assert not first.get("must_change_password"), first
-        session = client.post("/api/login", {"username": "admin", "password": DEMO_PASSWORD})
+        # ADR #482: the right password begins the second step — here, enrolling an authenticator.
+        # The simulation is its own authenticator app: it reads the secret the appliance offers
+        # and answers with the code for now, which is what opens the session.
+        assert first.get("second_factor") == "enroll", first
+        secret = str(first["enrollment"]["secret"]).replace(" ", "")
+        session = client.post(
+            "/api/login/code", {"challenge": first["challenge"], "code": _totp(secret, time.time())}
+        )
         assert session["role"] == "admin", session
         return client
 

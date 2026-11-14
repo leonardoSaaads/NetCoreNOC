@@ -44,7 +44,7 @@ remember (decision #207).
 | **engine** | `engine/` — seven subpackages, below | The domain: what a situation is, what links two alarms, what an entity is, what the root cause is — and, since #454, what a device credential is and what an agent may hold |
 | **data** | `store/`, with `migrations/` beside it | One PostgreSQL writer connection under one asyncio lock, and a pool of readers. **SQL lives here and nowhere else** |
 | **ingest** | `ingest/` — `receiver`, `worker`, `process`, `spool`, `records`, `decoder`, `snmpconf`, `usm`, `ber`, `events`, `known_oids` | The wire: parse, allowlist, the SNMP policy and SNMPv3 security, quarantine, the trap vocabulary, the spool, and the processes they run in (#449, #450) |
-| **cross-cutting** | `crosscutting/` — `rbac/`, `shaping/`, `auth`, `audit`, `mail`, `runtime`, `logsetup`, `settings`, `vault`, `secretbox`, `stepup` | Identity, authorization, visibility, attribution, outgoing email, config, logging, sealing at rest (#453, #455), step-up re-authentication (#456) |
+| **cross-cutting** | `crosscutting/` — `rbac/`, `shaping/`, `auth`, `audit`, `mail`, `runtime`, `logsetup`, `settings`, `vault`, `secretbox`, `stepup`, `totp`, `twostep`, `qrcode`, `audit_sections` | Identity, authorization, visibility, attribution, outgoing email, config, logging, sealing at rest (#453, #455), step-up re-authentication (#456), two-factor sign-in and its QR code (#482), the audit log's sections (#486) |
 
 The package **root** holds four modules and no others: `__init__.py`, and the process entry surface
 `__main__.py`, `main.py` and `runner.py`. `python -m netcorenoc.main` is a public interface — the

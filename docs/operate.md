@@ -24,7 +24,20 @@ journalctl -u netcorenoc | grep -A4 "bootstrap admin"          # systemd
 ```
 
 Open `http://<host>:8080/`, sign in, and choose a new password: **12 to 128 characters**, no other
-rule. Then create one account per person under **People & access**:
+rule. Then set up **two-factor sign-in** — required for every account (ADR #482):
+
+1. The password card moves aside and a panel opens beside it with a **QR code**. Scan it with an
+   authenticator app (Google Authenticator, Authy, 1Password, Microsoft Authenticator…). No camera?
+   "Can't scan? Type a key instead" shows the key as text.
+2. **Keep the ten recovery codes** (Copy or Save .txt), then tick "I saved my recovery codes". Each
+   works once, instead of a code, when the phone is lost. They are **hidden by default** — someone
+   behind you could read them: Copy and Save work without showing them; "Show codes" first draws
+   dots and a warning, and only "I'm ready — show them" puts them on screen. The typed key works
+   the same way.
+3. Type the **6-digit code** the app shows. Only then is the session opened.
+
+From then on every sign-in is the password, then the code. Then create one account per person
+under **People & access**:
 
 | Role | Can |
 |---|---|
@@ -33,6 +46,11 @@ rule. Then create one account per person under **People & access**:
 | `admin` | also manage people, tokens, settings, models and the audit log |
 
 Create a **second admin** straight away. Programs use **service tokens**, not passwords.
+
+**Lost the phone?** Sign in with a recovery code ("Lost your phone? Use a recovery code"), then
+**Your account → Security → Move to a new phone**. Lost the recovery codes too: another admin
+resets your two-factor on **People & access** (you set it up again at the next sign-in). The only
+admin uses the CLI: `docker compose exec netcorenoc python -m netcorenoc admin reset-two-factor admin`.
 
 **Lost a password?** Another admin can reset it on **People & access**. If you are the only admin:
 
@@ -43,13 +61,20 @@ docker compose exec netcorenoc python -m netcorenoc admin reset-password admin
 It prints a one-time password, signs that account out everywhere, and is recorded in the audit
 log. If no enabled admin exists at all, restarting the appliance prints a new bootstrap password.
 
-**Signing in through the API.** A first sign-in must send the new password in the same request;
-without it the answer is `200 {"must_change_password": true}` and no session cookie:
+**Signing in through the API** takes two requests (ADR #482). The password step answers with a
+challenge and sets no cookie; the code step opens the session:
 
 ```sh
-curl -i -X POST http://localhost:8080/api/login -H 'Content-Type: application/json' \
-  -d '{"username":"admin","password":"<one-time>","new_password":"<your new password>"}'
+curl -s -X POST http://localhost:8080/api/login -H 'Content-Type: application/json' \
+  -d '{"username":"admin","password":"<your password>"}'
+# {"must_change_password": false, "second_factor": "verify", "challenge": "<challenge>", ...}
+curl -c cookies -X POST http://localhost:8080/api/login/code -H 'Content-Type: application/json' \
+  -d '{"challenge":"<challenge>","code":"<6 digits from your app>"}'
 ```
+
+A first sign-in sends `new_password` with the first request; its challenge is `"enroll"` and
+carries the QR code, the key and the recovery codes. Programs should use **service tokens**, which
+have no password and no second factor.
 
 ## 2. Sending traps
 
@@ -224,7 +249,7 @@ docker compose exec netcorenoc python -m netcorenoc --help          # every main
 ```
 
 `db status` names the server, the database, the role and the schema it reached, then the schema's
-version beside this release's — `version 44 (this release: 44)` — and the schema's size on disk. A
+version beside this release's — `version 45 (this release: 45)` — and the schema's size on disk. A
 lower first number is migrations not yet applied (start the appliance, or run `db migrate`); a
 higher one is a database a newer release migrated, which the console also warns about.
 

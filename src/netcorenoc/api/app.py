@@ -121,6 +121,7 @@ def create_app(
     # docstring. Do not sort these.
     routes.static.register(app, ctx)
     routes.auth.register(app, ctx)
+    routes.two_factor.register(app, ctx)  # ADR #482: the sign-in's second step, beside the first
     routes.read.register(app, ctx)
     # v0.16.0: the five operator gestures, split across two modules on whether they assert
     # anything about a grouping — the distinction `PREREGISTRATION-0.16.0.md` §1 turns into a
