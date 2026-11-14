@@ -196,6 +196,12 @@ stored device credential is unreadable (#455).
   each model can be **tried** for an answer and a tool call, timed
   (`POST /api/noc/secrets/{id}/try`).
 
+### Fixed — starting a site search no longer holds the event loop (#488)
+
+- Building the search's rows and payload and starting its worker run in a thread: a spawn start
+  waits on a pipe until the child has imported enough to read the payload, which held ingestion
+  and HTTP for up to 1.8 s on a loaded host.
+
 ### Added — each customer's credentials and email; secure Telnet (#481)
 
 - **A device credential belongs to a customer**: stored, listed and opened in the customer's book

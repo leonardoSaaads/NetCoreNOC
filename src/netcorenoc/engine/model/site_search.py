@@ -22,6 +22,7 @@ The lifecycle, one `search_run` row per search:
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import multiprocessing as mp
 import queue
@@ -132,7 +133,11 @@ class Runner:
             return
         pairs = await site_labels.label_pairs(store)
         features = await store.pair_features([int(p["pair_id"]) for p in pairs])
-        rows = site.rows_from(pairs, features)
+        # The rows, the payload and the worker's start run in a thread (ADR #488): building them is
+        # CPU, and a spawn start writes the whole pickled payload (hundreds of KB) into a pipe and
+        # waits there until the child has imported enough to read it — 0.7 to 1.8 s on a loaded
+        # runner, all of it held on the event loop that ingestion and HTTP share.
+        rows = await asyncio.to_thread(site.rows_from, pairs, features)
         bags = {r.bag for r in rows}
         if len(bags) < MIN_BAGS:
             await store.finish_search_run(
@@ -145,27 +150,41 @@ class Runner:
                 rows=len(rows),
             )
             return
-        train, test = site.split_by_time(rows)
-        fit_rows, valid_rows = (
-            site.split_by_time(train) if len({r.bag for r in train}) > 2 else (train, [])
-        )
         budget = {
             **asdict(DEFAULT_BUDGET),
             **{k: v for k, v in run["budget"].items() if k in asdict(DEFAULT_BUDGET)},
         }
+        self.job = await asyncio.to_thread(
+            self._launch, int(run["id"]), base.document, rows, budget, int(run["seed"]), now
+        )
+
+    def _launch(
+        self,
+        run_id: int,
+        base: str,
+        rows: list[site.SiteRow],
+        budget: dict[str, Any],
+        seed: int,
+        now: float,
+    ) -> _Job:
+        """Split, build the payload and start the worker — off the event loop (ADR #488)."""
+        train, test = site.split_by_time(rows)
+        fit_rows, valid_rows = (
+            site.split_by_time(train) if len({r.bag for r in train}) > 2 else (train, [])
+        )
         payload = {
-            "base": base.document,
+            "base": base,
             "names": list(FEATURE_NAMES),
             "train": [[r.y, r.w, *r.x] for r in fit_rows],
             "valid": [[r.y, r.w, *r.x] for r in (valid_rows or fit_rows)],
             "budget": budget,
-            "seed": int(run["seed"]),
+            "seed": seed,
         }
         out = self._ctx.Queue()
         stop = self._ctx.Event()
         process = self._ctx.Process(target=_worker, args=(payload, out, stop), daemon=True)
         process.start()
-        self.job = _Job(int(run["id"]), process, out, stop, train, test, now)
+        return _Job(run_id, process, out, stop, train, test, now)
 
     async def _drain(self, engine: Engine, now: float, run: dict[str, Any] | None) -> None:
         job = self.job

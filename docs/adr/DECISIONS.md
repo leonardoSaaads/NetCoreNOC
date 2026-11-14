@@ -7144,3 +7144,18 @@ From this release an entry is about six lines: decision, reason, release.*
   one tool: did it answer, did it call the tool, in how many seconds. Audited as `noc.secret.use`.
 - **Reason**: a local model should be as easy here as elsewhere, and "answers but never acts" was
   a context window, not the model.
+
+## 488. Starting a site search holds the event loop for nothing (unreleased)
+
+- **Context**: `test_the_search_runs_out_of_process_and_never_blocks_a_tick` failed on CI three
+  times in a row (0.72 s, 0.82 s, 1.83 s against 0.5 s), on `main` as on branches. Starting the
+  search did two things on the event loop: build the rows and the payload (CPU), and a spawn
+  `Process.start()`, which writes the whole pickled payload — 670 KB for the test's 1 600 bags —
+  into a pipe and **waits there until the child has imported enough to read it**. On a loaded
+  runner under coverage that wait is most of a second: ingestion and HTTP wait with it. Reproduced
+  by delaying the spawned child by one second: the hold was 1.11 s.
+- **Decision** (`engine/model/site_search.py`): the rows are built with `asyncio.to_thread`, and
+  the split, the payload and the worker's start run in a thread too (`Runner._launch`). The fit
+  was already in its own process; now so is everything heavy about starting it.
+- **Reason**: Part V's "never blocking ingestion or HTTP" held for the fit but not for its start;
+  the test was right, the start was wrong.
