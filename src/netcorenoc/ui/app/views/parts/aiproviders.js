@@ -17,7 +17,7 @@
  */
 
 import { html, Component, cx } from "../../dom.js";
-import { post } from "../../api.js";
+import { get, post } from "../../api.js";
 import { can } from "../../session.js";
 import { relative, timeTitle } from "../../format.js";
 import { Icon } from "../../icons.js";
@@ -48,6 +48,59 @@ function KeyField({ p, provider, st, set }) {
       ${" "}<code>${provider.key_hint}</code>${st.key && !st.key.startsWith(provider.key_hint)
         ? html` — <span class="warn-text">this one does not; check it is the right key.</span>` : null}</p>` : null}
   </div>`;
+}
+
+/** ADR #487: where a local Ollama answers, found the way AnythingLLM finds one — the appliance
+ * tries the usual addresses itself and lists what answered, models included. */
+class Detect extends Component {
+  constructor(props) {
+    super(props);
+    this.state = { busy: true, found: null, tried: [], error: null };
+  }
+
+  componentDidMount() { this.run(); }
+
+  async run() {
+    this.setState({ busy: true, error: null });
+    try {
+      const out = await get("/api/noc/providers/ollama/detect");
+      if (out.custodian === false) { this.setState({ busy: false, error: out.explanation }); return; }
+      this.setState({ busy: false, found: out.found, tried: out.tried });
+      if (out.found.length) this.props.onPick(out.found[0]);
+      if (this.props.onFound) this.props.onFound(out.found.length);
+    } catch (error) {
+      this.setState({ busy: false, error: error.message });
+    }
+  }
+
+  render({ chosen, onPick, inContainer }, { busy, found, tried, error }) {
+    if (busy) return html`<div class="ollama-detect is-busy" role="status"><span class="fr-live" aria-hidden="true"></span> Looking for Ollama…</div>`;
+    if (error) return html`<p class="err" role="alert">${error}</p>`;
+    if (!found.length) {
+      return html`<div class="ollama-detect is-none">
+        <p><b>No Ollama answered.</b> <span class="muted">Tried ${tried.join(", ")}.</span></p>
+        <ol class="ollama-steps">
+          <li>Start it on that machine: <code>ollama serve</code></li>
+          <li>Let this appliance reach it: <code>OLLAMA_HOST=0.0.0.0 ollama serve</code>${inContainer
+            ? html` (NetCoreNOC runs in a container: 127.0.0.1 is the container itself)` : null}</li>
+          <li>Pull a model that can call tools: <code>ollama pull qwen3:8b</code></li>
+        </ol>
+        <button type="button" onClick=${() => this.run()}><${Icon} name="search" /> Look again</button>
+      </div>`;
+    }
+    return html`<div class="ollama-detect" role="radiogroup" aria-label="Ollama servers found">
+      ${found.map((f) => {
+        const on = chosen && chosen.host === f.host && Number(chosen.port) === f.port;
+        return html`<button type="button" key=${`${f.host}:${f.port}`} role="radio" aria-checked=${!!on}
+          class=${cx("ollama-found", on && "on")} onClick=${() => onPick(f)}>
+          <span class="ollama-found-dot" aria-hidden="true"></span>
+          <span><b>${f.host}:${f.port}</b><small class="muted">Ollama ${f.version || "?"} · ${f.models.length} model${f.models.length === 1 ? "" : "s"}${f.models.length ? ` — ${f.models.slice(0, 3).join(", ")}${f.models.length > 3 ? "…" : ""}` : ""}</small></span>
+          ${on ? html`<${Icon} name="check" />` : null}
+        </button>`;
+      })}
+      <button type="button" class="linkish" onClick=${() => this.run()}>Look again</button>
+    </div>`;
+  }
 }
 
 /** The panel that connects one provider: name, key (or where Ollama runs), agents. */
@@ -105,11 +158,14 @@ class Connect extends Component {
         <a class="ai-getkey" href=${provider.key_url} target="_blank" rel="noopener noreferrer">
           ${provider.own_host ? "Install Ollama" : "Get a key"} <${Icon} name="external" /></a>
       </div>
+      ${provider.own_host && provider.ollama ? html`<${Detect} inContainer=${this.props.inContainer}
+        chosen=${{ host: st.host, port: st.port }} onFound=${(n) => this.setState({ detected: n })}
+        onPick=${(f) => this.setState({ host: f.host, port: String(f.port), scheme: "HTTP" })} />` : null}
       <div class="pe-fields">
         <div class="pe-field"><label for=${`${p}-name`}>Name</label>
           <input id=${`${p}-name`} value=${st.name} required maxlength="80"
             onInput=${(e) => this.setState({ name: e.currentTarget.value })} /></div>
-        ${provider.own_host ? html`
+        ${provider.own_host && (!st.detected || st.manual) ? html`
           <div class="pe-field"><label for=${`${p}-host`}>Where it runs</label>
             <input id=${`${p}-host`} value=${st.host} required maxlength="253" spellcheck=${false}
               placeholder="127.0.0.1 or gpu-1.example.net" onInput=${(e) => this.setState({ host: e.currentTarget.value })} /></div>
@@ -121,7 +177,9 @@ class Connect extends Component {
               <option value="HTTP">HTTP</option><option value="HTTPS">HTTPS</option></select></div>` : null}
         ${provider.key_required || st.proxy ? html`<${KeyField} p=${p} provider=${provider} st=${st} set=${set} />` : null}
       </div>
-      ${provider.own_host ? html`<p class="hint ai-local-hint"><${Icon} name="info" /> On that machine:
+      ${provider.own_host && st.detected && !st.manual ? html`<p class="hint"><button type="button" class="linkish"
+        onClick=${() => set({ manual: true })}>Somewhere else? Enter its address</button></p>` : null}
+      ${provider.own_host && (!st.detected || st.manual) ? html`<p class="hint ai-local-hint"><${Icon} name="info" /> On that machine:
         ${" "}<code>ollama serve</code>, then pull a model that can call tools, e.g.${" "}
         <code>ollama pull ${provider.example_model}</code>. To reach it from this appliance, start it with
         ${" "}<code>OLLAMA_HOST=0.0.0.0</code>.${this.props.inContainer ? html`${" "}NetCoreNOC runs in a container

@@ -179,7 +179,16 @@ async def _routes(store: Store, role: str = "admin") -> dict[str, Any]:
 async def test_every_judge_chart_names_its_dataset_and_n(
     store: Store, leagued: league.League
 ) -> None:
-    result = domdriver.run_scenario("judge", {"routes": await _routes(store)})
+    routes = await _routes(store)
+    # ADR #485: the screen is in tabs, so the blocks are gathered from the three that draw data.
+    every = [
+        b
+        for tab in ("charts", "site", "live")
+        for b in domdriver.run_scenario(
+            "judge", {"routes": routes, "navigate": f"#/promotion?tab={tab}"}
+        )["blocks"]
+    ]
+    result = {"blocks": every}
     blocks = {b["dataset"]: b for b in result["blocks"] if b["dataset"]}
     assert {"generated data", "site data", "live traffic"} <= set(blocks), list(blocks)
     generated = [b for b in result["blocks"] if b["dataset"] == "generated data"]
@@ -239,8 +248,13 @@ async def test_the_league_says_who_decides_why_and_every_models_role(
         "gam": "challenger",
         "logistic_regression": "challenger",
     }, roles
-    page = domdriver.run_scenario("render", {"routes": routes, "navigate": "#/promotion"})
-    dump = page["dump"]
+    # ADR #485: who decides and the table are the Overview tab; the model switch is on Charts.
+    dump = "\n".join(
+        domdriver.run_scenario("render", {"routes": routes, "navigate": f"#/promotion?tab={tab}"})[
+            "dump"
+        ]
+        for tab in ("overview", "charts")
+    )
     for text in (
         "Fast loop",
         "Slow loop",
@@ -306,12 +320,13 @@ async def test_labelling_shows_the_proposals_and_no_readiness_floor(
     store: Store, leagued: league.League
 ) -> None:
     routes = await _routes(store)
+    # ADR #484: `#/labelling` opens Learning on its "To judge" tab — the diagram, then the queue.
     page = domdriver.run_scenario("render", {"routes": routes, "navigate": "#/labelling"})
     dump = page["dump"]
     for text in (
-        "Your judgements teach every model.",
-        "Proposals waiting for an answer",
-        "Groupings waiting for a verdict",
+        "How your judgements teach the models",
+        "To judge",
+        "Verdict",
         "models compete",
     ):
         assert text in dump, text

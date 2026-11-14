@@ -61,6 +61,11 @@ ACTIONS: frozenset[str] = frozenset(
         # v0.30.0 (ADR #445): a recovery link asked for (matched or not), and a password set by one.
         "password.reset.request",
         "password.reset",
+        # ADR #482: two-factor sign-in. An authenticator enrolled (at a sign-in), new recovery
+        # codes, and an authenticator forgotten (by its person, or by an admin for someone else).
+        "twofactor.enroll",
+        "twofactor.recovery_codes",
+        "twofactor.reset",
         # v0.25.0: a person's own display name or photo (ADR #401, #402). One action for both, the
         # field in `details`; an admin changing someone else's is `user.update`.
         "profile.update",

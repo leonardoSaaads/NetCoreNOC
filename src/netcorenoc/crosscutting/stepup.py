@@ -10,12 +10,11 @@ more than a session, so each asks again for the **username, the password and a s
   console does not borrow their custody.
 * **A wrong password counts against sign-in's own throttle** (per username and per address), so a
   stolen session buys no guesses that signing in would not have allowed.
-* **The second factor is a placeholder, and says so.** Two-factor sign-in (TOTP, RFC 6238 —
-  Google Authenticator, Authy, any authenticator app) is on the roadmap; until an account can enrol
-  one, :func:`second_factor` answers ``"not-enrolled"`` and every audit row records that answer.
-  A code sent today is ignored rather than "checked": accepting any six digits would be a control
-  that controls nothing. Enrolment turns the answer into ``"verified"`` or ``"failed"`` here, and
-  the routes need no change.
+* **The second factor is the authenticator code** (ADR #482): the same six digits that signing in
+  asks for, from the same app. A code is accepted once — one already used to sign in or to confirm
+  is refused — and a wrong one counts against the throttle like a wrong password. Since every
+  session is opened by a code, every person who can reach a step-up has an authenticator; one
+  without (an admin just reset it) is refused, ``"not-enrolled"``.
 """
 
 from __future__ import annotations
@@ -25,17 +24,17 @@ import hmac
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
-from netcorenoc.crosscutting import auth
+from netcorenoc.crosscutting import auth, totp
 
 if TYPE_CHECKING:
     from netcorenoc.store import Store
 
-__all__ = ["SECOND_FACTOR_STATES", "StepUpOutcome", "confirm", "second_factor"]
+__all__ = ["SECOND_FACTOR_STATES", "StepUpOutcome", "confirm", "enrolment", "second_factor"]
 
-#: What the second-factor check may answer. ``not-enrolled`` is the only answer today.
+#: What the second-factor check may answer.
 SECOND_FACTOR_STATES = frozenset({"verified", "not-enrolled", "failed"})
 
-REFUSED = "confirm your username and password to do this"
+REFUSED = "confirm your username, password and authenticator code to do this"
 TOKEN_REFUSED = "a service token cannot confirm an identity; a person must do this"  # nosec B105
 LOCKED = "too many attempts; try again later"
 
@@ -54,9 +53,31 @@ class StepUpOutcome:
         }
 
 
-def second_factor(_user: dict[str, Any], _code: str | None) -> str:
-    """``"verified"``, ``"failed"`` or ``"not-enrolled"``. No account can enrol yet (ADR #456)."""
-    return "not-enrolled"
+async def enrolment(store: Store, principal: auth.Principal) -> str:
+    """``"enrolled"`` or ``"not-enrolled"``: whether the step-up's code field applies to this
+    person. What the console draws; the check is :func:`second_factor`."""
+    if principal.user_id is None:
+        return "not-enrolled"
+    async with store.reading():
+        factor = await store.second_factor(int(principal.user_id))
+    return "enrolled" if factor is not None else "not-enrolled"
+
+
+async def second_factor(store: Store, user_id: int, code: str | None, now: float) -> str:
+    """``"verified"``, ``"failed"`` or ``"not-enrolled"`` (ADR #482). A verified code's step is
+    recorded, so the same code is not accepted again."""
+    async with store.reading():
+        stored = await store.second_factor_secret(user_id)
+    if stored is None:
+        return "not-enrolled"
+    secret, last_step = stored
+    step = totp.matching_step(secret, code or "", now, last_step=last_step)
+    if step is None:
+        return "failed"
+    async with store.lock:
+        used = await store.second_factor_use(user_id, step, now)
+        await store.commit()
+    return "verified" if used or not totp.REPLAY_GUARD else "failed"
 
 
 async def confirm(
@@ -91,8 +112,8 @@ async def confirm(
     if not await asyncio.to_thread(auth.verify_password, password, str(user["password_hash"])):
         throttle.record_failure(principal.actor, source_ip, now)
         return StepUpOutcome(False, "not-enrolled", "password")
-    factor = second_factor(user, code)
-    if factor == "failed":
+    factor = await second_factor(store, int(principal.user_id), code, now)
+    if factor != "verified":
         throttle.record_failure(principal.actor, source_ip, now)
         return StepUpOutcome(False, factor, "second-factor")
     throttle.record_success(principal.actor, source_ip)

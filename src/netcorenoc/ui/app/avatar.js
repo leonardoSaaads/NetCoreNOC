@@ -15,11 +15,14 @@
 
 import { html, Component, cx } from "./dom.js";
 import { api } from "./api.js";
+import { Icon } from "./icons.js";
 
 const SIDE = 192;
 const MAX_INPUT = 20 * 1024 * 1024;
 const MAX_UPLOAD = 64 * 1024;
 const ACCEPT = "image/png,image/jpeg,image/webp";
+/** Each picker's file input gets its own id, so the photo's camera badge can be its label too. */
+let pickerSeq = 0;
 
 /** Two initials: from a display name's first two words, else from the username. */
 export function initials(name, username) {
@@ -133,19 +136,25 @@ export class PhotoPicker extends Component {
     const shown = removed ? { ...person, digest: null } : person;
     const has = chosen || (!removed && person.digest);
     const style = `width:${size}px;height:${size}px`;
+    const id = this.inputId || (this.inputId = `photo-${(pickerSeq += 1)}`);
     return html`<div class="photo-picker">
       <div class="photo-frame" style=${style}>
         <canvas ref=${(node) => { this.canvas = node; }} class=${cx("avatar", !chosen && "photo-idle")}
           width=${SIDE} height=${SIDE} style=${style} aria-label=${`${label}: new photo`}></canvas>
         ${chosen ? null : html`<${Avatar} id=${shown.id} digest=${shown.digest} name=${shown.name}
           username=${shown.username} size=${size} />`}
+        <label for=${id} class=${cx("photo-cam", busy && "busy")} title=${has ? "Change photo" : "Add photo"}
+          aria-hidden="true"><${Icon} name="image" /></label>
       </div>
       <div class="photo-actions">
-        <label class=${cx("tap", "photo-choose", busy && "busy")}>
-          <input type="file" accept=${ACCEPT} class="visually-hidden"
-            onChange=${(e) => this.pick(e)} disabled=${busy} />
-          ${has ? "Change photo" : "Add photo"}</label>
-        ${has ? html`<button type="button" class="linkish" onClick=${() => this.remove()}>Remove</button>` : null}
+        <input id=${id} type="file" accept=${ACCEPT} class="visually-hidden"
+          onChange=${(e) => this.pick(e)} disabled=${busy} />
+        <div class="photo-buttons">
+          <label for=${id} class=${cx("btn-ghost", "photo-choose", busy && "busy")}>
+            <${Icon} name="upload" /> ${has ? "Change photo" : "Upload photo"}</label>
+          ${has ? html`<button type="button" class="btn-ghost photo-remove" onClick=${() => this.remove()}>Remove</button>` : null}
+        </div>
+        <small class="muted">PNG, JPEG or WebP · cropped to a square</small>
         ${error ? html`<p class="err" role="alert">${error}</p>` : null}
       </div>
     </div>`;

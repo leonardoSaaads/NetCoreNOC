@@ -182,6 +182,29 @@ that an editor can always stop it. Turning a grade on is admin-only (#412).
   link at another mailbox, and a new address withdraws the links sent to the old one (ADR #453).
 * Sessions are stored server-side by SHA-256 of the id, with a sliding idle timeout **and** an
   absolute one. A stolen cookie expires on the absolute clock whatever the holder does.
+
+### Two-factor sign-in (ADR #482)
+
+* **Required for every person.** A right password opens **no session**: it answers with a
+  challenge (256 random bits, stored as SHA-256, ten minutes, five wrong codes), and only
+  `POST /api/login/code` with a right code opens the session. Service tokens have no second factor;
+  they are not people.
+* **TOTP** (RFC 6238: HMAC-SHA1, six digits, 30 seconds, one step either side), so any
+  authenticator app works. **A code is accepted once**: the step it was accepted for is recorded in
+  the statement that checks it, and a replayed code is refused, at sign-in and at the vault's
+  step-up alike.
+* **The secret** is made by the appliance, shown once while the person enrols (a QR code drawn by
+  the appliance as inline SVG, and the key as text on request), and stored **sealed** under the
+  secret key. It becomes the person's only when the first code from the app is right. No route
+  returns it after enrolment.
+* **Recovery codes**: ten per enrolment, single-use, stored as keyed digests (HMAC under the secret
+  key). New codes, and moving to a new phone, each take the password **and** a current code.
+* **Wrong codes have their own throttle** (per username and per address, exponential to fifteen
+  minutes) that a right password does not reset: knowing the password buys no extra guesses.
+* **Resets**: an admin can reset someone else's authenticator (never their own); the only admin uses
+  `python -m netcorenoc admin reset-two-factor <user>`. Both end every session of the account and
+  are audited (`twofactor.reset`). The migration that introduced two-factor ended every session
+  open at the time, since each had been opened by a password alone.
 * Service tokens are per-identity and revocable. The value is shown once and stored hashed.
 
 ## NOC cases: who reads, who works, what a customer is shown (ADRs #459-#461)
@@ -313,9 +336,9 @@ changed only by a custodian, stepped up and audited. The rules, each a test in
   nothing. No list or detail carries a secret; lists never read the sealed column.
 * **Step-up for everything that matters.** Reading a credential, changing or deleting one, letting
   agents use one and naming a custodian or an agent each ask again for the person's username and
-  password, in the same request. A wrong answer is audited and counts against the sign-in throttle.
-  **Two-factor authentication is a placeholder**: the field is there, disabled, and every audit row
-  records `second_factor: not-enrolled` until TOTP enrolment ships — no code is "checked" today.
+  password **and a current authenticator code** (ADR #482), in the same request. A wrong answer is
+  audited and counts against the sign-in throttle; a code already used is refused, and the audit
+  row records `second_factor: verified` or why not.
 * **Agents get leases, never secrets.** Agent access is off per credential until a custodian
   switches it on. A service token an admin named an agent may then lease a credential: a signed
   (HS256), short-lived (15 min, at most 1 h) token bound to that agent and that credential, holding
@@ -369,7 +392,8 @@ python -m netcorenoc audit verify     # walks the chain, reports the FIRST broke
 ```
 
 It records every mutating action and every sensitive read — reading the quarantine list is audited,
-because the quarantine holds raw refused datagrams. The action catalog is **frozen with a
+because the quarantine holds raw refused datagrams. Reading the log is audited **with the filters
+used** (period, person, section, outcome, text; ADR #486), every one a bound parameter. The action catalog is **frozen with a
 completeness test**: adding an action is a deliberate decision, not a side effect of adding a route.
 Pruning is admin-triggered only and is itself audited.
 

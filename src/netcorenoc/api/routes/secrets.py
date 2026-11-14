@@ -140,7 +140,7 @@ def register(app: FastAPI, ctx: AppContext) -> None:
             "secrets": [gate.view(r, checks[int(r["id"])]) for r in rows],
             "catalogue": catalogue,
             "warnings": secretbox.warnings(),
-            "second_factor": stepup.second_factor({}, None),
+            "second_factor": await stepup.enrolment(store, principal),
         }
 
     @route.post("/api/noc/secrets")

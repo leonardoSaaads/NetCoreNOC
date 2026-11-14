@@ -36,6 +36,7 @@ from dataclasses import dataclass
 from netcorenoc.engine.noc.agents import MODELS, OPENAI_PROVIDERS
 
 __all__ = [
+    "OLLAMA_PORT",
     "PROVIDERS",
     "Provider",
     "ProviderError",
@@ -46,6 +47,7 @@ __all__ = [
     "describe",
     "in_container",
     "loopback_hint",
+    "ollama_candidates",
 ]
 
 
@@ -218,6 +220,36 @@ def loopback_hint(host: str) -> str:
         f" NetCoreNOC runs in a container, where {host} is the container itself: point it at "
         f"{HOST_FROM_CONTAINER} (docker-compose.yml maps it to the host) or the host's address."
     )
+
+
+#: Where a local Ollama usually answers, in the order they are tried (ADR #487) — the list
+#: AnythingLLM's auto-detection uses, plus a compose service called `ollama` and the container's
+#: own gateway. Port 11434 is Ollama's default.
+OLLAMA_PORT = 11434
+_OLLAMA_HOSTS = ("127.0.0.1", HOST_FROM_CONTAINER, "ollama", "172.17.0.1")
+
+
+def _default_gateway(route: str = "/proc/net/route") -> str | None:
+    """The default route's gateway on Linux (in a container: the host side of its bridge)."""
+    try:
+        with open(route, encoding="ascii") as table:
+            for line in table.readlines()[1:]:
+                parts = line.split()
+                if len(parts) > 2 and parts[1] == "00000000" and parts[2] != "00000000":
+                    raw = bytes.fromhex(parts[2])[::-1]
+                    return ".".join(str(b) for b in raw)
+    except (OSError, ValueError):
+        return None
+    return None
+
+
+def ollama_candidates() -> list[tuple[str, int]]:
+    """Every address a local Ollama is tried at by "Detect" — fixed, never typed by a caller."""
+    hosts = list(_OLLAMA_HOSTS)
+    gateway = _default_gateway()
+    if gateway and gateway not in hosts:
+        hosts.append(gateway)
+    return [(h, OLLAMA_PORT) for h in hosts]
 
 
 def by_kind(kind: str) -> Provider | None:

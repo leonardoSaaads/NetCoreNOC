@@ -29,8 +29,11 @@ NOC at a glance, AI providers' keys for agents on any OpenAI-compatible API, wha
 **each customer's book** for the agents to read (#470-#473), and what an operators' review round
 on a lab like the owner's found (#474-#476), the owner's adjustments (#477), agents that work a
 case with nothing typed (#478), the console's identity after Paperclip (#479), the case opened
-on request (#480) and each customer's credentials and email (#481). The schema is PostgreSQL's baseline,
-**migration 0031**, which includes SQLite's 0030, **0032** to **0044** (schema 44). See
+on request (#480), each customer's credentials and email (#481), **two-factor sign-in for every
+person** (#482), a first-run Overview in pictures (#483), Learning (#484), the Judge in tabs
+(#485), the audit log by filters (#486) and a local Ollama that works (#487). The schema is
+PostgreSQL's baseline, **migration 0031**, which includes SQLite's 0030, **0032** to **0045**
+(schema 45). See
 [`MIGRATION.md`](MIGRATION.md): the SQLite file is **imported once**, before the first start; the
 appliance is three processes and a spool on disk, and a container needs two CPUs. No grouping
 decision changes (`make eval` is byte-identical).
@@ -155,6 +158,49 @@ stored device credential is unreadable (#455).
   or reference; each circuit's path drawn site by site; the customer's own multi-row sheet imported
   from a paste or an uploaded workbook, previewed first). Scoped by the customer's elements; eight
   new MCP tools (42 in all). Migration **0039**.
+
+### Added — two-factor sign-in, required for every person (#482)
+
+- A right password opens **no session**: `POST /api/login` answers with a challenge and
+  `POST /api/login/code` — the authenticator's six-digit code (TOTP, RFC 6238) or a single-use
+  recovery code — opens it. The first sign-in enrols the authenticator: a **QR code drawn by the
+  appliance** (inline SVG, no dependency), the key as text, ten recovery codes, and the first code.
+  Codes and key are hidden by default (Copy and Save need nothing on screen); "Show codes" draws
+  dots and a warning, and only "I'm ready — show them" reveals them.
+  A code is accepted once; wrong codes have their own throttle; secrets are sealed, recovery codes
+  stored as keyed digests. Migration **0045** (schema 45) ends every session open at the time.
+- The vault's step-up checks the code for real (#456's placeholder is gone).
+- *Your account* is redrawn: a header with the photo (camera badge), tabs Profile, Security (new
+  recovery codes, move to a new phone) and Permissions. People & access shows who has two-factor and
+  lets an admin reset someone else's; `python -m netcorenoc admin reset-two-factor <user>` for the
+  only admin. Audit actions `twofactor.enroll`, `twofactor.recovery_codes`, `twofactor.reset`.
+
+### Changed — the console, for someone who has never seen it (#483-#486)
+
+- **The Overview before the first trap** is three pictures: point the equipment here (the trap
+  destination to copy), confirm the situation and open a case, the NOC works it (#483).
+- **Learning** replaces Labelling and Corpus: a UML class diagram of how a judgement teaches the
+  models, with live numbers and clickable classes, then *To judge* and *Corpus* tabs (#484).
+- **Judge & promotion** in five tabs — Overview, Charts, Site labels, Live, Record; the ROC chart on
+  linear axes with its chance line drawn only where both axes cover it (it ran along the bottom
+  edge before); charts as cards in an even grid (#485).
+- **The audit log** by period, person, section, outcome and text, rows that open in place, paging,
+  and the view as CSV; `GET /api/audit` takes the filters, `GET /api/audit/facets` is new (#486).
+
+### Fixed — a local Ollama that answers and acts (#487)
+
+- An agent's turn on Ollama goes to its **native API with a context window** (16k by default,
+  8k-64k per agent) and `keep_alive`; the OpenAI-compatible endpoint it used cannot set one, so
+  Ollama cut the start of the prompt — the agent's instructions and tools.
+- **Connect Ollama finds it** at the usual addresses (`GET /api/noc/providers/ollama/detect`) and
+  each model can be **tried** for an answer and a tool call, timed
+  (`POST /api/noc/secrets/{id}/try`).
+
+### Fixed — starting a site search no longer holds the event loop (#488)
+
+- Building the search's rows and payload and starting its worker run in a thread: a spawn start
+  waits on a pipe until the child has imported enough to read the payload, which held ingestion
+  and HTTP for up to 1.8 s on a loaded host.
 
 ### Added — each customer's credentials and email; secure Telnet (#481)
 

@@ -29,7 +29,7 @@ from __future__ import annotations
 
 from collections.abc import Awaitable, Callable
 from contextlib import AbstractAsyncContextManager
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
 from fastapi import Request
@@ -70,6 +70,9 @@ class AppContext:
     extra_stats: Callable[[], dict[str, Any]] | None
     runtime: RuntimeConfig | None
     tls_enabled: bool
+    #: ADR #482: wrong authenticator codes, counted apart from passwords — a right password does
+    #: not reset it, so knowing the password buys no extra guesses at the code.
+    code_throttle: auth.LoginThrottle = field(default_factory=auth.LoginThrottle)
 
     async def label_context(
         self,

@@ -80,6 +80,21 @@ Two rules that have held since v0.1.0 and are not going to change:
 
 *(This table has no rows for v0.17.0 or v0.18.0: neither release wrote one, and inventing upgrade notes for a release somebody else built would be describing an upgrade nobody tested.)*
 
+## Unreleased — two-factor sign-in, required for every person (#482)
+
+Migration **0045** applies at start and is additive. **What you will notice**: every session ends
+at the upgrade, and each person's next sign-in asks them to set up an authenticator app (scan a QR
+code, keep ten recovery codes, type the first code). **What to do**: have an authenticator app on a
+phone before you sign in; keep the recovery codes. **API**: `POST /api/login` no longer sets a
+cookie — it answers with a `challenge`, and `POST /api/login/code` with the challenge and a code
+opens the session ([`docs/operate.md`](docs/operate.md#1-first-sign-in)). Scripts that signed in
+with a password should use a **service token** instead. The vault's step-up requires `otp`, the
+current code. Lost phone and codes: an admin resets it (People & access), or
+`python -m netcorenoc admin reset-two-factor <user>`. Also in this release, no action needed:
+Labelling and Corpus are one screen, **Learning** (#484; the old addresses still open it); the Judge
+is in tabs (#485); `GET /api/audit` takes filters (#486); Ollama agents gain a `num_ctx` setting,
+16 384 by default (#487).
+
 ## Unreleased — each customer's credentials and email (#481)
 
 Migration **0044** applies at start and is additive. **What to do**: the device credentials you

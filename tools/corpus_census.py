@@ -48,11 +48,12 @@ import asyncio
 import contextlib
 import json
 import sys
+import time
 from pathlib import Path
 from typing import Any
 
 from netcorenoc.api import create_app
-from netcorenoc.crosscutting import auth
+from netcorenoc.crosscutting import auth, totp
 from netcorenoc.engine.dataset import incidents
 from netcorenoc.engine.dataset.labels import Exclusion, LabelContext, LabelScope
 from netcorenoc.ingest.events import TrapEvent
@@ -330,9 +331,20 @@ async def run(*, control: bool, tag: str, gestures: bool = False) -> dict[str, i
                 base_url=CENSUS_ORIGIN,
                 headers={"X-NetCoreNOC-Client": "ui", "Origin": CENSUS_ORIGIN},
             ) as client:
-                signed_in = await client.post(
+                challenge = await client.post(
                     "/api/login",
                     json={"username": CENSUS_EDITOR, "password": CENSUS_PASSWORD},
+                )
+                # ADR #482: the second step. The census operator enrols an authenticator the way a
+                # person does, answering with the code for the secret it is shown.
+                offered = challenge.json()
+                secret = str(offered["enrollment"]["secret"]).replace(" ", "")
+                signed_in = await client.post(
+                    "/api/login/code",
+                    json={
+                        "challenge": offered["challenge"],
+                        "code": totp.code_at(secret, totp.step_at(time.time())),
+                    },
                 )
                 if signed_in.status_code != 200:  # pragma: no cover - a broken fixture
                     raise SystemExit(f"the census operator could not sign in: {signed_in.text}")

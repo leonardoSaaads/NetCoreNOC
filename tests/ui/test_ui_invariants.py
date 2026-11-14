@@ -939,7 +939,9 @@ async def test_a_decided_promotion_shows_both_arms_of_all_four_quantities(
     says what the consequence was.
     """
     captured = await _routes_with_an_applied_promotion(store)
-    result = domdriver.run_scenario("render", {"routes": captured, "navigate": "#/promotion"})
+    result = domdriver.run_scenario(
+        "render", {"routes": captured, "navigate": "#/promotion?tab=record"}
+    )
     dump = result["dump"]
 
     for label in (
@@ -3721,7 +3723,7 @@ async def test_the_four_named_quantities_are_drawn_as_four_and_never_composed(
         ),
     }
     result = domdriver.run_scenario(
-        "charts", {"routes": routes["admin"], "navigate": "#/promotion"}
+        "charts", {"routes": routes["admin"], "navigate": "#/promotion?tab=record"}
     )
     titles = [c["label"] for c in result["charts"]]
     lines = [c for c in result["charts"] if c["kind"] == "line"]
@@ -3825,7 +3827,7 @@ async def test_a_quantity_that_was_not_computable_breaks_the_line_rather_than_re
         ),
     }
     result = domdriver.run_scenario(
-        "charts", {"routes": routes["admin"], "navigate": "#/promotion"}
+        "charts", {"routes": routes["admin"], "navigate": "#/promotion?tab=record"}
     )
     # Two decisions, one of them unmeasurable: **one readable point, and a line needs two.** So no
     # line is drawn from the floor — and the chart says which of the two cases it is in, rather
@@ -3872,7 +3874,7 @@ async def test_insufficient_evidence_is_legible_rather_than_blank(
         ),
     }
     result = domdriver.run_scenario(
-        "charts", {"routes": routes["admin"], "navigate": "#/promotion"}
+        "charts", {"routes": routes["admin"], "navigate": "#/promotion?tab=record"}
     )
     dump = result["dump"]
     assert "INSUFFICIENT_EVIDENCE" in dump, "the verdict is not on the screen at all"
@@ -3903,7 +3905,7 @@ async def test_the_evidence_screen_records_what_nothing_measures(
     routes = {**routes, "admin": {**routes["admin"]}}
     routes["admin"]["/api/promotion"] = {"status": 200, "json": _promotion_payload()}
     result = domdriver.run_scenario(
-        "charts", {"routes": routes["admin"], "navigate": "#/promotion"}
+        "charts", {"routes": routes["admin"], "navigate": "#/promotion?tab=record"}
     )
     # v0.22.0: the three absences are one info tip beside the heading, in the DOM always; the
     # dump prints text lines truncated, so the tip's full text is read beside it.
@@ -4590,7 +4592,7 @@ async def test_the_correlation_verdict_is_one_line_until_it_is_clicked(
     assert "corrPanel" not in situations["dump"], "the correlation panel is back on Situations"
 
     promotion = domdriver.run_scenario(
-        "charts", {"routes": routes["admin"], "navigate": "#/promotion"}
+        "charts", {"routes": routes["admin"], "navigate": "#/promotion?tab=live"}
     )
     assert "corrPanel" in promotion["dump"], "the correlation panel is not beside the scorer"
 

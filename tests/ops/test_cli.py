@@ -225,6 +225,43 @@ def test_admin_reset_password_is_one_time_audited_and_revokes_sessions(
     assert cli.main(["admin", "reset-password", "nobody"]) == 1
 
 
+def test_admin_reset_two_factor_forgets_the_authenticator_audits_and_revokes(
+    db_url: str, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The only admin lost the phone and the recovery codes (ADR #482)."""
+    db = db_url
+    _use(monkeypatch, db)
+
+    async def seed() -> int:
+        store = Store(db)
+        await store.open()
+        uid = await store.create_user(
+            username="alice", password_hash="x", role="admin", must_change_password=False, now=1.0
+        )
+        await store.enroll_second_factor(int(uid), "JBSWY3DPEHPK3PXP", 0, ["d" * 64], 1.0)
+        await store.create_session("h" * 64, int(uid), 1.0, 1.0, 1e10, 1e10, None)
+        await store.commit()
+        await store.close()
+        return int(uid)
+
+    uid = asyncio.run(seed())
+    assert cli.main(["admin", "reset-two-factor", "alice"]) == 0
+    assert "next sign-in sets up a new one" in capsys.readouterr().out
+
+    async def check() -> None:
+        store = Store(db)
+        await store.open()
+        assert await store.second_factor(uid) is None
+        assert await store.get_session("h" * 64) is None, "the old sessions must be revoked"
+        assert (await audit.verify_chain(store)).ok
+        cur = await store.conn.execute("SELECT action, actor, object_id FROM audit_log")
+        assert [tuple(r) for r in await cur.fetchall()] == [("twofactor.reset", "cli", str(uid))]
+        await store.close()
+
+    asyncio.run(check())
+    assert cli.main(["admin", "reset-two-factor", "nobody"]) == 1
+
+
 def test_backup_copies_a_consistent_database_and_never_overwrites(
     db_url: str,
     empty_database: Callable[[], str],

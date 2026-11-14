@@ -58,7 +58,7 @@ async def test_an_unkeyed_hash_still_signs_in_and_is_rewritten_keyed(store: Stor
             now=1000.0,
         )
         await store.commit()
-    assert outcome.status == "ok"
+    assert outcome.status == "second_factor", "a right password; the code comes next"
     user = await store.get_user(uid)
     assert user is not None and str(user["password_hash"]).startswith("scrypt-p1$")
     assert auth.verify_password(authutil.PW, str(user["password_hash"]))
@@ -337,7 +337,21 @@ async def test_bootstrap_login_requires_password_change_then_grants_access(store
                 "new_password": "a-good-new-pw-1234",
             },
         )
-        assert changed.status_code == 200 and changed.json()["role"] == "admin"
+        # ADR #482: the change is made, and the second step begins — enrolling the authenticator.
+        # Still no session: the code from the app is what opens one.
+        assert changed.status_code == 200, changed.text
+        step = changed.json()
+        assert step["second_factor"] == "enroll" and "Set-Cookie" not in changed.headers
+        enrolment = step["enrollment"]
+        assert len(enrolment["recovery_codes"]) == 10
+        assert enrolment["uri"].startswith("otpauth://totp/NetCoreNOC:admin?secret=")
+        secret = enrolment["secret"].replace(" ", "")
+        assert (await c.get("/api/stats")).status_code == 401
+        done = await c.post(
+            "/api/login/code", json={"challenge": step["challenge"], "code": authutil.code(secret)}
+        )
+        assert done.status_code == 200 and done.json()["role"] == "admin"
+        assert done.json()["second_factor"] == "enrolled"
         assert (await c.get("/api/stats")).status_code == 200  # unlocked
 
 

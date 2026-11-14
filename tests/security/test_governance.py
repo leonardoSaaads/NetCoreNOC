@@ -1403,6 +1403,8 @@ def test_f34_every_mutating_route_below_admin_resolves_scope() -> None:
         ("DELETE", "/api/me/avatar"),
         ("POST", "/api/me/profile"),
     }
+    # ADR #482: your own recovery codes and authenticator are your own account's sign-in.
+    session_only |= {("POST", "/api/me/recovery-codes"), ("POST", "/api/me/two-factor/reset")}
     # v0.26.0: the kill switch turns every autonomy grade off for the whole appliance. It names no
     # element and reveals nothing; withholding it from a scoped editor would leave autonomy running
     # on elements that editor is watching (ADR #412).

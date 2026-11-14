@@ -40,8 +40,7 @@ import { Timeline } from "./views/timeline.js";
 import { Entities } from "./views/entities.js";
 import { Classes } from "./views/classes.js";
 import { Maintenance } from "./views/maintenance.js";
-import { Labelling } from "./views/labelling.js";
-import { Corpus } from "./views/corpus.js";
+import { Learning, LabellingAlias, CorpusAlias } from "./views/learning.js";
 import { Promotion } from "./views/promotion.js";
 import { Access } from "./views/access.js";
 import { html } from "./dom.js";
@@ -114,14 +113,21 @@ export const VIEWS = [
 
   /* ---------- Evidence: what has been learned, and what is refused ---------- */
   {
-    id: "labelling", label: "Labelling", icon: "labelling", group: "evidence",
-    capability: ["situations.read", "feedback.write"], component: Labelling,
-    summary: "Confirm or split a grouping, and see what your labels have produced.",
+    // ADR #484: Labelling and Corpus are one screen — what waits for a judgement, and what the
+    // models learn from. The two old addresses still open it, on their tab.
+    id: "learning", label: "Learning", icon: "labelling", group: "evidence",
+    capability: ["situations.read", "feedback.write"], component: Learning,
+    summary: "What waits for your judgement, and what the models learn from it.",
   },
   {
-    id: "corpus", label: "Corpus", icon: "corpus", group: "evidence",
-    capability: "config.read", component: Corpus,
-    summary: "What capture costs in rows, and the three retention tiers.",
+    id: "labelling", label: "Learning", icon: "labelling", group: null, hidden: true,
+    capability: ["situations.read", "feedback.write"], component: LabellingAlias,
+    summary: "What waits for your judgement, and what the models learn from it.",
+  },
+  {
+    id: "corpus", label: "Learning", icon: "corpus", group: null, hidden: true,
+    capability: ["situations.read", "config.read"], component: CorpusAlias,
+    summary: "What waits for your judgement, and what the models learn from it.",
   },
   {
     id: "promotion", label: "Judge & promotion", icon: "promotion", group: "evidence",

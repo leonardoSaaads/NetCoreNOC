@@ -16,20 +16,16 @@ from __future__ import annotations
 
 from typing import Literal
 
+from netcorenoc.crosscutting.rbac.account_map import (
+    ACCOUNT_ROUTE_PERMISSIONS,
+    ACCOUNT_ROUTE_SCOPE,
+)
 from netcorenoc.crosscutting.rbac.noc_map import NOC_ROUTE_PERMISSIONS, NOC_ROUTE_SCOPE
 from netcorenoc.crosscutting.rbac.tables import PERMISSIONS
 
 # Route (METHOD, templated path) -> required capability. THE authorization map.
 ROUTE_PERMISSIONS: dict[tuple[str, str], str] = {
-    ("POST", "/api/logout"): "self.read",
-    ("GET", "/api/me"): "self.read",
-    ("POST", "/api/password"): "self.read",
-    # v0.25.0 (ADR #401, #402): your own name and photo are yours, like your password. Reading a
-    # photo is `self.read`; whose photo is readable is the handler's call (`shaping.sees_people`).
-    ("GET", "/api/avatars/{uid}"): "self.read",
-    ("POST", "/api/me/avatar"): "self.read",
-    ("DELETE", "/api/me/avatar"): "self.read",
-    ("POST", "/api/me/profile"): "self.read",
+    **ACCOUNT_ROUTE_PERMISSIONS,  # the caller's own account (`account_map.py`)
     ("GET", "/api/stats"): "stats.read",
     ("GET", "/api/graph"): "graph.read",
     ("GET", "/api/classes"): "classes.read",
@@ -73,6 +69,8 @@ ROUTE_PERMISSIONS: dict[tuple[str, str], str] = {
     ("POST", "/api/users/{uid}/role"): "users.manage",
     ("POST", "/api/users/{uid}/profile"): "users.manage",
     ("POST", "/api/users/{uid}/password-reset"): "users.manage",
+    # ADR #482: forget someone else's authenticator (lost phone and recovery codes).
+    ("POST", "/api/users/{uid}/two-factor/reset"): "users.manage",
     ("POST", "/api/users/{uid}/avatar"): "users.manage",
     ("DELETE", "/api/users/{uid}/avatar"): "users.manage",
     ("GET", "/api/tokens"): "tokens.manage",
@@ -101,6 +99,7 @@ ROUTE_PERMISSIONS: dict[tuple[str, str], str] = {
     ("POST", "/api/scope"): "scope.write",
     ("GET", "/api/quarantine"): "quarantine.read",
     ("GET", "/api/audit"): "audit.read",
+    ("GET", "/api/audit/facets"): "audit.read",
     ("GET", "/api/audit/export"): "audit.export",
     ("POST", "/api/audit/prune"): "audit.prune",
     # v0.21.0 — maintenance windows. `preview` is `mw.read`, not `mw.write`: a dry run that writes
@@ -180,6 +179,8 @@ ROUTE_PERMISSIONS: dict[tuple[str, str], str] = {
 PUBLIC_ROUTES: frozenset[tuple[str, str]] = frozenset(
     {
         ("POST", "/api/login"),
+        # ADR #482: the sign-in's second step — a challenge from the first, and a code.
+        ("POST", "/api/login/code"),
         ("GET", "/api/login/options"),
         ("POST", "/api/password-reset"),
         ("POST", "/api/password-reset/confirm"),
@@ -200,20 +201,7 @@ PUBLIC_ROUTES: frozenset[tuple[str, str]] = frozenset(
 #
 # `PUBLIC_ROUTES` is exempt from this table exactly as it is from `ROUTE_PERMISSIONS`.
 ROUTE_SCOPE: dict[tuple[str, str], Literal["scoped", "unscoped", "admin_only"]] = {
-    # Acts on the caller's own session; references no network element.
-    ("POST", "/api/logout"): "unscoped",
-    # Reports the caller's own scope summary (scoped?, ne_count), so the body follows the policy.
-    ("GET", "/api/me"): "scoped",
-    # Acts on the caller's own password; references no network element.
-    ("POST", "/api/password"): "unscoped",
-    # A person's photo, and the caller's own name and photo: an account, never a network element.
-    ("GET", "/api/avatars/{uid}"): "unscoped",
-    # The caller's own photo: bytes about an account, never about a network element.
-    ("POST", "/api/me/avatar"): "unscoped",
-    # Removing the caller's own photo, for the same reason.
-    ("DELETE", "/api/me/avatar"): "unscoped",
-    # The caller's own display name: a label on an account, naming no network element.
-    ("POST", "/api/me/profile"): "unscoped",
+    **ACCOUNT_ROUTE_SCOPE,  # the caller's own account, each with its reason (`account_map.py`)
     ("GET", "/api/stats"): "scoped",
     ("GET", "/api/graph"): "scoped",
     # An alarm class is a *kind of trap*, not a network element, and the table carries no NE
@@ -255,6 +243,7 @@ ROUTE_SCOPE: dict[tuple[str, str], Literal["scoped", "unscoped", "admin_only"]] 
     ("POST", "/api/users/{uid}/role"): "admin_only",
     ("POST", "/api/users/{uid}/profile"): "admin_only",
     ("POST", "/api/users/{uid}/password-reset"): "admin_only",
+    ("POST", "/api/users/{uid}/two-factor/reset"): "admin_only",
     ("POST", "/api/users/{uid}/avatar"): "admin_only",
     ("DELETE", "/api/users/{uid}/avatar"): "admin_only",
     ("GET", "/api/tokens"): "admin_only",
@@ -296,6 +285,7 @@ ROUTE_SCOPE: dict[tuple[str, str], Literal["scoped", "unscoped", "admin_only"]] 
     ("POST", "/api/scope"): "admin_only",
     ("GET", "/api/quarantine"): "admin_only",
     ("GET", "/api/audit"): "admin_only",
+    ("GET", "/api/audit/facets"): "admin_only",
     ("GET", "/api/audit/export"): "admin_only",
     ("POST", "/api/audit/prune"): "admin_only",
     # v0.21.0 — maintenance windows. **Every one of these is `scoped`**, and it is the strongest

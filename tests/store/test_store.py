@@ -36,6 +36,7 @@ async def test_migrations_are_idempotent(db_url: str) -> None:
             (42, "0042_noc_case_pause.sql"),
             (43, "0043_case_on_request.sql"),
             (44, "0044_customer_access_mail.sql"),
+            (45, "0045_two_factor.sql"),
         ]
         assert all(len(r["checksum"]) == 64 for r in rows)
         assert s.integrity_warnings == []

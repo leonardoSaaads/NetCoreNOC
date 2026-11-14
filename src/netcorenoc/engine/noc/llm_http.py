@@ -22,10 +22,19 @@ import urllib.request
 from typing import Any
 from urllib.parse import urlsplit
 
-from netcorenoc.engine.noc import ollama
+from netcorenoc.engine.noc import ollama, ollama_chat
 from netcorenoc.engine.noc.providers import Provider
+from netcorenoc.engine.noc.providers import api_root as _api_root
 
-__all__ = ["MAX_BODY", "ProviderCallError", "chat", "headers_for", "list_models", "ollama_models"]
+__all__ = [
+    "MAX_BODY",
+    "ProviderCallError",
+    "chat",
+    "headers_for",
+    "list_models",
+    "ollama_models",
+    "ollama_probe",
+]
 
 #: The most models `ollama_models` asks `/api/show` about, and how many at once.
 SHOW_AT_MOST = 40
@@ -157,7 +166,48 @@ async def ollama_models(
 async def chat(
     provider: Provider, base: str, key: str, payload: dict[str, Any], *, timeout: float = 600.0
 ) -> dict[str, Any]:
-    """One Chat Completions turn (`POST {base}/chat/completions`)."""
+    """One Chat Completions turn (`POST {base}/chat/completions`) — or, for Ollama, one turn of
+    its native `POST /api/chat`, which takes a context window (ADR #487, `ollama_chat.py`)."""
+    if provider.ollama:
+        root = base[: -len(provider.base_path)] if base.endswith(provider.base_path) else base
+        answer = await asyncio.to_thread(
+            _call,
+            f"{root}/api/chat",
+            headers_for(provider, key),
+            ollama_chat.to_native(payload),
+            timeout,
+        )
+        return ollama_chat.from_native(answer)
     return await asyncio.to_thread(
         _call, f"{base}/chat/completions", headers_for(provider, key), payload, timeout
     )
+
+
+async def ollama_probe(
+    candidates: list[tuple[str, int]], *, timeout: float = 1.5
+) -> list[dict[str, Any]]:
+    """Which of ``candidates`` answers as an Ollama server (ADR #487): each one's version and the
+    models pulled there. The candidates are the appliance's own fixed list
+    (`providers.ollama_candidates`), never an address a caller typed."""
+
+    async def one(host: str, port: int) -> dict[str, Any] | None:
+        root = _api_root(host, port, "HTTP")
+        try:
+            version = await asyncio.to_thread(_call, f"{root}/api/version", {}, None, timeout)
+            tags = await asyncio.to_thread(_call, f"{root}/api/tags", {}, None, timeout)
+        except ProviderCallError:
+            return None
+        models = [
+            str(m.get("model") or m.get("name") or "")[:200]
+            for m in (tags.get("models") or [])
+            if isinstance(m, dict)
+        ]
+        return {
+            "host": host,
+            "port": port,
+            "version": str(version.get("version") or "")[:32],
+            "models": [m for m in models if m][:200],
+        }
+
+    found = await asyncio.gather(*(one(h, p) for h, p in candidates))
+    return [f for f in found if f is not None]

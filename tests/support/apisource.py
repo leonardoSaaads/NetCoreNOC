@@ -77,6 +77,8 @@ MODULE_ORDER: tuple[str, ...] = (
     "routes/__init__.py",
     "routes/static.py",
     "routes/auth.py",
+    # ADR #482: the sign-in's second step, registered right after the first.
+    "routes/two_factor.py",
     "routes/read.py",
     # v0.16.0: the five operator gestures, in the order `create_app` registers them — the three
     # that assert something about a grouping, then the two that assert nothing about one.

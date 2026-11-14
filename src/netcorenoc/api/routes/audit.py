@@ -12,15 +12,16 @@ import time
 from collections.abc import AsyncIterator
 from typing import Any
 
-from fastapi import Depends, FastAPI, Request, Response
+from fastapi import Depends, FastAPI, HTTPException, Request, Response
 from fastapi.responses import StreamingResponse
 
 from netcorenoc.api.context import AppContext
 from netcorenoc.api.declare import DeclaredRoutes
-from netcorenoc.crosscutting import audit, auth
+from netcorenoc.crosscutting import audit, audit_sections, auth
 
 #: Audit rows per page of a streamed export.
 EXPORT_PAGE = 2000
+SECTION_NAMES = ", ".join(audit_sections.SECTIONS)
 
 
 def register(app: FastAPI, ctx: AppContext) -> None:
@@ -51,12 +52,75 @@ def register(app: FastAPI, ctx: AppContext) -> None:
 
     @route.get("/api/audit")
     async def read_audit(
-        request: Request, limit: int = 200, principal: auth.Principal = Depends(security)
+        request: Request,
+        limit: int = 200,
+        since: float | None = None,
+        until: float | None = None,
+        actor: str | None = None,
+        section: str | None = None,
+        outcome: str | None = None,
+        q: str | None = None,
+        before: int | None = None,
+        principal: auth.Principal = Depends(security),
     ) -> list[dict[str, Any]]:
+        """The newest rows, narrowed (ADR #486): a period, a person, a section of the product, an
+        outcome, a text, and a cursor (`before`, an id) for the next page. The read is audited with
+        the filters it used."""
+        if section is not None and section not in audit_sections.SECTIONS:
+            raise HTTPException(status_code=400, detail=f"section: one of {SECTION_NAMES}")
+        if outcome is not None and outcome not in ("ok", "denied", "error"):
+            raise HTTPException(status_code=400, detail="outcome: ok, denied or error")
+        who = (actor or "").strip()[:64] or None
+        text = (q or "").strip()[:100] or None
+        filters: dict[str, Any] = {
+            "since": since,
+            "until": until,
+            "actor": who,
+            "section": section,
+            "outcome": outcome,
+            "q": text,
+            "before": before,
+        }
         async with write_txn():
-            rows = await store.list_audit(min(max(limit, 1), 1000))
-            await audit_row(request, principal, "audit.read", "ok", details={"count": len(rows)})
+            rows = await store.list_audit(
+                min(max(limit, 1), 1000),
+                since=since,
+                until=until,
+                actor=who,
+                words=audit_sections.SECTIONS[section][1] if section else None,
+                outcome=outcome,
+                text=text,
+                before_id=before,
+            )
+            used = {k: v for k, v in filters.items() if v is not None}
+            await audit_row(
+                request,
+                principal,
+                "audit.read",
+                "ok",
+                details={"count": len(rows), **({"filters": used} if used else {})},
+            )
         return rows
+
+    @route.get("/api/audit/facets")
+    async def audit_facets(
+        request: Request, principal: auth.Principal = Depends(security)
+    ) -> dict[str, Any]:
+        """What the filters can offer: the people in the log, each section with its count, and
+        the period the log covers. Aggregates only; the read is audited."""
+        async with write_txn():
+            facets = await store.audit_facets()
+            await audit_row(request, principal, "audit.read", "ok", details={"facets": True})
+        counts: dict[str, int] = dict.fromkeys(audit_sections.SECTIONS, 0)
+        for action, n in facets.pop("actions").items():
+            name = audit_sections.section_of(action)
+            if name is not None:
+                counts[name] += n
+        facets["sections"] = [
+            {"id": name, "label": label, "words": list(words), "count": counts[name]}
+            for name, (label, words) in audit_sections.SECTIONS.items()
+        ]
+        return facets
 
     @route.get("/api/audit/export")
     async def export_audit(

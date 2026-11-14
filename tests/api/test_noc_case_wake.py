@@ -26,7 +26,7 @@ from netcorenoc.store import Store
 import authutil
 import util
 
-STEP = {"username": "adm", "password": authutil.PW}
+STEP = {"username": "adm", "password": authutil.PW, "otp": authutil.OTP}
 DEVICE = "10.0.0.7"
 COMPLETE = {
     "title": "LOS on ETH10G-3-1-1",

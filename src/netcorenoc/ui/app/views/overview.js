@@ -48,11 +48,12 @@
 
 import { html, Component } from "../dom.js";
 import { get } from "../api.js";
-import { Empty, Loading, Failed, SectionHeading } from "../widgets.js";
+import { Loading, Failed, SectionHeading } from "../widgets.js";
 
 /** The two counted reads re-read on this period, so the screen is never older than it. */
 const REFRESH_MS = 30_000;
 import { PlannedWork } from "./parts/mwsummary.js";
+import { FirstRun } from "./parts/firstrun.js";
 import {
   DEFAULT_RANGE_S, Estate, Happening, RANGE_BUCKETS, RANGES, RangePicker,
 } from "./parts/pulse.js";
@@ -155,16 +156,8 @@ export class Overview extends Component {
     }
 
     const quiet = stats.active_alarms === 0 && situations.length === 0 && stats.devices === 0;
-    if (quiet) {
-      return html`<${Empty}
-        title="Nothing has arrived yet."
-        will=${"This screen fills in as soon as the first SNMP trap reaches the appliance. " +
-              "Devices, alarm classes, entities and severities are all learned from the trap " +
-              "stream — there is no inventory to import and no MIB to load."}
-        meanwhile=${`Point a device's trap destination at this appliance (UDP 162 by default) ` +
-                    `and send one trap. The Alarm classes screen shows it immediately; grouping ` +
-                    `begins once a second, related alarm arrives.`} />`;
-    }
+    // ADR #483: before the first trap, three pictures of what to do instead of a paragraph.
+    if (quiet) return html`<${FirstRun} />`;
 
     const nodes = (live.graph && live.graph.nodes) || [];
     return html`<div class="overview">

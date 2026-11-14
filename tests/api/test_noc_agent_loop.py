@@ -27,7 +27,7 @@ from netcorenoc.store import Store
 import authutil
 import util
 
-STEP = {"username": "adm", "password": authutil.PW}
+STEP = {"username": "adm", "password": authutil.PW, "otp": authutil.OTP}
 
 
 async def _open_case(store: Store) -> int:

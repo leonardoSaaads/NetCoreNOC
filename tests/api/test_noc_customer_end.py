@@ -19,7 +19,7 @@ from netcorenoc.store import Store
 
 import authutil
 
-STEP = {"username": "adm", "password": authutil.PW}
+STEP = {"username": "adm", "password": authutil.PW, "otp": authutil.OTP}
 
 
 async def _audit(store: Store, action: str) -> list[dict[str, Any]]:

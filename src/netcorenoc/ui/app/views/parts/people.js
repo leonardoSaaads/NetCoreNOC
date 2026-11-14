@@ -86,7 +86,8 @@ export class PeopleList extends Component {
                 ? html`<span class="badge badge-warn">custom · ${access.value.size}</span>`
                 : html`<span class="muted">role default</span>`}</span>
               <span class="person-meta muted" title=${timeTitle(u.created_at)}>
-                ${u.must_change_password ? "must set password" : `added ${relative(u.created_at)}`}</span>
+                ${u.must_change_password ? "must set password" : `added ${relative(u.created_at)}`}
+                ${u.two_factor ? null : html` · <span class="warn-text">no two-factor yet</span>`}</span>
             </button>
           </li>`;
         })}
@@ -144,6 +145,46 @@ export class PasswordReset extends Component {
       <div class="fb">
         <button type="button" class="warn" disabled=${busy} onClick=${() => this.reset()}>
           ${busy ? "Resetting…" : `Reset ${user.username}'s password`}</button>
+        <button type="button" disabled=${busy} onClick=${() => this.setState({ open: false })}>Cancel</button>
+      </div>
+      ${error ? html`<p class="err" role="alert">${error}</p>` : null}
+    </div>`;
+  }
+}
+
+/** An administrator forgets someone's authenticator (ADR #482): they lost the phone and the codes. */
+export class TwoFactorReset extends Component {
+  constructor(props) {
+    super(props);
+    this.state = { open: false, busy: false, done: false, error: null };
+  }
+
+  async reset() {
+    this.setState({ busy: true, error: null });
+    try {
+      await post(`/api/users/${this.props.user.id}/two-factor/reset`, {});
+      this.setState({ busy: false, done: true, open: false });
+    } catch (error) {
+      this.setState({ busy: false, error: error.detail || error.message });
+    }
+  }
+
+  render({ user }, { open, busy, done, error }) {
+    if (done) {
+      return html`<p class="ok-note" role="status">${user.username}'s authenticator is forgotten. Their
+        sessions ended; they set up a new one at their next sign-in.</p>`;
+    }
+    if (!open) {
+      return html`<button type="button" class="linkish" disabled=${!user.two_factor}
+        title=${user.two_factor ? "" : "No authenticator set up yet"}
+        onClick=${() => this.setState({ open: true })}>Reset two-factor…</button>`;
+    }
+    return html`<div class="pw-reset panel-block" role="group" aria-label="Reset two-factor">
+      <p>For someone who lost both the phone and the recovery codes. Their sessions end now and the
+        next sign-in asks them to scan a new QR code.</p>
+      <div class="fb">
+        <button type="button" class="warn" disabled=${busy} onClick=${() => this.reset()}>
+          ${busy ? "Resetting…" : `Reset ${user.username}'s two-factor`}</button>
         <button type="button" disabled=${busy} onClick=${() => this.setState({ open: false })}>Cancel</button>
       </div>
       ${error ? html`<p class="err" role="alert">${error}</p>` : null}
@@ -263,7 +304,8 @@ export class PersonEditor extends Component {
       </div>` : null}
       ${error ? html`<p class="err" role="alert">${error}</p>` : null}
       ${user && user.username !== session().user ? html`<div class="pe-password">
-        <${PasswordReset} user=${user} onDone=${onSaved} /></div>` : null}
+        <${PasswordReset} user=${user} onDone=${onSaved} />
+        <${TwoFactorReset} user=${user} /></div>` : null}
       <footer class="pe-foot">
         <button type="submit" class="primary" disabled=${busy}>${busy ? "Saving…" : user ? "Save" : "Create user"}</button>
         <button type="button" onClick=${onClose}>Cancel</button>

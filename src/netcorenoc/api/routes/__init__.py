@@ -67,6 +67,7 @@ from netcorenoc.api.routes import (
     secrets,
     snmp,
     static,
+    two_factor,
     users,
 )
 
@@ -114,5 +115,6 @@ __all__ = [
     "secrets",
     "snmp",
     "static",
+    "two_factor",
     "users",
 ]

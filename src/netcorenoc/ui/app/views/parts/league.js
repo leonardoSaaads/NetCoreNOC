@@ -20,6 +20,7 @@ import { Bars } from "../../compare.js";
 import { Forest } from "../../modelcharts.js";
 import { DataTable, TimeCell, cell } from "../../widgets.js";
 import { Icon } from "../../icons.js";
+import { InfoTip } from "../../info.js";
 import { absolute, relative } from "../../format.js";
 import { ModelCharts, SUITES } from "./leaguecharts.js";
 import { CompareCharts, meanF1, toneOf } from "./leaguecompare.js";
@@ -39,10 +40,35 @@ export class LeagueBoard extends Component {
     this.state = { view: asked ? asked.ref : "compare" };
   }
 
-  render({ judge }, { view }) {
+  /** ADR #485: one section at a time — the screen's tabs choose which. */
+  render({ judge, section = "overview" }, { view }) {
     const models = judge.models || [];
     const table = judge.members || [];
     const picked = models.find((m) => m.ref === view);
+    if (section === "charts") {
+      return html`<section class="judge-block" aria-labelledby="league-charts">
+        <header class="judge-head">
+          <h3 id="league-charts">Learning and comparison</h3>
+          <span class="dataset-chip dataset-generated">generated data</span>
+        </header>
+        <div class="league-switch" role="tablist" aria-label="Which model's charts">
+          <button type="button" role="tab" aria-selected=${view === "compare"}
+            class=${cx("league-pill", view === "compare" && "on")}
+            onClick=${() => this.setState({ view: "compare" })}>Compare all</button>
+          ${models.map((m, i) => html`<button type="button" role="tab" key=${m.ref}
+            aria-selected=${view === m.ref} class=${cx("league-pill", view === m.ref && "on")}
+            onClick=${() => this.setState({ view: m.ref })}>
+            <i class=${cx("chart-swatch", `chart-${toneOf(i)}`)} aria-hidden="true"></i>${m.name}</button>`)}
+        </div>
+        ${picked ? html`<${ModelCharts} key=${picked.ref} model=${picked} />`
+          : html`<${CompareCharts} models=${models} />`}
+      </section>`;
+    }
+    if (section === "site") return html`<${SiteEvidence} judge=${judge} models=${models} />`;
+    if (section === "live") {
+      return html`<div class="league"><${LiveShadow} judge=${judge} models=${models} />
+        <${Decisions} rows=${judge.decisions || []} models=${models} /></div>`;
+    }
     return html`<div class="league">
       <${WhoDecides} judge=${judge} />
       <section class="judge-block" aria-labelledby="league-table">
@@ -50,33 +76,14 @@ export class LeagueBoard extends Component {
           <h3 id="league-table">The league</h3>
           <span class="dataset-chip dataset-generated">generated data</span>
           <span class="dataset-chip dataset-site">site data</span>
+          <${InfoTip} label="How the league is scored"><b>Score</b>: mean pairwise F1 over the
+            ${Object.keys(SUITES).length} held-out suites. <b>Site Δ</b>: challenger − champion log
+            loss on this site's labels (95 %).<//>
         </header>
-        <p class="hint"><b>Score</b>: mean pairwise F1 over the ${Object.keys(SUITES).length} held-out
-          suites. <b>Site Δ</b>: challenger − champion log loss on this site's labels (95 %).</p>
         <${LeagueTable} rows=${table} comparisons=${(judge.judgement || {}).comparisons || []} />
         ${(judge.refused || []).map((r) => html`<p class="err" key=${r.kind}>The ${r.kind} model was
           refused: ${r.reason}</p>`)}
       </section>
-      <section class="judge-block" aria-labelledby="league-charts">
-        <header class="judge-head">
-          <h3 id="league-charts">Learning and comparison</h3>
-          <span class="dataset-chip dataset-generated">generated data</span>
-        </header>
-        <div class="league-switch" role="tablist" aria-label="Which model's charts">
-          <button type="button" role="tab" aria-selected=${view === "compare"}
-            class=${cx("access-tab", view === "compare" && "on")}
-            onClick=${() => this.setState({ view: "compare" })}>Compare all</button>
-          ${models.map((m, i) => html`<button type="button" role="tab" key=${m.ref}
-            aria-selected=${view === m.ref} class=${cx("access-tab", view === m.ref && "on")}
-            onClick=${() => this.setState({ view: m.ref })}>
-            <i class=${cx("chart-swatch", `chart-${toneOf(i)}`)} aria-hidden="true"></i>${m.name}</button>`)}
-        </div>
-        ${picked ? html`<${ModelCharts} key=${picked.ref} model=${picked} />`
-          : html`<${CompareCharts} models=${models} />`}
-      </section>
-      <${SiteEvidence} judge=${judge} models=${models} />
-      <${LiveShadow} judge=${judge} models=${models} />
-      <${Decisions} rows=${judge.decisions || []} models=${models} />
     </div>`;
   }
 }
@@ -142,7 +149,7 @@ function LeagueTable({ rows, comparisons }) {
           rank: String(r.rank),
           model: html`<span class="league-model"><i class=${cx("chart-swatch", `chart-${toneOf(i)}`)}
             aria-hidden="true"></i>${r.name}</span>`,
-          role: html`<span class=${cx("league-role", `league-${r.role}`)}>${ROLE[r.role] || r.role}</span>`,
+          role: html`<span class=${cx("league-role", `league-role-${r.role}`)}>${ROLE[r.role] || r.role}</span>`,
           score: f3(r.score),
           ...Object.fromEntries(Object.keys(SUITES).map((k) => [k, f3((r.suites || {})[k])])),
           latency: r.latency_us == null ? "—" : r.latency_us.toFixed(1),
@@ -163,8 +170,7 @@ function SiteEvidence({ judge, models }) {
     <header class="judge-head"><h3 id="league-site">This site</h3>
       <span class="dataset-chip dataset-site">site data</span></header>
     <p class="hint">${ev.incidents ? `${ev.incidents} labelled incident(s), ${ev.rows} labelled pairs.`
-      : "No labels yet. Confirming, splitting, moving, merging and answering proposals all label."}${" "}
-      Labels never gate a model; they re-order the league.</p>
+      : html`No labels yet — judge groupings on <a href="#/learning">Learning</a>.`}</p>
     <div class="judge-grid">
       <${Forest} title="Challenger − champion, log loss per incident"
         rows=${comparisons.map((c) => ({ label: nameOf(models, c.challenger), mean: c.mean,

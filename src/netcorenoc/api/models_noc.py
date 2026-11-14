@@ -28,8 +28,8 @@ __all__ = [
 
 
 class StepUpIn(BaseModel):
-    """The person's own username and password again, and — once two-factor sign-in exists — a
-    one-time code from their authenticator app (ADR #456). Never stored, logged or audited."""
+    """The person's own username and password again, and the current code from their
+    authenticator app (ADRs #456, #482). Never stored, logged or audited."""
 
     model_config = ConfigDict(extra="forbid")
 

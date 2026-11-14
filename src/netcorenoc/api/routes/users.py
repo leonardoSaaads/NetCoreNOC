@@ -49,9 +49,14 @@ def register(app: FastAPI, ctx: AppContext) -> None:
         """
         async with store.reading():
             rows = await store.list_users()
+            enrolled = await store.second_factor_users()
             enabled_admins = [r for r in rows if r["role"] == "admin" and not r["disabled"]]
         sole = enabled_admins[0]["id"] if len(enabled_admins) == 1 else None
-        return [{**row, "sole_admin": row["id"] == sole} for row in rows]
+        # ADR #482: whether each person has an authenticator (never anything about it).
+        return [
+            {**row, "sole_admin": row["id"] == sole, "two_factor": int(row["id"]) in enrolled}
+            for row in rows
+        ]
 
     @route.post("/api/users")
     async def create_user(

@@ -32,7 +32,7 @@ import authutil
 import util
 
 PW = authutil.PW
-STEP = {"username": "adm", "password": PW}
+STEP = {"username": "adm", "password": PW, "otp": authutil.OTP}
 COMPLETE = {
     "title": "Fibre span down",
     "description": "LOS on both ends since 09:12.",
