@@ -135,6 +135,7 @@ def create_app(
     # none can shadow another), so it is chosen to make the record say more.
     routes.lifecycle.register(app, ctx)
     routes.proposals.register(app, ctx)  # v0.27.0: an operator's answer to a pending proposal
+    routes.related.register(app, ctx)  # ADR #489: the merge picker's ranked candidates
     routes.annotate.register(app, ctx)
     routes.operate.register(app, ctx)
     routes.users.register(app, ctx)  # ADR #453: the accounts, split from `admin`, same order

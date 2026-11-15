@@ -253,12 +253,12 @@ async def test_a_partial_split_sends_exactly_the_marked_ids_and_no_others(
 ) -> None:
     """**Invariant 2**, and the contract the whole v0.9.1 → v0.9.2 evidence chain rests on.
 
-    `excluded_ids` asserts *marked-by-rest negative and nothing else*. If the client sent one id
-    the operator did not tick, a human judgement would be recorded about a pair no human judged —
-    and every downstream figure is computed over those rows.
+    A split asserts *the marked members apart from the rest, negative, and nothing else*. If the
+    client sent one id the operator did not tick, a human judgement would be recorded about a pair
+    no human judged — and every downstream figure is computed over those rows.
 
-    The **gesture** changed completely (a Preact component with its own marked-set state replaced
-    a closure over a `Set`); the **payload** did not, which is what draft §11.12 requires.
+    ADR #489: the gesture is *Move N members elsewhere → A new situation* (the split verdict is gone
+    from the card); the property is the same, carried by `alarm_ids`.
 
     What this does NOT cover: that the operator ticked the members they meant to.
     """
@@ -272,34 +272,33 @@ async def test_a_partial_split_sends_exactly_the_marked_ids_and_no_others(
     result = domdriver.run_scenario(
         "partialSplit", {"routes": routes["editor"], "sid": sid, "mark": marked_positions}
     )
-    body = result["feedbackBody"]
-    assert result["feedbackPath"] == f"/api/situations/{sid}/feedback"
-    assert body["verdict"] == "split"
-    assert body["excluded_ids"] == [members[i] for i in marked_positions]
-    assert set(body["member_ids"]) == set(members), "the reported membership is not what rendered"
+    body = result["splitBody"]
+    assert result["splitPath"] == f"/api/situations/{sid}/split"
+    assert result["feedbackPath"] is None, "a move sent a verdict as well"
+    assert body["alarm_ids"] == [members[i] for i in marked_positions]
+    assert set(body) == {"alarm_ids", "confidence"}, body
     unmarked = {m for i, m in enumerate(members) if i not in marked_positions}
-    assert not (set(body["excluded_ids"]) & unmarked), (
-        f"the client excluded members the operator never marked: "
-        f"{sorted(set(body['excluded_ids']) & unmarked)}"
+    assert not (set(body["alarm_ids"]) & unmarked), (
+        f"the client split off members the operator never marked: "
+        f"{sorted(set(body['alarm_ids']) & unmarked)}"
     )
 
 
 @dom_test
-async def test_a_split_with_nothing_marked_carries_no_exclusions_at_all(
+async def test_with_nothing_marked_no_move_is_offered_and_nothing_is_sent(
     routes: dict[str, Any],
 ) -> None:
-    """The control for the invariant above, and a claim in its own right (DECISIONS #127).
+    """The control for the invariant above (DECISIONS #127, ADR #489).
 
-    Omitting `excluded_ids` means "the operator marked nothing", which is a PLAIN split — never a
-    guess, and never an empty list a reader could mistake for "the operator considered every
-    member and excluded none".
+    With nothing ticked there is no member to move, so the card offers no move — only the merge —
+    and nothing reaches the server: never a guess about which members the operator meant.
     """
     sid, _ = uifixtures.largest_situation(routes["editor"])
     result = domdriver.run_scenario(
         "partialSplit", {"routes": routes["editor"], "sid": sid, "mark": []}
     )
-    assert "excluded_ids" not in result["feedbackBody"], result["feedbackBody"]
-    assert result["feedbackBody"]["verdict"] == "split"
+    assert result["moveOffered"] is False
+    assert result["splitBody"] is None and result["feedbackBody"] is None, result["requests"]
 
 
 @dom_test
@@ -335,7 +334,7 @@ async def test_an_sse_update_mid_gesture_does_not_destroy_the_click_target(
     """**Invariant 3 — the v0.7.5 defect, by name.**
 
     The sequence is the operator's: expand a card, tick two members, **let a server-sent update
-    arrive**, then click Split.
+    arrive**, then click Confirm grouping (ADR #489: the split verdict is gone from the card).
 
     **The mechanism changed and the property did not, which is the point.** In v0.12.0 the detail
     node survived because `renderSituations` harvested and re-appended it before `clear(sits)`. It
@@ -363,11 +362,11 @@ async def test_an_sse_update_mid_gesture_does_not_destroy_the_click_target(
         "on a render they never read (v0.7.5 §5.1)"
     )
     assert result["buttonStillConnected"] is True, (
-        "the Split button the operator was aiming at was detached from the document by an SSE "
+        "the button the operator was aiming at was detached from the document by an SSE "
         "update — this is the v0.7.5 defect exactly"
     )
     assert result["detailStillConnected"] is True
-    assert result["feedbackBody"]["excluded_ids"] == [members[1], members[3]]
+    assert result["feedbackBody"]["verdict"] == "confirm"
     assert set(result["feedbackBody"]["member_ids"]) == set(members)
 
 
@@ -1069,7 +1068,8 @@ async def test_the_health_tiles_render_what_api_stats_already_served(
     # is the server's, which `tests/api/test_host_series.py` asserts reaches SQL.
     # ADRs #450, #451: it is the trap pipeline's "Backlog" — the peak per interval of what waits
     # on disk and in memory — beside throughput, decision latency and the KPI's misses.
-    for title in ("Backlog", "Throughput", "Latency", "KPI misses"):
+    # ADR #490: the latency and KPI-miss charts are gone — the p95, target and limit tiles say it.
+    for title in ("Backlog", "Throughput"):
         assert title in sample["chartLatest"], sample["chartLatest"]
 
 
@@ -2163,7 +2163,14 @@ def _two_live(captured: dict[str, Any], sid: int) -> tuple[dict[str, Any], int]:
     """
     listing = captured["/api/situations?limit=50"]["json"]
     other = next(int(row["id"]) for row in listing if int(row["id"]) != sid)
-    live = [{**row, "status": "new"} if int(row["id"]) in (sid, other) else row for row in listing]
+    # ADR #489: a situation with no member left is nothing to merge with, so the picker skips it —
+    # the one made live here keeps at least one alarm, as a live situation does.
+    live = [
+        {**row, "status": "new", "alarm_count": max(int(row.get("alarm_count") or 0), 1)}
+        if int(row["id"]) in (sid, other)
+        else row
+        for row in listing
+    ]
     routed = {
         **captured,
         "/api/situations?limit=50": {"status": 200, "json": live},
@@ -2277,9 +2284,10 @@ async def test_the_mark_column_header_marks_and_clears_every_row(routes: dict[st
     members = uifixtures.member_ids(routes["editor"], sid)
     result = domdriver.run_scenario("markAll", {"routes": routes["editor"], "sid": sid})
     assert result["ticked"] == count, f"{result['ticked']} of {count} rows were marked"
-    assert result["feedbackBody"]["excluded_ids"] == members, (
-        "select-all sent something other than the membership, in the order the card renders it"
-    )
+    # ADR #489: every member ticked is the whole situation, so what is offered is its merge.
+    assert result["offered"] == "Merge into another situation", result["offered"]
+    assert not any(b.startswith("Move") for b in result["afterOffered"]), result["afterOffered"]
+    assert len(members) == count
     # CONTROL: the same control the other way. A select-all that cannot be undone leaves an
     # operator who mis-clicked with 1 051 checkboxes to untick.
     assert result["afterUntick"] == 0, f"{result['afterUntick']} rows are still marked after untick"

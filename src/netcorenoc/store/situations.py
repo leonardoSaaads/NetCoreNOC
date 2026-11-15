@@ -68,11 +68,19 @@ HAS_ACTIVE = (
 #: What is written as EVIDENCE is untouched by both: `situation_event` and the snapshots carry no
 #: status (`engine/dataset/gestures.Snapshot`), so this changes which tab a card is on and nothing
 #: a model trains on.
+#:
+#: **ADR #489: only a confirmed grouping is `open`.** An operator may move members out, merge
+#: situations together or split a new one off while a situation is `new` — restructuring is how a
+#: grouping is corrected before anyone accepts it — and none of that opens it. Only *Confirm
+#: grouping* (a `confirm` verdict), the model's own confirmation under autonomy, or the bare
+#: promote a program asks for moves `new` to `open`. So `move`, `merge`, `split` and `hand_clear`
+#: have no state edge any more, a merge into a `new` situation leaves it `new`, and a situation an
+#: operator splits off is created `new`: it is still a grouping nobody has confirmed.
 TRANSITIONS: dict[str, dict[str | None, str]] = {
     # -- creation --
     "correlate": {None: "new"},  # the correlator grouped alarms nobody has looked at
     "surface": {None: "new"},  # a maintenance window's ledger surfaced a fault that outlived it
-    "operator_split": {None: "open"},  # an operator put these alarms together
+    "operator_split": {None: "new"},  # ADR #489: built by an operator, confirmed by nobody yet
     # v0.27.0 (ADR #428): the model would have grown an `open` situation, which only an operator
     # may do — so it opens a `pending` one that PROPOSES to join it, and waits for an answer.
     "propose": {None: "pending"},
@@ -80,11 +88,13 @@ TRANSITIONS: dict[str, dict[str | None, str]] = {
     # A pending proposal an operator works on its own terms has been judged a situation of its
     # own: attention takes it to `open` exactly as it takes a `new` one, and the proposal lapses.
     "promote": {"new": "open", "pending": "open"},
+    # ADR #489: a `confirm` verdict only — the route promotes on nothing else.
     "feedback": {"new": "open", "pending": "open"},
-    "move": {"new": "open", "pending": "open"},  # the SOURCE; the destination is typed (#273)
-    "merge": {"new": "open", "pending": "open"},
-    "split": {"new": "open", "pending": "open"},  # the situation the members left
-    "hand_clear": {"new": "open", "pending": "open"},
+    # -- restructuring and clearing: they change a grouping, they do not accept it (ADR #489) --
+    "move": {},
+    "merge": {},
+    "split": {},
+    "hand_clear": {},
     # v0.26.0 (ADR #412): autonomy accepted the grouping as an incident. The model's attention,
     # attributed in `autonomy_decision` — the table records who; this records only the edge.
     "autonomy": {"new": "open"},

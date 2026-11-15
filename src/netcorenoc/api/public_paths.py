@@ -219,6 +219,8 @@ UNAUTHENTICATED_PATHS: frozenset[str] = frozenset(
         "/app/views/parts/orgmove.js",
         # ADR #483: the Overview before the first trap.
         "/app/views/parts/firstrun.js",
+        "/app/views/parts/nocstart.js",
+        "/app/views/parts/personsecurity.js",
         # ADR #473: the customers' books.
         "/app/views/customers.js",
         "/app/views/parts/custbook.js",

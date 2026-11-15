@@ -15,6 +15,7 @@
 import { html, Component } from "../../dom.js";
 import { del, get, post } from "../../api.js";
 import { DataTable, Loading } from "../../widgets.js";
+import { Icon } from "../../icons.js";
 import { StackedArea } from "../../stack.js";
 import { SCALE, UNPLACED, count, plural, percent, relative, score, timeTitle } from "../../format.js";
 import { clock } from "../../chartdata.js";
@@ -59,20 +60,21 @@ export class ElementDetail extends Component {
       (_, i) => clock(trend.from + i * trend.bucket_s, DAY)) : [];
     const rows = parts ? (all ? parts.components : parts.components.slice(0, SHOWN)) : [];
     const kinds = parts ? Object.entries(parts.kinds) : [];
+    // ADR #490: with no component learned, the chart takes the row and the empty answer is one
+    // slim line under it — a half-width column holding one sentence was the empty space reported.
+    const none = Boolean(parts && !parts.total);
     return html`<div class="nedetail">
       ${element ? html`<${About} element=${element} onChanged=${onChanged} />` : null}
-      <div class="nedetail-grid">
+      <div class=${none ? "nedetail-grid nedetail-one" : "nedetail-grid"}>
         <div class="nedetail-trend">
           ${errors.trend ? html`<p class="hint">Could not read its alarm history.</p>` : null}
           ${trend ? html`<${StackedArea} title="Active alarms, last 24 hours" bands=${bands}
               labels=${labels} source="most active at once" span="per hour" />`
             : errors.trend ? null : html`<${Loading} label="Reading its history" />`}
         </div>
-        <div class="nedetail-parts">
+        ${none ? null : html`<div class="nedetail-parts">
           <h4 class="chart-title">Components${parts ? ` · ${count(parts.total)}` : ""}</h4>
           ${errors.parts ? html`<p class="hint">Could not read its components.</p>` : null}
-          ${parts && !parts.total ? html`<p class="muted">None learned yet: a port or a slot becomes a
-              component once its traps have named it often enough to tell it apart.</p>` : null}
           ${kinds.length ? html`<p class="nedetail-kinds">${kinds.map(([k, n]) =>
               html`<span key=${k} class="badge">${plural(n, k)}</span>`)}</p>` : null}
           ${rows.length ? html`<${DataTable} kind="compact" columns=${[
@@ -90,11 +92,16 @@ export class ElementDetail extends Component {
           ${parts && parts.components.length > SHOWN ? html`<button type="button" class="tap"
               onClick=${() => this.setState({ all: !all })}>${all ? `Show the busiest ${SHOWN}`
               : `Show ${count(parts.components.length)}`}</button>` : null}
-        </div>
+        </div>`}
       </div>
+      ${none ? html`<div class="nedetail-none">
+        <span class="nedetail-none-mark"><${Icon} name="cpu" /></span>
+        <span><b>No components yet</b>${" "}<span class="muted">Ports and slots appear once its traps
+          name them often enough to tell apart.</span></span>
+      </div>` : null}
       <nav class="nedetail-acts" aria-label="Open this element in">
-        <a class="tap" href=${`#/graph?ne=${neId}`}>Graph</a>
-        <a class="tap" href=${`#/timeline?ne=${neId}&win=${DAY}`}>Timeline</a>
+        <a class="tap" href=${`#/graph?ne=${neId}`}><${Icon} name="graph" /> Graph</a>
+        <a class="tap" href=${`#/timeline?ne=${neId}&win=${DAY}`}><${Icon} name="timeline" /> Timeline</a>
       </nav>
       <details class="nedetail-evidence" onToggle=${(e) => this.openEvidence(e)}>
         <summary>How the appliance identified its components</summary>

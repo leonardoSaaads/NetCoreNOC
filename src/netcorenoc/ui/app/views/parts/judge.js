@@ -259,7 +259,10 @@ export class Detail extends Component {
       ${editable ? html`<${Decide}
         status=${detail.status} judged=${judged} adjusting=${this.state.adjusting}
         grouping=${grouping} restructurable=${restructurable} sending=${this.state.sending}
-        marked=${this.state.marked.size}
+        restructure=${restructurable ? html`<${Restructure}
+          sid=${sid} status=${detail.status} marked=${this.state.marked} post=${post}
+          total=${detail.alarms.length + (detail.redacted_members?.count ?? 0)}
+          onDone=${() => this.props.onChanged()} />` : null}
         activeCount=${activeCount} markedActive=${markedActive}
         confirmingClear=${this.state.confirmingClear}
         kase=${detail.case ? { ...detail.case, sid } : null} canWork=${can("cases.work")}
@@ -280,11 +283,6 @@ export class Detail extends Component {
 
       <${WhyGrouped} links=${detail.links} byId=${byId} threshold=${detail.threshold}
         table=${detail.link_terms} scale=${detail.score_scale} />
-
-      ${editable && grouping && restructurable ? html`<${Restructure}
-          sid=${sid} marked=${this.state.marked} post=${post}
-          total=${detail.alarms.length + (detail.redacted_members?.count ?? 0)}
-          onDone=${() => this.props.onChanged()} />` : null}
 
       ${editable ? html`<${NameField} sid=${sid} post=${post}
           operatorName=${detail.operator_name} derivedName=${detail.derived_name}

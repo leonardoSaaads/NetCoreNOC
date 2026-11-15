@@ -874,16 +874,12 @@ async def test_a_bare_promotion_promotes_and_asserts_nothing(store: Store) -> No
     assert [r["details"] for r in audited] == ['{"from":"new"}', '{"from":"open"}'], audited
 
 
-async def test_a_move_does_not_promote_the_destination(store: Store) -> None:
-    """**Decision 1** (DECISIONS #273): six of seven promotions survive; this is the seventh.
+async def test_a_move_promotes_neither_side(store: Store) -> None:
+    """ADR #489: moving members corrects a grouping; it does not accept it.
 
-    An operator moving an alarm read the situation they took it *out* of. The destination is an id
-    they typed — this console offers no picker, deliberately — so promoting it claimed somebody had
-    looked at a situation nobody had opened, and moved its card out of the **New** tab, which is
-    where the operator who has not looked at it would find it.
-
-    The subject's promotion is the control, in the same request: if it did not fire, this test
-    would pass against a build that had simply stopped promoting anything.
+    DECISIONS #273 kept the destination `new` and promoted the source. Neither is opened now: only
+    *Confirm grouping* moves a situation to `open`, so both cards stay on the **New** tab until
+    somebody confirms what the move built. The control is that the move itself happened.
     """
     _engine, _queue, app = await seeded(store)
     subject = int((await live_situations(store))[0]["id"])
@@ -911,12 +907,10 @@ async def test_a_move_does_not_promote_the_destination(store: Store) -> None:
     finally:
         await client.aclose()
 
+    assert members[0] in await store.situation_member_ids(destination), "nothing moved (control)"
     rows = {int(r["id"]): r for r in await store.list_situations(None, 200)}
-    assert rows[subject]["status"] == "open", "the subject was not promoted (the control)"
-    assert rows[destination]["status"] == "new", (
-        "the move promoted the situation the alarm was moved INTO. Nobody read it; its id was "
-        "typed, and promoting it hides the card from the tab that exists to surface it."
-    )
+    assert rows[subject]["status"] == "new", "a move opened the situation it took members out of"
+    assert rows[destination]["status"] == "new", "a move opened the situation it moved members into"
 
 
 async def test_a_scoped_editor_cannot_move_or_split_off_members_they_cannot_see(

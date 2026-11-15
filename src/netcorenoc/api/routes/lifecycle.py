@@ -141,12 +141,8 @@ def register(app: FastAPI, ctx: AppContext) -> None:
                         status_code=409, detail="that alarm is no longer in this situation"
                     )
                 membership.moved(engine, alarm, sid, body.to_situation_id)
-            # **The subject only** (v0.16.2, DECISIONS #273). The operator read *this* situation
-            # and took alarms out of it, so `open` — *"an operator is working it"* (#254) — is
-            # true of it. Promoting the destination would claim somebody had looked at a situation
-            # nobody had opened, and move its card out of the **New** tab, which is where the
-            # operator who has not looked at it would find it.
-            await store.promote_situation(sid, now, "move")
+            # ADR #489: no promotion. Moving members out corrects a grouping; it does not accept
+            # it, so the source stays where it was until somebody presses Confirm grouping.
             single = len(moving) == 1
             await gestures.record(
                 store,
@@ -215,7 +211,7 @@ def register(app: FastAPI, ctx: AppContext) -> None:
             peer = await gestures.snapshot(store, body.from_situation_id)
             await store.operator_merge(sid, body.from_situation_id, now)
             membership.merged(engine, sid, body.from_situation_id)
-            await store.promote_situation(sid, now, "merge")
+            # ADR #489: a merge into a `new` situation leaves it `new` — only a confirm opens it.
             await gestures.record(
                 store,
                 gestures.Gesture(
@@ -280,7 +276,7 @@ def register(app: FastAPI, ctx: AppContext) -> None:
             )
             new_id = await store.operator_split(sid, departing, now)
             membership.split(engine, sid, new_id, set(departing))
-            await store.promote_situation(sid, now, "split")
+            # ADR #489: neither side is opened; both wait for Confirm grouping.
             peer = await gestures.snapshot(store, new_id)
             await gestures.record(
                 store,

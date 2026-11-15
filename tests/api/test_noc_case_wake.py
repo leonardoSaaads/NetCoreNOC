@@ -285,14 +285,19 @@ def test_the_overview_says_what_the_noc_still_lacks() -> None:
     ssh = {"agent_access": False, "kind": "ssh_password"}
     steps = overview.setup([agent], [ai, ssh])
     assert steps == {
+        "customer": False,  # ADR #490: no customer yet
         "ai_provider": True,
         "agent": True,
         "entry": False,
         "device_access": False,
         "ready": False,
     }
-    ready = overview.setup([{**agent, "entry": True}], [ai, {**ssh, "agent_access": True}])
+    ready = overview.setup([{**agent, "entry": True}], [ai, {**ssh, "agent_access": True}], 1)
     assert ready["ready"] is True
+    assert (
+        overview.setup([{**agent, "entry": True}], [ai, {**ssh, "agent_access": True}])["ready"]
+        is False
+    ), "a NOC with no customer is not ready"
 
 
 def test_a_local_model_server_at_loopback_in_a_container_is_explained(monkeypatch: Any) -> None:

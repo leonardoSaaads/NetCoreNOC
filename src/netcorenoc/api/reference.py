@@ -53,6 +53,9 @@ REFERENCE: dict[tuple[str, str], Entry] = {
     ("GET", "/api/classes"): Entry(CATALOGUE, "Alarm classes seen so far"),
     ("GET", "/api/situations"): Entry(SITUATIONS, "List situations (filter by status, element)"),
     ("GET", "/api/situations/{sid}"): Entry(SITUATIONS, "One situation with its alarms"),
+    ("GET", "/api/situations/{sid}/related"): Entry(
+        SITUATIONS, "The situations of one status this one most likely belongs with"
+    ),
     ("GET", "/api/timeline"): Entry(MONITOR, "Raises and clears over time"),
     ("GET", "/api/events"): Entry(MONITOR, "Live updates as server-sent events"),
     ("GET", "/api/entities"): Entry(ELEMENTS, "Network elements and their learned identity"),

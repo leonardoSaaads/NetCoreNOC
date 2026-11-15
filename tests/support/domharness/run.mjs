@@ -623,17 +623,37 @@ const scenarios = {
       box.dispatchEvent(new env.DomEvent("change"));
       await settle(env);
     }
-    (params.button
-      ? buttonIn(cardFor(env, params.sid).detail, params.button)
-      : verdictButton(cardFor(env, params.sid).detail, "split"))
-      .dispatchEvent(new env.DomEvent("click"));
+    // ADR #489: the split verdict is gone from the card. The marked members' own gesture is
+    // *Move N members elsewhere -> A new situation*, which sends exactly the marked ids.
+    let moveOffered = null;
+    if (params.button) {
+      buttonIn(cardFor(env, params.sid).detail, params.button).dispatchEvent(new env.DomEvent("click"));
+    } else {
+      const actions = cardFor(env, params.sid).detail.querySelectorAll(".lifecycle-actions button");
+      if (!actions.length) throw new Error('no button starting "Move": the card offers no restructuring');
+      const mover = actions.find((b) => b.textContent.trim().startsWith("Move"));
+      moveOffered = Boolean(mover);
+      if (mover) {
+        mover.dispatchEvent(new env.DomEvent("click"));
+        await settle(env);
+        cardFor(env, params.sid).detail.querySelectorAll("button.dest-kind")
+          .find((b) => b.getAttribute("data-kind") === "split").dispatchEvent(new env.DomEvent("click"));
+        await settle(env);
+        cardFor(env, params.sid).detail.querySelector("button.destination-new")
+          .dispatchEvent(new env.DomEvent("click"));
+      }
+    }
     await settle(env);
 
     const post = env.network.requests.find((r) => r.method === "POST" && r.path.includes("/feedback"));
+    const split = env.network.requests.find((r) => r.method === "POST" && r.path.endsWith("/split"));
     return {
       checkboxCount: boxes.length,
+      moveOffered,
       feedbackPath: post?.path ?? null,
       feedbackBody: post?.body ?? null,
+      splitPath: split?.path ?? null,
+      splitBody: split?.body ?? null,
       requests: requests(env),
       proof: proofOf(env),
     };
@@ -826,7 +846,7 @@ const scenarios = {
         // which is deliberate: `.fb` is the controls the judged disclosure folds, and a promote
         // asserts nothing about the grouping. Reported separately for the same reason.
         promote: Boolean(detail.querySelector(".decide .promote")),
-        restructure: Boolean(detail.querySelector(".lifecycle")),
+        restructure: Boolean(detail.querySelector(".restructure")),
         nameField: Boolean(detail.querySelector("#lcName")),
         marks: detail.querySelectorAll('tbody input[type="checkbox"]').length,
         selectAll: Boolean(detail.querySelector('thead input[type="checkbox"]')),
@@ -877,6 +897,13 @@ const scenarios = {
     const label = opener?.textContent.replace(/\s+/g, " ").trim() ?? null;
     opener.dispatchEvent(new env.DomEvent("click"));
     await settle(env);
+    // ADR #489: the picker asks New or Open first; the routed listing makes both situations New.
+    const kinds = detail().querySelectorAll("button.dest-kind")
+      .map((b) => b.textContent.replace(/\s+/g, " ").trim());
+    detail().querySelectorAll("button.dest-kind")
+      .find((b) => b.getAttribute("data-kind") === (params.kind || "new"))
+      .dispatchEvent(new env.DomEvent("click"));
+    await settle(env);
     const offered = detail().querySelectorAll(".destination-list li")
       .map((li) => li.textContent.replace(/\s+/g, " ").trim());
     detail().querySelectorAll("button.destination")
@@ -885,6 +912,7 @@ const scenarios = {
     await settle(env);
     return {
       label,
+      kinds,
       offered,
       sent: env.network.requests.filter((r) => r.method === "POST")
         .map((r) => ({ path: r.path, body: r.body })),
@@ -915,10 +943,9 @@ const scenarios = {
     const ticked = cardFor(env, params.sid).detail
       .querySelectorAll('tbody input[type="checkbox"]').filter((b) => b.checked).length;
 
-    verdictButton(cardFor(env, params.sid).detail, "split")
-      .dispatchEvent(new env.DomEvent("click"));
-    await settle(env);
-    const post = env.network.requests.find((r) => r.method === "POST" && r.path.includes("/feedback"));
+    // ADR #489: every member ticked offers the merge of this situation into another.
+    const opener = cardFor(env, params.sid).detail.querySelectorAll(".lifecycle-actions button")[0];
+    const offered = opener?.textContent.replace(/\s+/g, " ").trim() ?? null;
 
     // …and untick, because a control that only goes one way is half a control.
     const header2 = cardFor(env, params.sid).detail.querySelector('thead input[type="checkbox"]');
@@ -927,11 +954,14 @@ const scenarios = {
     await settle(env);
     const afterUntick = cardFor(env, params.sid).detail
       .querySelectorAll('tbody input[type="checkbox"]').filter((b) => b.checked).length;
+    const afterOffered = cardFor(env, params.sid).detail.querySelectorAll(".lifecycle-actions button")
+      .map((b) => b.textContent.replace(/\s+/g, " ").trim());
 
     return {
       ticked,
       afterUntick,
-      feedbackBody: post?.body ?? null,
+      offered,
+      afterOffered,
       proof: proofOf(env),
     };
   },
@@ -1116,7 +1146,8 @@ const scenarios = {
     await settle(env);
 
     const detailBefore = cardFor(env, params.sid).detail;
-    const splitBefore = verdictButton(detailBefore, "split");
+    // ADR #489: the button held is Confirm grouping — the split verdict is gone from the card.
+    const splitBefore = verdictButton(detailBefore, "confirm");
     // v0.16.4: `tbody`, and the same correction as `partialSplit` above — the mark column's
     // header now carries a select-all, so a card-wide `input` scan takes a control that is not a
     // member as index 0 and every mark lands one row late.

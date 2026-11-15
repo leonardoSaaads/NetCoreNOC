@@ -15,6 +15,15 @@
  * out, the latency percentiles, and the share of traps within the KPI's target and limit. The bars
  * are Zabbix's delay buckets — how many traps took up to 5 s, 10 s, 30 s, 1 min, 2 min, 5 min,
  * 10 min, or longer. A trap past the limit is still classified: the KPI measures, it never drops.
+ *
+ * ## ADR #490: a third of the height, the same facts
+ *
+ * The panel was the tallest on the Overview and most of it was text and empty track: a note under
+ * every tile, eight histogram rows of which seven read 0, and four charts of which two restated a
+ * tile. Now the tiles are one strip (each note is the tile's tooltip), the delay buckets are one
+ * segmented bar with only the buckets that hold traps named under it, and two short charts —
+ * throughput and backlog — carry the history. The latency and KPI-miss charts are gone: the p95
+ * tile and the target and limit tiles say the same, and turn amber or red when it matters.
  */
 
 import { html, Component } from "../../dom.js";
@@ -96,30 +105,15 @@ export class Pipeline extends Component {
       ${error ? html`<p class="hint">Could not read the pipeline history: ${error.message}</p>` : null}
       ${live ? html`<${Tiles} live=${live} rate=${rate} />` : html`<p class="hint">This API
         publishes no <code>classification</code> block.</p>`}
-      ${live ? html`<${Delays} live=${live} />` : null}
-      <div class="chart-grid">
-        <${Series} title="Throughput" unit="/s" labels=${labels}
+      <div class="pipe-row">
+        ${live ? html`<${Delays} live=${live} />` : null}
+        <${Series} title="Throughput" unit="/s" labels=${labels} height=${64} source="mean per bucket"
           series=${[
             { name: "in", values: series.traps_per_s || [] },
             { name: "classified", tone: "quiet", values: series.classified_per_s || [] },
-          ]}
-          source="received and classified, mean per bucket" />
-        <${Series} title="Backlog" unit="traps" labels=${labels}
-          series=${[{ name: "Backlog", tone: "warn", values: series.queue_depth || [] }]}
-          source="waiting to be classified, peak per bucket" />
-        <${Series} title="Latency" unit="ms" labels=${labels}
-          series=${[
-            { name: "p95", values: series.latency_ms || [] },
-            { name: "worst", tone: "warn", values: series.latency_max_ms || [] },
-          ]}
-          source="decision latency, arrival to classification, per bucket" />
-        <${Series} title="KPI misses" unit="traps" mark="column" labels=${labels}
-          series=${[
-            { name: "over target", tone: "warn", values: series.over_target || [] },
-            { name: "over limit", tone: "alarm", values: series.over_limit || [] },
-          ]}
-          source=${live ? `target ${seconds(live.target_s)} · limit ${seconds(live.limit_s)}`
-                        : "per bucket"} />
+          ]} />
+        <${Series} title="Backlog" unit="traps" labels=${labels} height=${64} source="peak per bucket"
+          series=${[{ name: "Backlog", tone: "warn", values: series.queue_depth || [] }]} />
       </div>
     </section>`;
   }
@@ -136,7 +130,7 @@ function Tiles({ live, rate }) {
                   : `${count(live.queue.depth)} queued` },
     { key: "oldest", name: "Oldest waiting", value: seconds(live.oldest_wait_s),
       tone: live.oldest_wait_s > live.limit_s ? "bad" : live.oldest_wait_s > live.target_s ? "warn" : null },
-    { key: "throughput", name: "In / classified, per second",
+    { key: "throughput", name: "In / classified /s",
       value: rate ? `${perSecond(rate.perSecond)} / ${perSecond(rate.outPerSecond)}` : "—",
       note: rate ? `over ${spanText(rate.windowS)}` : "waiting for a second reading" },
     { key: "latency", name: "Decision latency p95", value: seconds(live.p95_s),
@@ -155,37 +149,40 @@ function Tiles({ live, rate }) {
                               `${spool.dead_lettered ? ` · ${count(spool.dead_lettered)} set aside` : ""}` : "",
       tone: spool.error ? "bad" : spool.dead_lettered ? "warn" : null });
   }
+  // ADR #490: the note is the tile's tooltip — kept in the tile for a screen reader, off the page.
   return html`<div class="pipe-tiles">
     ${tiles.map((t) => html`<div key=${t.key} class=${`pipe-tile${t.tone ? ` pipe-${t.tone}` : ""}`}
-        data-metric=${`pipeline.${t.key}`}>
+        data-metric=${`pipeline.${t.key}`} title=${t.note || null}>
       <span class="pipe-name">${t.name}</span>${" "}
       <b class="pipe-value">${t.value}</b>
-      ${t.note ? html`${" "}<span class="pipe-note">${t.note}</span>` : null}
+      ${t.note ? html`${" "}<span class="pipe-note visually-hidden">${t.note}</span>` : null}
     </div>`)}
   </div>`;
 }
 
-/** Zabbix's delay buckets, since start: how long each classified trap took. */
+/** Zabbix's delay buckets, since start, as ONE bar: each bucket a segment as wide as its share. */
 function Delays({ live }) {
   const delays = live.delays || [];
-  const top = Math.max(1, ...delays.map((d) => d.count));
+  const total = Math.max(1, delays.reduce((n, d) => n + d.count, 0));
   let previous = 0;
+  const rows = delays.map((d) => {
+    const label = edge(d.upto_s, previous);
+    const late = d.upto_s == null || d.upto_s > live.target_s;
+    const over = d.upto_s == null || d.upto_s > live.limit_s;
+    previous = d.upto_s ?? previous;
+    return { label, count: d.count, tone: over ? " chart-alarm" : late ? " chart-warn" : "" };
+  });
   return html`<div class="pipe-delays">
     <h4 class="chart-title">Decision latency, since start</h4>
-    <div class="chart-bars">
-      ${delays.map((d) => {
-        const label = edge(d.upto_s, previous);
-        const late = d.upto_s == null || d.upto_s > live.target_s;
-        const over = d.upto_s == null || d.upto_s > live.limit_s;
-        previous = d.upto_s ?? previous;
-        return html`<div key=${label} class="chart-bar-row" data-delay=${label}>
-          <span class="chart-bar-label">${label}</span>
-          <span class="chart-bar-track"><span
-            class=${`chart-bar-fill${over ? " chart-alarm" : late ? " chart-warn" : ""}`}
-            style=${`width:${((100 * d.count) / top).toFixed(1)}%`}></span></span>
-          <span class="chart-bar-value">${count(d.count)}</span>
-        </div>`;
-      })}
+    <div class="pipe-stack" role="img" aria-label=${rows.filter((r) => r.count).map((r) => `${r.label}: ${count(r.count)}`).join(", ")}>
+      ${rows.map((r) => html`<span key=${r.label} class=${r.count ? "pipe-seg" : "pipe-seg pipe-seg-empty"} data-delay=${r.label}
+          style=${`flex-grow:${r.count / total}`} title=${`${r.label}: ${count(r.count)}`}>
+        <span class=${`chart-bar-fill${r.tone}`}></span><span class="chart-bar-value visually-hidden">${count(r.count)}</span>
+      </span>`)}
     </div>
+    <p class="pipe-legend">${rows.some((r) => r.count)
+      ? rows.filter((r) => r.count).map((r) => html`<span key=${r.label}
+          class=${`pipe-key${r.tone}`}><i></i>${r.label} <b>${count(r.count)}</b></span>`)
+      : html`<span class="muted">No trap classified since start-up.</span>`}</p>
   </div>`;
 }

@@ -26,6 +26,7 @@ import { Avatar } from "../avatar.js";
 import { roster } from "../roster.js";
 import { AgentGlyph } from "./parts/nocui.js";
 import { StatusLight } from "./parts/secretdetail.js";
+import { NocStart } from "./parts/nocstart.js";
 
 const REFRESH_MS = 15000;
 const STATES = [
@@ -205,31 +206,6 @@ function Reach({ r }) {
   </section>`;
 }
 
-/** What the NOC still lacks for its agents to work cases on their own (ADR #478), in the order a
- * new install does it. Each step says done or to do in words, never by colour alone. */
-const SETUP = [
-  ["ai_provider", "Connect an AI provider", "A model for the agents to think with — a local Ollama needs no key.",
-    "#/agents?tab=providers", "Agents → AI providers"],
-  ["agent", "Hire an agent", "Its job comes prefilled; a name and a model are enough.", "#/agents?hire=1", "Hire an agent"],
-  ["entry", "Make one agent the entry point", "Cases from the queue start with it. The first one hired is.",
-    "#/agents", "Agents"],
-  ["device_access", "Let the agents reach your devices", "In each customer's Access, store an SSH, SNMP or Telnet credential for each device and switch agents on for it. Until then they set the case Pending connectivity.",
-    "#/customers", "Customers"],
-];
-
-function Setup({ s }) {
-  if (!s || s.ready) return null;
-  return html`<section class="panel-block nov-setup" aria-labelledby="nov-setup">
-    <h3 id="nov-setup"><${SectionMark} icon="bot" />Get the NOC's agents working</h3>
-    <ol class="nov-setup-list">${SETUP.map(([key, title, why, href, link]) => html`<li key=${key}
-        class=${cx("nov-setup-step", s[key] && "done")}>
-      <span class="nov-setup-mark"><${Icon} name=${s[key] ? "check" : "info"} /></span>
-      <span><b>${title}</b>${s[key] ? html` <span class="muted">— done</span>`
-        : html`<span class="muted"> — ${why} </span><a href=${href}>${link}</a>`}</span>
-    </li>`)}</ol>
-  </section>`;
-}
-
 export class NocOverview extends Loader {
   constructor(props) {
     super(props);
@@ -253,7 +229,8 @@ export class NocOverview extends Loader {
   view(d) {
     const live = STATES.reduce((n, [s]) => n + d.states[s].total, 0);
     return html`<div class="nov">
-      ${d.named ? html`<${Setup} s=${d.setup} />` : null}
+      ${/* ADR #490: three pictures of what to set up, in place of a checklist card. */ null}
+      ${d.named ? html`<${NocStart} s=${d.setup} />` : null}
       ${d.scoped ? html`<p class="warnbox">Your view is scoped: these are the cases on the network
         elements you can see.</p>` : null}
       <div class="nov-states">${STATES.map(([id, label, hint, icon]) => html`<${StateTile} key=${id}

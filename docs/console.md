@@ -45,7 +45,7 @@ disabled controls.
 
 | View | The question it answers |
 |---|---|
-| **People & access** | Who can sign in, what each person and program may do, and what they see — four tabs: **People** (accounts, each with a photo, a name, a recovery email, a role and its own capability grid), **Roles** (what every person of a role holds by default), **Service tokens** (credentials for programs, each with a purpose, shown once — with a three-step start and the **API reference**) and **Visibility** (which network elements viewers and editors see, with worked examples) |
+| **People & access** | Who can sign in, what each person and program may do, and what they see — four tabs: **People** (accounts; one opens like Your account — a header with the photo, name, role and two-factor, then **Profile**, **Access** (its capability grid) and **Security** (password, two-factor, delete), ADR #490), **Roles** (what every person of a role holds by default), **Service tokens** (credentials for programs, each with a purpose, shown once — with a three-step start and the **API reference**) and **Visibility** (which network elements viewers and editors see, with worked examples) |
 | **Settings** | Six tabs: **Models** (what decides links — the league's champion, chosen by the judge or pinned), **Autonomy** (four grades, the self-suspension trigger, every act and its verdict), **Site training** (the budget, start and stop), **SNMP** (which versions and communities the receiver accepts, and the SNMPv3 users), **Email** (the SMTP server recovery links go through) and **System** (every parameter, in three classes, with its precedence and its impact) |
 | **Quarantine** | Datagrams the parser refused. **Reading this list is audited** |
 | **Audit log** | ADR #486: every change, found by **period** (1 h to 30 days, or two dates), **person**, **section** (sign-in, people, situations, models, settings, NOC, audit — each with its count), **outcome** and a text; rows open in place (source address, details); *Load older* pages back; *Download view* saves the rows on screen as CSV; *Export all* the whole chain as NDJSON |
@@ -59,7 +59,7 @@ its state and open cases) and **NOC** (Organization, Vault access).
 
 | View | The question it answers |
 |---|---|
-| **Overview** | The NOC now (ADR #470): the live cases as **Queue**, **Working** and **Pending**, each split by tier (an agents' tier, or the NOC team), by priority and by who holds them, and the takes running late. Each tile opens the cases it counts. Names are shown to roles that may see people. **Equipment reachability** (ADR #476) lists the elements whose management endpoint stopped answering the vault's checks — a switch that loses power sends no trap — each a link to its element and, for a custodian, its credential. Until the agents can work on their own, **Get the NOC's agents working** (ADR #478) lists what is missing — an AI provider, an agent, an entry point, a device credential agents may use — each a link |
+| **Overview** | The NOC now (ADR #470): the live cases as **Queue**, **Working** and **Pending**, each split by tier (an agents' tier, or the NOC team), by priority and by who holds them, and the takes running late. Each tile opens the cases it counts. Names are shown to roles that may see people. **Equipment reachability** (ADR #476) lists the elements whose management endpoint stopped answering the vault's checks — a switch that loses power sends no trap — each a link to its element and, for a custodian, its credential. Until the agents can work on their own, **three panels** (ADR #490) say what to set up, in order — **a customer** (its basic information and, in its Access, a device credential agents may use), **the agents** (an AI provider, an agent or a team, an entry point), then **work the cases** — each step done or to do in words, each a link |
 | **Cases** | What the NOC has to take, what it is working, what waits on someone else, and what is over. A list view: **Queue**, **Working**, **Pending**, **Resolved**, **All**, each with its count, a filter over the rows on screen (number or words), and *Only mine*. Every row: priority (its colour on the row's edge too), the case, its status, **who holds it** — an agent at its tier, a person, the NOC team, or nobody — the **take** clock counted and drawn ("12m left", "late 15m"), the customer-update clock, the next update and when it opened. Read again every 15 s. A live case **hears its alarms** (ADR #474): what joined its situation, raised again or cleared is an event on its feed (an alarm just told of waits five minutes, so a flapping port is a line every five minutes; one back in a newer situation is named with it, a link), and a pending case whose fault came back returns to the queue. A case is opened from the Broker, by **Start working this** on an open situation (ADR #480) — confirming a grouping alone opens no case. |
 | **KPIs** | How fast the NOC takes a case, documents it and restores service, over 24 hours, 7 or 30 days: taken within target, median time to take, the time past target summed over every late take, customer updates within 30 minutes; per priority, the take and restore targets, and the takes missed |
 | **Playbooks** | Which troubleshooting trees check a new case before the NOC is called, and how each has done. A list — the name, what it matches (vendors, trap OIDs, severities), on or off, its runs and how they ended — and one playbook opened below it as its tree: each step, what it does, where each answer leads, down to the leaves (resolve, wait, NOC queue), its JSON and its last runs |
@@ -323,9 +323,16 @@ re-cut the buckets at the instant it was asked and read one instant per bucket, 
 two readings vanished and reappeared and the chart changed shape on every refresh. The number
 labelled *now* is the count at this instant.
 
-**Planned work** is three counts — running, scheduled, to confirm — and the next three windows. The
+**Planned work** is three counts — running, scheduled, to confirm — the coming week as seven
+columns (how many windows start each day), and the next three windows with "and N more". The
 running tile turns red: while a window is in force, the counts on the rest of the screen are
-incomplete by construction.
+incomplete by construction. With nothing planned the card shows a sleeping moon and one line: no
+alarm is suppressed anywhere (ADR #490).
+
+**Trap pipeline** is one strip of tiles — backlog, oldest waiting, in and classified per second,
+the decision latency's p95, the share within the KPI's target and limit, the spool — each note in
+the tile's tooltip; then the delay buckets as one bar and two short charts, throughput and backlog
+(ADR #490).
 
 ### Why the severity panel may read `—` on every band
 
@@ -384,8 +391,10 @@ correlator formed it and nobody has looked), **open** (an operator has touched i
 `manual_clear`). *"The network fixed it"* and *"nobody looked at it for an hour"* are different
 facts and the console now says which.
 
-**A card leaves the New tab the moment you gesture on it.** That is the state machine working, not
-the card vanishing: it is on Open, and on Any.
+**Only *Confirm grouping* opens a situation** (ADR #489). Merging, moving members out, splitting
+one off and clearing by hand keep it on the New tab — they correct the grouping, they do not accept
+it. A merge into a New situation leaves it New; a situation with no member left (merged away) is not
+listed.
 
 Every operation on a card is a **statement**, and the card is laid out so the statement comes
 first: one row of decisions above the member table, the table itself, and then the two questions
@@ -394,7 +403,6 @@ you only sometimes ask — *why did it group these* and *is the grouping shaped 
 | control | what it says | what it teaches |
 |---|---|---|
 | **Confirm grouping** | these belong together | every pair in the situation, positive |
-| **Grouping is wrong** | they do not | the marked members, negative against the rest; with nothing marked, a plain split |
 | **Start working this** (an open situation) | the NOC works this one: its case opens in the queue (ADR #480) | nothing about the grouping |
 | **Move N elsewhere** → a situation | they do not belong here, and they belong there | a negative pair against the members they left, and a positive against the ones they joined |
 | **Move N elsewhere** → *A new situation* | these do not belong with the rest | a negative pair for each marked member against each unmarked one |
@@ -402,11 +410,13 @@ you only sometimes ask — *why did it group these* and *is the grouping shaped 
 | **Save** a name | nothing about the grouping | nothing |
 | **clear**, beside a member alarm | this ALARM is stale | nothing |
 
-**Move and Merge ask for the selection first.** With nothing ticked there is nothing to move, so
-the control is not offered and one line says what to tick. Tick members and press **Move**, and
-the situations that exist are listed — id, name, size, age — filtered by id or name if there are
-many. *A new situation* is the first row, and it is what an operator-split is: move these
-somewhere that does not exist yet. There is no situation id to type and none to remember.
+**Merge and Move sit in the decision bar, beside Confirm** (ADR #489), where *Grouping is wrong*
+was. **Move N members elsewhere** appears once members are ticked. Either asks first **New or
+Open**, then lists the situations of that status **most likely related** — devices in common, the
+same customer, how close they started, each row saying why — with **Back** to the choice. For a
+move, *A new situation* is the third choice: these members on their own. The picked situation joins
+this one, except that a New situation merged with an Open one goes into the Open one. There is no
+situation id to type and none to remember.
 
 **A move of several alarms is one gesture** (v0.29.0): one request, one history row, and one
 negative label — the moved set against the members it left; pairs inside the moved set are asserted
@@ -416,9 +426,9 @@ merge, which leaves one situation. The history folds repeated identical gestures
 (`move · 20 alarms`), and **Confirm stays offered after a move or a merge** — a restructure changes
 a grouping, it does not say the result is right.
 
-**`Split (wrong grouping)` is now `Grouping is wrong`.** Same gesture, same route, same evidence:
-`split` is the name of the route and the question you are answering is whether the appliance got
-the grouping right.
+***Grouping is wrong* is gone** (ADR #489): measured as almost never pressed — an operator fixes a
+wrong grouping by merging or moving instead, and those assert the same negatives. The `split`
+verdict route stays for programs.
 
 The last two are the release's central distinction. A hand-clear is a fact about an alarm's
 lifecycle, not about whether the grouping was right, so it carries **no confidence control** and

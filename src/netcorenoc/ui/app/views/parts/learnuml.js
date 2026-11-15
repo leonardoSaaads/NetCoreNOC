@@ -3,7 +3,7 @@
  * Five classes, the relations between them and their multiplicities — the notation every engineer
  * reads at a glance: an `Alarm` aggregates into a `Situation` (2..* to 1); a person's judgement on
  * a situation yields `Label`s (1 to 0..*), each a `PositivePair` (confirm) or a `NegativePair`
- * (split) — generalisation, the hollow triangle; labels are kept in the `Corpus`; and the `Model`
+ * (members moved out, ADR #489) — generalisation, the hollow triangle; labels are kept in the `Corpus`; and the `Model`
  * depends on the corpus (the judge re-ranks every model on it every five minutes).
  *
  * Each class is a button: choosing one says what it is in a sentence and where to act on it. The
@@ -73,7 +73,7 @@ export function LearningDiagram({ n, active, onPick }) {
       attrs=${[`active now: ${fmt(n.alarms)}`, "device, trap class", "severity"]} />
     <${UmlClass} id="situation" x=${270} y=${40} name="Situation" active=${active === "situation"} onPick=${onPick}
       attrs=${[`to judge: ${fmt(n.judge)}`, `proposals: ${fmt(n.proposals)}`]}
-      ops=${[op("confirm"), op("split"), `${op("move")} / ${op("merge")}`]} />
+      ops=${[op("confirm"), op("merge"), op("move")]} />
     <${UmlClass} id="label" x=${520} y=${40} name="Label" stereotype="abstract" active=${active === "label"} onPick=${onPick}
       attrs=${["pair: (alarm, alarm)", "author: a person"]} />
     <${UmlClass} id="corpus" x=${770} y=${40} name="Corpus" active=${active === "corpus"} onPick=${onPick}
@@ -83,6 +83,6 @@ export function LearningDiagram({ n, active, onPick }) {
     <${UmlClass} id="label" x=${300} y=${236} name="PositivePair" active=${active === "label"} onPick=${onPick}
       attrs=${[`from ${op("confirm")}`]} />
     <${UmlClass} id="label" x=${520} y=${236} name="NegativePair" active=${active === "label"} onPick=${onPick}
-      attrs=${[`from ${op("split")}`]} />
+      attrs=${[`from ${op("move")}`]} />
   </svg>`;
 }

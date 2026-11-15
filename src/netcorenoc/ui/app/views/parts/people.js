@@ -17,10 +17,11 @@
 import { html, Component, cx } from "../../dom.js";
 import { post, del } from "../../api.js";
 import { Avatar, PhotoPicker, uploadPhoto } from "../../avatar.js";
-import { InfoTip } from "../../info.js";
+import { Icon } from "../../icons.js";
 import { Destructive } from "../../destructive.js";
 import { session, can, passwordPolicy } from "../../session.js";
 import { CapGrid, sameSet, isFixed } from "./capgrid.js";
+import { PasswordReset, TwoFactorReset } from "./personsecurity.js";
 import { relative, timeTitle } from "../../format.js";
 
 export const ROLES = [["viewer", "Viewer"], ["editor", "Editor"], ["admin", "Admin"]];
@@ -97,101 +98,6 @@ export class PeopleList extends Component {
   }
 }
 
-/** An administrator's one power over someone's password: replace it, and hand over the new one. */
-export class PasswordReset extends Component {
-  constructor(props) {
-    super(props);
-    this.state = { open: false, busy: false, issued: null, copied: false, error: null };
-  }
-
-  async reset() {
-    this.setState({ busy: true, error: null });
-    try {
-      const out = await post(`/api/users/${this.props.user.id}/password-reset`, {});
-      this.setState({ busy: false, issued: out.temporary_password });
-    } catch (error) {
-      this.setState({ busy: false, error: error.detail || error.message });
-    }
-  }
-
-  async copy() {
-    try {
-      await globalThis.navigator.clipboard.writeText(this.state.issued);
-      this.setState({ copied: true });
-    } catch { /* the value is selectable in the field */ }
-  }
-
-  render({ user, onDone }, { open, busy, issued, copied, error }) {
-    if (issued) {
-      return html`<div class="token-issued pw-reset" role="status">
-        <p><b>Give ${user.username} this one-time password now.</b> It will not be shown again;
-          they must choose their own when they sign in.</p>
-        <div class="token-value">
-          <input readonly value=${issued} aria-label="One-time password" autocomplete="off"
-            onFocus=${(e) => e.currentTarget.select()} />
-          <button type="button" class="primary" onClick=${() => this.copy()}>${copied ? "Copied" : "Copy"}</button>
-        </div>
-        <button type="button" onClick=${onDone}>Done</button>
-      </div>`;
-    }
-    if (!open) {
-      return html`<button type="button" class="linkish" onClick=${() => this.setState({ open: true })}>
-        Reset password…</button>`;
-    }
-    return html`<div class="pw-reset panel-block" role="group" aria-label="Reset password">
-      <p>A random one-time password replaces ${user.username}'s. Their sessions end now, any reset
-        link already emailed stops working, and they choose their own password at the next sign-in.
-        No one — an admin included — can see the current password.</p>
-      <div class="fb">
-        <button type="button" class="warn" disabled=${busy} onClick=${() => this.reset()}>
-          ${busy ? "Resetting…" : `Reset ${user.username}'s password`}</button>
-        <button type="button" disabled=${busy} onClick=${() => this.setState({ open: false })}>Cancel</button>
-      </div>
-      ${error ? html`<p class="err" role="alert">${error}</p>` : null}
-    </div>`;
-  }
-}
-
-/** An administrator forgets someone's authenticator (ADR #482): they lost the phone and the codes. */
-export class TwoFactorReset extends Component {
-  constructor(props) {
-    super(props);
-    this.state = { open: false, busy: false, done: false, error: null };
-  }
-
-  async reset() {
-    this.setState({ busy: true, error: null });
-    try {
-      await post(`/api/users/${this.props.user.id}/two-factor/reset`, {});
-      this.setState({ busy: false, done: true, open: false });
-    } catch (error) {
-      this.setState({ busy: false, error: error.detail || error.message });
-    }
-  }
-
-  render({ user }, { open, busy, done, error }) {
-    if (done) {
-      return html`<p class="ok-note" role="status">${user.username}'s authenticator is forgotten. Their
-        sessions ended; they set up a new one at their next sign-in.</p>`;
-    }
-    if (!open) {
-      return html`<button type="button" class="linkish" disabled=${!user.two_factor}
-        title=${user.two_factor ? "" : "No authenticator set up yet"}
-        onClick=${() => this.setState({ open: true })}>Reset two-factor…</button>`;
-    }
-    return html`<div class="pw-reset panel-block" role="group" aria-label="Reset two-factor">
-      <p>For someone who lost both the phone and the recovery codes. Their sessions end now and the
-        next sign-in asks them to scan a new QR code.</p>
-      <div class="fb">
-        <button type="button" class="warn" disabled=${busy} onClick=${() => this.reset()}>
-          ${busy ? "Resetting…" : `Reset ${user.username}'s two-factor`}</button>
-        <button type="button" disabled=${busy} onClick=${() => this.setState({ open: false })}>Cancel</button>
-      </div>
-      ${error ? html`<p class="err" role="alert">${error}</p>` : null}
-    </div>`;
-  }
-}
-
 /** Create or edit one person. `user` is null for a new account. */
 export class PersonEditor extends Component {
   constructor(props) {
@@ -202,7 +108,7 @@ export class PersonEditor extends Component {
     this.state = {
       name: u ? u.display_name || "" : "", email: u ? u.email || "" : "", username: "", password: "",
       role,
-      caps: access ? access.value : null, photo: undefined, busy: false, error: null,
+      caps: access ? access.value : null, photo: undefined, busy: false, error: null, tab: "profile",
     };
   }
 
@@ -249,73 +155,109 @@ export class PersonEditor extends Component {
     }
   }
 
-  render({ user, rbac, onClose, onSaved }, { name, email, username, password, role, caps, busy, error }) {
+  render({ user, rbac, onClose, onSaved }, { name, email, username, password, role, caps, busy, error, tab }) {
     const sole = user && user.sole_admin;
     const base = accessOf(rbac, role, null);
     const policy = passwordPolicy();
+    const self = user && user.username === session().user;
     const person = user ? { id: user.id, digest: user.avatar, name: user.display_name,
       username: user.username } : { name, username };
-    return html`<form class="person-editor panel-block" onSubmit=${(e) => this.save(e)} autocomplete="off">
-      <header class="pe-head">
-        <h3>${user ? user.display_name || user.username : "New user"}</h3>
-        <button type="button" class="linkish" onClick=${onClose}>Close</button>
-      </header>
-      <div class="pe-grid">
+    // ADR #490: the same shape as Your account — a header with the photo and who this is, then
+    // tabs of cards. The form is one, so Save keeps whatever was changed on either tab.
+    const tabs = [["profile", "Profile", "account"], ...(rbac && caps ? [["access", "Access", "key"]] : []),
+      ...(user && !self ? [["security", "Security", "shield"]] : [])];
+    const on = tabs.some(([key]) => key === tab) ? tab : "profile";
+    const custom = rbac && caps && !base.fixed && !sameSet(caps, base.value);
+    return html`<form class="person-editor" onSubmit=${(e) => this.save(e)} autocomplete="off">
+      <section class="acct-header pe-header">
         <${PhotoPicker} person=${person} size=${88} label="User photo"
           onChange=${(blob) => this.setState({ photo: blob })} />
-        <div class="pe-fields">
+        <div class="acct-who">
+          <h2>${user ? user.display_name || user.username : name.trim() || "New user"}</h2>
+          <p class="acct-meta">
+            ${user || username ? html`<span class="muted">@${user ? user.username : username}</span>` : null}
+            <span class=${`role-pill role-${role}`}>${role}</span>
+            ${user ? user.two_factor
+              ? html`<span class="acct-2fa-on"><${Icon} name="shield" /> Two-factor on</span>`
+              : html`<span class="badge badge-warn">no two-factor yet</span>` : null}
+            ${custom ? html`<span class="badge badge-warn">custom access</span>` : null}
+            ${user && user.email ? html`<span class="muted"><${Icon} name="mail" /> ${user.email}</span>` : null}
+          </p>
+        </div>
+        <button type="button" class="btn-ghost pe-close" onClick=${onClose}><${Icon} name="cross" /> Close</button>
+      </section>
+      <div class="access-tabs" role="tablist" aria-label="This person">
+        ${tabs.map(([key, label, icon]) => html`<button type="button" key=${key} role="tab"
+          aria-selected=${on === key} class=${cx("access-tab", on === key && "on")}
+          onClick=${() => this.setState({ tab: key })}><${Icon} name=${icon} /> ${label}</button>`)}
+      </div>
+
+      ${on === "profile" ? html`<section class="panel-block acct-card">
+        <h3><${Icon} name="account" /> Profile</h3>
+        <div class="acct-fields">
           <label class="pe-field"><span>Name</span>
             <input value=${name} maxlength="80" placeholder="Full name"
-              onInput=${(e) => this.setState({ name: e.currentTarget.value })} /></label>
-          <label class="pe-field"><span>Recovery email
-            <${InfoTip} label="Recovery email">Where a password-reset link goes. Optional; needs
-              Settings → Email.<//></span>
+              onInput=${(e) => this.setState({ name: e.currentTarget.value })} />
+            <small class="muted">Shown beside the photo.${user ? html` The username stays <b>${user.username}</b>.` : ""}</small></label>
+          <label class="pe-field"><span>Recovery email</span>
             <input type="email" value=${email} maxlength="254" placeholder="name@example.com"
-              onInput=${(e) => this.setState({ email: e.currentTarget.value })} /></label>
-          ${user ? html`<p class="pe-user muted">@${user.username}</p>` : html`
+              onInput=${(e) => this.setState({ email: e.currentTarget.value })} />
+            <small class="muted">Where a password-reset link goes, once Settings → Email is set up.</small></label>
+          ${user ? null : html`
             <label class="pe-field"><span>Username</span>
               <input value=${username} required maxlength="64" autocapitalize="off" spellcheck=${false}
-                onInput=${(e) => this.setState({ username: e.currentTarget.value })} /></label>
-            <label class="pe-field"><span>Password
-              ${policy ? html`<${InfoTip} label="Password rule">${policy.min}–${policy.max}
-                characters. They set their own at first sign-in.<//>` : null}</span>
+                onInput=${(e) => this.setState({ username: e.currentTarget.value })} />
+              <small class="muted">What they sign in with. It cannot change later.</small></label>
+            <label class="pe-field"><span>Password</span>
               <input type="password" value=${password} required autocomplete="new-password"
-                onInput=${(e) => this.setState({ password: e.currentTarget.value })} /></label>`}
-          <div class="pe-field"><span>Role
-            <${InfoTip} label="Roles">A role is the most a person can ever hold. Uncheck
-              capabilities below to give this person less.${user ? " Changing it signs them out." : ""}<//></span>
-            <${RoleSwitch} value=${role} disabled=${sole} onChange=${(r) => this.setRole(r)} />
-            ${sole ? html`<span class="hint">The only admin: add another admin first.</span>` : null}
-          </div>
+                onInput=${(e) => this.setState({ password: e.currentTarget.value })} />
+              <small class="muted">${policy ? `${policy.min}–${policy.max} characters. ` : ""}They choose their own at first sign-in.</small></label>`}
         </div>
-      </div>
-      ${rbac && caps ? html`<div class="pe-access">
-        <div class="pe-access-head">
-          <h4>Access</h4>
-          ${base.fixed || sameSet(caps, base.value) ? html`<span class="muted">${role} default</span>` : html`
-            <span class="badge badge-warn">custom</span>
-            <button type="button" class="linkish" onClick=${() => this.setState({ caps: base.value })}>
-              Use role default</button>`}
+        <div class="pe-field pe-role"><span>Role</span>
+          <${RoleSwitch} value=${role} disabled=${sole} onChange=${(r) => this.setRole(r)} />
+          <small class="muted">${sole ? "The only admin: add another admin first."
+            : `The most this person can ever hold — narrow it on Access.${user ? " Changing it signs them out." : ""}`}</small>
         </div>
-        ${base.fixed ? html`<${FixedNote} role=${role} />` : null}
+      </section>` : null}
+
+      ${on === "access" ? html`<section class="panel-block acct-card pe-access">
+        <h3><${Icon} name="key" /> Access${" "}
+          ${base.fixed || sameSet(caps, base.value) ? html`<span class="badge">${role} default</span>` : html`
+            <span class="badge badge-warn">custom</span>`}</h3>
+        ${base.fixed ? html`<${FixedNote} role=${role} />` : sameSet(caps, base.value) ? null : html`<p class="acct-lead">
+          <button type="button" class="linkish" onClick=${() => this.setState({ caps: base.value })}>Use the ${role} default</button></p>`}
         <${CapGrid} all=${rbac.all_capabilities} ceiling=${base.ceiling} baseline=${base.baseline}
           minimum=${rbac.minimum_role} value=${base.fixed ? base.value : caps} roleName=${role}
           readOnly=${base.fixed || !can("rbac.write")} onChange=${(next) => this.setState({ caps: next })} />
+      </section>` : null}
+
+      ${on === "security" ? html`<div class="acct-grid">
+        <section class="panel-block acct-card">
+          <h3><${Icon} name="lock" /> Password</h3>
+          <p class="muted acct-lead">A temporary password they must change at their next sign-in.</p>
+          <${PasswordReset} user=${user} onDone=${onSaved} />
+        </section>
+        <section class="panel-block acct-card">
+          <h3><${Icon} name="smartphone" /> Two-factor sign-in${" "}
+            <span class=${cx("badge", user.two_factor ? "badge-ok" : "badge-warn")}>${user.two_factor ? "On" : "Off"}</span></h3>
+          <p class="muted acct-lead">For a lost phone: their next sign-in sets up a new authenticator.</p>
+          <${TwoFactorReset} user=${user} />
+        </section>
+        ${!sole ? html`<section class="panel-block acct-card pe-danger">
+          <h3><${Icon} name="warn" /> Delete this account</h3>
+          <${Destructive} compact title=${`Delete ${user.username}`} previewLabel="Delete…"
+            confirmLabel=${`Delete ${user.username}`}
+            consequence=${"The account and its sessions are removed now. Its audit history is kept."}
+            preview=${async () => ({ measured: false, message: "Exactly this account." })}
+            apply=${async () => del(`/api/users/${user.id}`)} onDone=${onSaved} />
+        </section>` : null}
       </div>` : null}
+
       ${error ? html`<p class="err" role="alert">${error}</p>` : null}
-      ${user && user.username !== session().user ? html`<div class="pe-password">
-        <${PasswordReset} user=${user} onDone=${onSaved} />
-        <${TwoFactorReset} user=${user} /></div>` : null}
-      <footer class="pe-foot">
-        <button type="submit" class="primary" disabled=${busy}>${busy ? "Saving…" : user ? "Save" : "Create user"}</button>
+      ${on === "security" ? null : html`<footer class="acct-actions pe-foot">
         <button type="button" onClick=${onClose}>Cancel</button>
-        ${user && !sole && user.username !== session().user ? html`<${Destructive} compact
-          title=${`Delete ${user.username}`} previewLabel="Delete…"
-          confirmLabel=${`Delete ${user.username}`}
-          consequence=${"The account and its sessions are removed now. Its audit history is kept."}
-          preview=${async () => ({ measured: false, message: "Exactly this account." })}
-          apply=${async () => del(`/api/users/${user.id}`)} onDone=${onSaved} />` : null}
-      </footer>
+        <button type="submit" class="primary" disabled=${busy}>${busy ? "Saving…" : user ? "Save changes" : "Create user"}</button>
+      </footer>`}
     </form>`;
   }
 }

@@ -156,6 +156,8 @@ UNDRIVEN_QUERY_PARAMS: dict[tuple[str, str], tuple[str, ...]] = {
     # v0.22.0 adds `ne_id` (the element panel's situations), driven by
     # `tests/api/test_elements.py` rather than here.
     ("GET", "/api/situations"): ("limit", "ne_id", "q", "status"),
+    # ADR #489: recorded at its default (`new`); `open` is driven by `tests/api/test_related.py`.
+    ("GET", "/api/situations/{sid}/related"): ("status",),
     # v0.20.0 adds `buckets` and `range_s`, which switch this route from marks to per-bucket
     # counts (F144). Undriven like the other four: this record builds every URL from the
     # path template and sends no query string, so the route is recorded at its defaults —

@@ -31,6 +31,7 @@ ROUTE_PERMISSIONS: dict[tuple[str, str], str] = {
     ("GET", "/api/classes"): "classes.read",
     ("GET", "/api/situations"): "situations.read",
     ("GET", "/api/situations/{sid}"): "situations.read",
+    ("GET", "/api/situations/{sid}/related"): "situations.read",  # ADR #489: the merge picker
     ("GET", "/api/timeline"): "timeline.read",
     ("GET", "/api/events"): "events.stream",
     ("GET", "/api/entities"): "entities.read",
@@ -210,6 +211,7 @@ ROUTE_SCOPE: dict[tuple[str, str], Literal["scoped", "unscoped", "admin_only"]] 
     ("GET", "/api/classes"): "unscoped",
     ("GET", "/api/situations"): "scoped",
     ("GET", "/api/situations/{sid}"): "scoped",
+    ("GET", "/api/situations/{sid}/related"): "scoped",
     ("GET", "/api/timeline"): "scoped",
     ("GET", "/api/events"): "scoped",
     ("GET", "/api/entities"): "scoped",

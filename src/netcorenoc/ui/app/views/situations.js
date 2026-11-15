@@ -214,11 +214,14 @@ export class Situations extends Component {
     // A search answers with the rows the SERVER matched; without one, the live list, filtered by
     // the tab — plus any card this operator has gestured on, which stays where they are looking
     // until they collapse it (DECISIONS #267).
-    const rows = query
+    // ADR #489: a situation with no member left — merged away, or emptied — is not shown: it is
+    // nothing to work and nothing to judge, and a page of "(no members) · 0 alarms" rows buried the
+    // ones that are. Its own address still opens it, and its history says where its alarms went.
+    const held = (s) => pinned.has(s.id) && store.isExpanded(s.id);
+    const rows = (query
       ? results || []
-      : (live.situations || []).filter(
-          (s) => !status || s.status === status || (pinned.has(s.id) && store.isExpanded(s.id)),
-        );
+      : (live.situations || []).filter((s) => !status || s.status === status || held(s)))
+      .filter((s) => (s.alarm_count ?? 1) > 0 || held(s));
 
     return html`<div class="situations">
       <${Counts} stats=${live.stats} status=${status} onPick=${(v) => this.pickTab(v)} />

@@ -212,7 +212,7 @@ def register(app: FastAPI, ctx: AppContext) -> None:
                 raise HTTPException(status_code=409, detail="that alarm is not active")
             membership.cleared(engine, aid)
             if sid is not None:
-                await store.promote_situation(sid, now, "hand_clear")
+                # ADR #489: clearing a stale alarm by hand does not accept the grouping.
                 await gestures.record(
                     store,
                     gestures.Gesture(
@@ -321,11 +321,10 @@ def register(app: FastAPI, ctx: AppContext) -> None:
                     object_id=str(aid),
                     details={"situation_id": sid, "bulk": True},
                 )
-            if cleared:
-                await store.promote_situation(sid, now, "hand_clear")
-                if await store.all_cleared(sid):
-                    await store.resolve_situation(sid, "manual_clear", now)
-                    engine.forget_situation(sid)
+            # ADR #489: clearing by hand does not accept the grouping, so nothing is promoted here.
+            if cleared and await store.all_cleared(sid):
+                await store.resolve_situation(sid, "manual_clear", now)
+                engine.forget_situation(sid)
             await audit_row(
                 request,
                 principal,

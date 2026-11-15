@@ -6,18 +6,24 @@
  *
  * Every chart is drawn from the arrays the server sent, with the console's own chart rules: a day
  * before the agent existed is not drawn as a zero, and a rate with nothing ended reads as a dash.
+ *
+ * ## ADR #490: Paperclip's shape — four numbers, then two cards
+ *
+ * Five charts of different heights sat in a grid that aligned none of them: a one-day column chart
+ * three bars wide, a percentage alone in a card, two bar lists. Now the four numbers an operator
+ * asks first are one strip — runs, success, this month's spend, cases — and the history is two
+ * cards of one height: runs per day over the whole window (each day a stacked column; a day before
+ * the agent existed is an empty slot, not a zero) and its cases, by priority and by status.
  */
 
 import { html, cx } from "../../dom.js";
 import { relative, timeTitle } from "../../format.js";
 import { Series } from "../../charts.js";
-import { Bars } from "../../compare.js";
 import { RunState, Tier, money } from "./nocui.js";
 import { span } from "./caseclock.js";
 
 const DAY = 86400;
 const ENDED_BAD = new Set(["failed", "timed_out"]);
-const PRIORITY_TONE = { critical: "alarm", major: "warn", minor: null };
 
 /** The days the agent existed within the window, oldest first, as UTC `YYYY-MM-DD`. */
 function days(window, createdAt, now) {
@@ -51,68 +57,118 @@ function LatestRun({ run, onRuns }) {
   </section>`;
 }
 
-function RunActivity({ activity, agent, now }) {
-  const shown = days(activity.days, agent.created_at, now);
-  const per = (keep) => shown.map((day) => activity.runs
-    .filter((r) => r.day === day && keep(r.status)).reduce((n, r) => n + Number(r.n), 0));
-  return html`<${Series} title="Runs per day" mark="column"
-    series=${[
-      { name: "succeeded", tone: "quiet", values: per((s) => s === "succeeded") },
-      { name: "failed", tone: "alarm", values: per((s) => ENDED_BAD.has(s)) },
-      { name: "other", tone: "warn", values: per((s) => !ENDED_BAD.has(s) && s !== "succeeded") },
-    ]}
-    labels=${shown.map((d) => d.slice(5))} source="the agent's runs"
-    span=${`${shown.length} day${shown.length === 1 ? "" : "s"}, UTC`} />`;
+/** Its runs, totalled by how they ended. */
+function totals(activity) {
+  const out = { ok: 0, bad: 0, other: 0 };
+  for (const r of activity.runs) {
+    const n = Number(r.n);
+    if (r.status === "succeeded") out.ok += n;
+    else if (ENDED_BAD.has(r.status)) out.bad += n;
+    else out.other += n;
+  }
+  return out;
 }
 
-function CaseBars({ activity, by }) {
-  const totals = {};
-  for (const row of activity.cases) totals[row[by]] = (totals[row[by]] || 0) + Number(row.n);
-  const keys = by === "priority" ? ["critical", "major", "minor"] : Object.keys(totals);
-  const rows = keys.filter((k) => by === "priority" || totals[k]).map((k) => ({
-    key: k, label: by === "priority" ? k[0].toUpperCase() + k.slice(1) : k.replace(/_/g, " "),
-    value: totals[k] || 0, tone: by === "priority" ? PRIORITY_TONE[k] : null,
-  }));
-  const any = rows.some((r) => r.value);
-  return html`<${Bars} title=${by === "priority" ? "Its cases by priority" : "Its cases by status"}
-    rows=${any ? rows : []} source="cases it held or ran on"
-    span=${`${activity.days} days`} note=${any ? null : "no case yet"} />`;
+/** The four numbers first: runs, success, this month's spend, its cases. */
+function Kpis({ activity, agent, cases }) {
+  const t = totals(activity);
+  const runs = t.ok + t.bad + t.other;
+  const ended = t.ok + t.bad;
+  const rate = ended ? Math.round((100 * t.ok) / ended) : null;
+  const open = cases.filter((c) => !["resolved", "closed"].includes(c.status));
+  const critical = open.filter((c) => c.priority === "critical").length;
+  const budget = agent.budget_month_cents;
+  return html`<div class="agent-kpis">
+    <div class="agent-kpi"><span>Runs · ${activity.days} d</span><b>${runs}</b>
+      <span class="agent-split" aria-label=${`${t.ok} succeeded, ${t.bad} failed, ${t.other} other`}>
+        ${runs ? [["ok", t.ok], ["bad", t.bad], ["other", t.other]].map(([k, n]) => (n
+          ? html`<i key=${k} class=${`agent-${k}`} style=${`flex-grow:${n}`}></i>` : null)) : html`<i class="agent-none"></i>`}</span>
+      <small>${t.ok} ok · ${t.bad} failed · ${t.other} other</small></div>
+    <div class="agent-kpi"><span>Succeeded</span><b class=${cx(rate != null && rate < 80 && "agent-low")}>${rate == null ? "—" : `${rate}%`}</b>
+      <span class="gauge-track" aria-hidden="true"><span class=${cx("gauge-fill", rate != null && rate < 80 && "gauge-low")}
+        style=${`width:${rate || 0}%`}></span></span>
+      <small>${rate == null ? "no run ended yet" : `${t.ok} of ${ended} ended runs`}</small></div>
+    <div class="agent-kpi"><span>This month</span><b>${money(agent.spent_month_cents)}</b>
+      ${budget ? html`<span class="gauge-track" aria-hidden="true"><span class="gauge-fill"
+        style=${`width:${Math.min(100, (100 * agent.spent_month_cents) / budget).toFixed(1)}%`}></span></span>` : null}
+      <small>${budget ? `of a ${money(budget)} budget` : SPEND_WORD[agent.priced] || "not counted here"}</small></div>
+    <div class="agent-kpi"><span>Open cases</span><b>${open.length}</b>
+      <small>${critical ? html`<span class="case-priority prio-critical">${critical} critical</span>` : `${cases.length} in ${activity.days} d`}</small></div>
+  </div>`;
 }
 
-/** What its runs cost each day (ADR #472), drawn only when it is priced: a column of zeros for an
- *  unpriced agent would claim it spent nothing. */
+const SPEND_WORD = { local: "your hardware · no charge", unpriced: "no price set", published: "published rates", set: "its admin's rate" };
+
+/** Runs per day over the whole window: one stacked column a day; before it existed, an empty slot. */
+function RunDays({ activity, agent, now }) {
+  const first = Math.floor((now - (activity.days - 1) * DAY) / DAY) * DAY;
+  const born = Math.floor((agent.created_at || first) / DAY) * DAY;
+  const slots = Array.from({ length: activity.days }, (_, i) => {
+    const t = first + i * DAY;
+    const day = new Date(t * 1000).toISOString().slice(0, 10);
+    const rows = activity.runs.filter((r) => r.day === day);
+    const sum = (keep) => rows.filter((r) => keep(r.status)).reduce((n, r) => n + Number(r.n), 0);
+    return { day, before: t < born, ok: sum((s) => s === "succeeded"), bad: sum((s) => ENDED_BAD.has(s)),
+      other: sum((s) => s !== "succeeded" && !ENDED_BAD.has(s)) };
+  });
+  const top = Math.max(1, ...slots.map((s) => s.ok + s.bad + s.other));
+  return html`<section class="panel-block agent-card" aria-label="Runs per day">
+    <header class="agent-card-head"><h3>Runs per day</h3>
+      <span class="agent-legend"><i class="agent-ok"></i>succeeded<i class="agent-bad"></i>failed<i class="agent-other"></i>other</span></header>
+    <div class="agent-days" role="img" aria-label=${slots.filter((s) => s.ok + s.bad + s.other)
+      .map((s) => `${s.day}: ${s.ok} succeeded, ${s.bad} failed, ${s.other} other`).join("; ") || "no runs"}>
+      ${slots.map((s) => html`<div key=${s.day} class=${cx("agent-day", s.before && "is-before")}
+          title=${s.before ? `${s.day}: before it was hired` : `${s.day}: ${s.ok} ok · ${s.bad} failed · ${s.other} other`}>
+        <span class="agent-col">${[["ok", s.ok], ["other", s.other], ["bad", s.bad]].map(([k, n]) => (n
+          ? html`<i key=${k} class=${`agent-${k}`} style=${`height:${((100 * n) / top).toFixed(1)}%`}></i>` : null))}</span>
+      </div>`)}
+    </div>
+    <div class="agent-axis"><span>${slots[0].day.slice(5)}</span><span>today, UTC</span></div>
+  </section>`;
+}
+
+/** Its cases over the window, by priority and by status — two lists in one card. */
+function CaseMix({ activity }) {
+  const sum = (by) => {
+    const out = {};
+    for (const row of activity.cases) out[row[by]] = (out[row[by]] || 0) + Number(row.n);
+    return out;
+  };
+  const prio = sum("priority");
+  const status = sum("status");
+  const list = (rows, tone) => {
+    const top = Math.max(1, ...rows.map(([, n]) => n));
+    return html`<ul class="agent-mix">${rows.map(([k, n]) => html`<li key=${k}>
+      <span>${k.replace(/_/g, " ")}</span>
+      <span class="agent-bar"><i class=${tone(k)} style=${`width:${((100 * n) / top).toFixed(1)}%`}></i></span>
+      <b>${n}</b></li>`)}</ul>`;
+  };
+  const statuses = Object.entries(status).filter(([, n]) => n);
+  return html`<section class="panel-block agent-card" aria-label="Its cases">
+    <header class="agent-card-head"><h3>Its cases</h3><span class="muted">${activity.days} days</span></header>
+    ${activity.cases.length ? html`<div class="agent-mixes">
+      <div><h4>By priority</h4>${list(["critical", "major", "minor"].map((k) => [k, prio[k] || 0]),
+        (k) => `agent-prio-${k}`)}</div>
+      <div><h4>By status</h4>${list(statuses, () => "agent-status")}</div>
+    </div>` : html`<p class="muted">No case routed to it in ${activity.days} days.</p>`}
+  </section>`;
+}
+
+/** What its runs cost each day (ADR #472), drawn only when it is priced. */
 function SpendActivity({ activity, agent, now }) {
   const shown = days(activity.days, agent.created_at, now);
   const per = shown.map((day) => Math.round(activity.runs.filter((r) => r.day === day)
     .reduce((n, r) => n + Number(r.cost_cents || 0), 0) * 100) / 100);
-  return html`<${Series} title="Spend per day (US cents)" mark="column"
-    series=${[{ name: "spend", tone: null, values: per }]}
+  return html`<section class="panel-block agent-card agent-wide"><${Series} title="Spend per day (US cents)" mark="column"
+    series=${[{ name: "spend", tone: null, values: per }]} height=${80}
     labels=${shown.map((d) => d.slice(5))} source=${PRICED_SOURCE[agent.priced] || "its runs"}
-    span=${`${shown.length} day${shown.length === 1 ? "" : "s"}, UTC`} />`;
+    span=${`${shown.length} day${shown.length === 1 ? "" : "s"}, UTC`} /></section>`;
 }
 
 const PRICED_SOURCE = {
   published: "Anthropic's published rates",
   set: "the price per million tokens its admin set",
 };
-
-function SuccessRate({ activity }) {
-  let ok = 0;
-  let ended = 0;
-  for (const r of activity.runs) {
-    if (r.status === "succeeded") ok += Number(r.n);
-    if (r.status === "succeeded" || ENDED_BAD.has(r.status)) ended += Number(r.n);
-  }
-  const rate = ended ? Math.round((100 * ok) / ended) : null;
-  return html`<section class="chart-block success-rate">
-    <h4 class="chart-title">Runs that succeeded</h4>
-    <p class="success-figure">${rate == null ? "—" : `${rate}%`}</p>
-    <span class="gauge-track" aria-hidden="true"><span class=${cx("gauge-fill", rate != null && rate < 80 && "gauge-low")}
-      style=${`width:${rate || 0}%`}></span></span>
-    <p class="chart-caption"><span class="chart-source">${rate == null
-      ? `no run ended in ${activity.days} days` : `${ok} of ${ended} ended runs`}</span></p>
-  </section>`;
-}
 
 function Cases({ cases }) {
   if (!cases.length) return html`<p class="muted">No case has been routed to it yet.</p>`;
@@ -173,13 +229,12 @@ export function AgentOverview({ d, onRuns }) {
   return html`<div class="agent-overview">
     <div class="agent-overview-main">
       <${LatestRun} run=${d.runs[0]} onRuns=${onRuns} />
-      <div class="chart-grid agent-charts">
-        <${RunActivity} activity=${d.activity} agent=${d.agent} now=${now} />
-        <${SuccessRate} activity=${d.activity} />
+      <${Kpis} activity=${d.activity} agent=${d.agent} cases=${d.cases} />
+      <div class="agent-cards">
+        <${RunDays} activity=${d.activity} agent=${d.agent} now=${now} />
+        <${CaseMix} activity=${d.activity} />
         ${["published", "set"].includes(d.agent.priced)
           ? html`<${SpendActivity} activity=${d.activity} agent=${d.agent} now=${now} />` : null}
-        <${CaseBars} activity=${d.activity} by="priority" />
-        <${CaseBars} activity=${d.activity} by="status" />
       </div>
       <section class="agent-cases" aria-label="Its cases"><h3>Its cases</h3><${Cases} cases=${d.cases} /></section>
     </div>
