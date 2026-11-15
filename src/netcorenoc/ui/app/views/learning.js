@@ -28,8 +28,8 @@ import { LearningDiagram } from "./parts/learnuml.js";
 
 const ABOUT = {
   alarm: ["Every trap becomes an alarm, learned from the stream.", null],
-  situation: ["Related alarms grouped together. Confirm, split, move or merge it on its card.", "judge"],
-  label: ["What a judgement teaches: confirm makes every pair positive; split makes the marked members negative.", "judge"],
+  situation: ["Related alarms grouped together. Confirm, merge or move members on its card.", "judge"],
+  label: ["What a judgement teaches: confirm makes every pair positive; moving members out makes them negative.", "judge"],
   corpus: ["The evidence of every grouping, with the labels beside it. The models learn from this.", "corpus"],
   model: ["The judge re-ranks every model on the labels every five minutes; the best one decides links.", "promotion"],
 };

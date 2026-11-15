@@ -7159,3 +7159,57 @@ From this release an entry is about six lines: decision, reason, release.*
   was already in its own process; now so is everything heavy about starting it.
 - **Reason**: Part V's "never blocking ingestion or HTTP" held for the fit but not for its start;
   the test was right, the start was wrong.
+
+## 489. Only a confirmed grouping is open; merging asks New or Open and offers the likely ones (unreleased)
+
+- **Context**: the maintainer measured *Grouping is wrong* as almost never pressed: an operator who
+  finds a grouping wrong fixes it — merges it with the situation it belongs to, or moves the members
+  that do not belong. Every one of those gestures (move, merge, split, a hand-clear) also promoted the
+  situation `new -> open`, so a merge of two new situations opened the survivor before anybody had
+  accepted what the merge built. And a situation merged away stayed in the list as
+  "(no members) · 0 alarms".
+- **Decision** (`store/situations.py` TRANSITIONS, `api/routes/lifecycle.py`, `annotate.py`,
+  `operate.py`): **only *Confirm grouping* opens a situation** — a `confirm` verdict, the model's own
+  confirmation under autonomy, or the bare promote a program asks for. `move`, `merge`, `split` and
+  `hand_clear` have no state edge; a situation an operator splits off is created `new`; a `split`
+  verdict (API) is still recorded as evidence and opens nothing.
+- **Decision** (`ui/app/views/parts/decide.js`, `restructure.js`): *Grouping is wrong* is gone from
+  the card. In its place, in the same bar: **Merge another situation in**, and **Move N members
+  elsewhere** once members are ticked. Either asks first **New or Open**, then lists the situations
+  of that status **most likely related** — `GET /api/situations/{sid}/related`, ranked by devices in
+  common, the same customer (never the default organization) and how close they started, each row
+  saying why — with **Back** to the choice. The picked one joins this situation, except that a New
+  situation merged with an Open one goes into the Open one: confirmed work, perhaps with a NOC case,
+  never disappears into a grouping nobody has confirmed.
+- **Decision** (`views/situations.js`): a situation with no member left is not listed; its own
+  address still opens it.
+- **Reason**: the state says whether a person accepted the grouping, and restructuring is how the
+  grouping is corrected before that. Negative evidence is not lost: a move and a split assert their
+  departing members apart from the rest, as the marked verdict did.
+
+## 490. Fewer words, aligned cards: the Overviews, an element, a person, an agent (unreleased)
+
+- **Decision** (`views/parts/mwsummary.js`): *Planned work* counts from every live window (it read
+  ten, so fifty planned read "10 scheduled"), shows the coming week as seven columns beside the next
+  three rows and "and N more", and draws a sleeping moon when nothing is planned.
+- **Decision** (`views/parts/pipeline.js`): the trap pipeline is a third of its height — one strip of
+  tiles (each note is the tile's tooltip), the delay buckets as one segmented bar with only the
+  buckets that hold traps named, and two short charts (throughput, backlog). The latency and
+  KPI-miss charts are gone: the p95, target and limit tiles say it and change colour when it matters.
+- **Decision** (`views/parts/models.js`): the ROC on the Overview draws no legend of its own — the
+  score bars are the key, in the same colours — so its column is as tall as the two beside it.
+- **Decision** (`views/parts/nedetail.js`): an element with no component learned gives the chart the
+  whole row and says so in one slim line, instead of a half-width column holding one sentence.
+- **Decision** (`views/parts/people.js`): one person in People & access has the shape of Your
+  account — a header with the photo, name, `@username`, role and two-factor, then tabs: Profile,
+  Access, Security (password, two-factor, delete).
+- **Decision** (`views/parts/nocstart.js`, `engine/noc/overview.setup`): the NOC Overview's
+  checklist card is replaced by three panels, as the Broker's first run: add a customer (and its
+  device access), set up the agents (an AI provider, an agent or a team, an entry point), work the
+  cases. `setup` gains `customer`; the panels go when every step is done.
+- **Decision** (`views/parts/agentdash.js`): an agent's Overview is four numbers in one strip — runs,
+  success, this month's spend, open cases — then two cards of one height: runs per day over the whole
+  window as stacked columns (a day before it was hired is an empty slot) and its cases by priority
+  and by status.
+- **Reason**: each of these was reported as space without information or text in place of a reading;
+  the facts are unchanged, only how much room they take and how they line up.

@@ -397,3 +397,4 @@ reset_user_two_factor  # unused function (netcorenoc/api/routes/two_factor.py)
 audit_facets  # unused function (netcorenoc/api/routes/audit.py) — ADR #486
 detect_ollama  # unused function (netcorenoc/api/routes/providers.py) — ADR #487
 try_model  # unused function (netcorenoc/api/routes/providers.py)
+related_situations  # unused function (netcorenoc/api/routes/related.py) — ADR #489

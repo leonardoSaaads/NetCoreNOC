@@ -218,15 +218,19 @@ def reachability(
 
 
 def setup(
-    agents: Iterable[Mapping[str, Any]], credentials: Iterable[Mapping[str, Any]]
+    agents: Iterable[Mapping[str, Any]],
+    credentials: Iterable[Mapping[str, Any]],
+    customers: int = 0,
 ) -> dict[str, Any]:
     """What the NOC still lacks for its agents to work a case on their own (ADR #478): an AI
     provider's key agents may use, an agent, an entry point that can work (without one no case
-    from the queue reaches an agent), and a device credential agents may lease. The overview shows
-    the steps left; ``ready`` when none is."""
+    from the queue reaches an agent), and a device credential agents may lease. ADR #490: and a
+    customer, the first thing a new NOC sets up — what the agents read before they act. The
+    overview shows the steps left; ``ready`` when none is."""
     live = [a for a in agents if a["status"] != "terminated"]
     usable = [c for c in credentials if c["agent_access"] and str(c["kind"]) in KINDS]
     steps = {
+        "customer": customers > 0,
         "ai_provider": any(KINDS[str(c["kind"])].group == "ai" for c in usable),
         "agent": bool(live),
         "entry": any(a["entry"] and a["status"] in WORKING for a in live),

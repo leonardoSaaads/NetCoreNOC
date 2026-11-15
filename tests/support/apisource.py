@@ -85,6 +85,7 @@ MODULE_ORDER: tuple[str, ...] = (
     "routes/lifecycle.py",
     # v0.27.0: an operator's answer to a pending proposal, registered right after the gestures.
     "routes/proposals.py",
+    "routes/related.py",  # ADR #489: the merge picker's candidates
     "routes/annotate.py",
     "routes/operate.py",
     "routes/users.py",  # ADR #453: the account routes, split from `admin` in the same order

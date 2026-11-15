@@ -23,12 +23,12 @@ TS = 1_700_000_000.0
 def test_attention_is_derived_from_the_table_and_rename_is_not_in_it() -> None:
     # v0.26.0 (ADR #412): `autonomy` — the model accepting a grouping, when an admin has switched
     # the grouping grade on. Attention by the model, attributed in `autonomy_decision`.
-    assert (
-        frozenset({"promote", "feedback", "move", "merge", "split", "hand_clear", "autonomy"})
-        == ATTENTION
-    )
+    # ADR #489: only a confirmed grouping is open — restructuring and clearing have no edge.
+    assert frozenset({"promote", "feedback", "autonomy"}) == ATTENTION
     assert TRANSITIONS["rename"] == {}, "a rename acquired a state edge"
-    assert TRANSITIONS["operator_split"] == {None: "open"}
+    for act in ("move", "merge", "split", "hand_clear"):
+        assert TRANSITIONS[act] == {}, f"{act} opens a situation again"
+    assert TRANSITIONS["operator_split"] == {None: "new"}
     assert TRANSITIONS["correlate"] == {None: "new"}
     assert TRANSITIONS["surface"] == {None: "new"}
     # v0.27.0 (ADR #428): the model's proposal to grow a confirmed situation, and its answers.
@@ -53,7 +53,7 @@ async def test_every_creation_edge(store: Store, act: str) -> None:
     expected = {
         "correlate": "new",
         "surface": "new",
-        "operator_split": "open",
+        "operator_split": "new",  # ADR #489
         "propose": "pending",
     }
     assert row is not None and row[0] == expected[act], (act, row)
@@ -82,7 +82,8 @@ async def test_attention_on_a_proposal_makes_it_an_open_situation_of_its_own(
     """v0.27.0 (ADR #428): an operator who works a pending bag on its own terms has judged it a
     situation; the proposal lapses with the promotion, and the target is untouched."""
     async with store.lock:
-        target = await store.create_situation(TS, act="operator_split")
+        target = await store.create_situation(TS, act="correlate")
+        await store.promote_situation(target, TS, "promote")
         proposal = await store.create_situation(TS, act="propose")
         await store.set_proposal(proposal, target, 0.9)
         await store.promote_situation(proposal, TS + 1, act)
@@ -110,7 +111,10 @@ def test_every_promotion_in_the_api_names_an_attention_act() -> None:
     for path in sorted(root.glob("*.py")):
         for act in re.findall(r"promote_situation\(.*\"([a-z_]+)\"\)", path.read_text("utf-8")):
             found.append((path.name, act))
-    assert len(found) >= 7, found
+    # ADR #489: the bare promote and a confirm verdict; nothing that restructures opens one.
+    assert len(found) >= 2, found
+    assert {act for _name, act in found} <= {"promote", "feedback"}, found
+    assert "promote_situation" not in (root / "lifecycle.py").read_text("utf-8")
     assert all(act in ATTENTION for _name, act in found), found
     names = {name for name, _act in found}
     source = (root / "annotate.py").read_text("utf-8")

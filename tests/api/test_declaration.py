@@ -721,11 +721,14 @@ async def test_f43_every_path_served_today_still_registers(store: Store) -> None
     # (ADR #484: two UI modules in, Labelling's and Corpus's out).
     # Unreleased: 354 -> 357 and 197 -> 200 — the audit log's facets (ADR #486), and finding and
     # trying a local Ollama (ADR #487).
-    assert len(served) == 357, f"the served surface moved: {len(served)} method/path pairs"
+    # Unreleased: 357 -> 360 and 200 -> 201 — the merge picker's related situations (ADR #489: one
+    # /api pair), the NOC's three set-up panels and a person's Security tab (ADR #490: two UI
+    # modules).
+    assert len(served) == 360, f"the served surface moved: {len(served)} method/path pairs"
     api_pairs = {(method, path) for method, path in served if path.startswith("/api")}
     # **v0.19.0: 53 -> 55.** `GET /api/models` and `POST /api/models/register`: what the
     # models are doing, and turning one of this appliance's own fits into an artefact.
-    assert len(api_pairs) == 200, (
+    assert len(api_pairs) == 201, (
         f"the /api surface moved: {len(api_pairs)} pairs. v0.16.0 adds exactly five — the "
         f"operator's five gestures — v0.16.2 adds exactly one, `POST …/promote` (DECISIONS #273), "
         f"v0.16.5 adds exactly one, `POST /api/alarms/clear` (DECISIONS #301), "
@@ -920,11 +923,14 @@ async def test_f42_every_path_served_today_still_registers(store: Store) -> None
     # (ADR #484: two UI modules in, Labelling's and Corpus's out).
     # Unreleased: 354 -> 357 and 197 -> 200 — the audit log's facets (ADR #486), and finding and
     # trying a local Ollama (ADR #487).
-    assert len(served) == 357, f"the served surface moved: {len(served)} method/path pairs"
+    # Unreleased: 357 -> 360 and 200 -> 201 — the merge picker's related situations (ADR #489: one
+    # /api pair), the NOC's three set-up panels and a person's Security tab (ADR #490: two UI
+    # modules).
+    assert len(served) == 360, f"the served surface moved: {len(served)} method/path pairs"
     api_pairs = {(method, path) for method, path in served if path.startswith("/api")}
     # **v0.19.0: 53 -> 55.** `GET /api/models` and `POST /api/models/register`: what the
     # models are doing, and turning one of this appliance's own fits into an artefact.
-    assert len(api_pairs) == 200, (
+    assert len(api_pairs) == 201, (
         f"the /api surface moved: {len(api_pairs)} pairs. v0.16.0 adds exactly five — the "
         f"operator's five gestures — v0.16.2 adds exactly one, `POST …/promote` (DECISIONS #273), "
         f"v0.16.5 adds exactly one, `POST /api/alarms/clear` (DECISIONS #301), "
@@ -1269,7 +1275,8 @@ def test_the_three_postures_are_all_populated() -> None:
     # ADR #478: 72 -> 73, sending a case's customer update names one case (targeted).
     # ADR #480: 73 -> 74, Start working this names one situation (targeted).
     # ADR #481: 74 -> 77, a customer's email settings, their change and a test message (targeted).
-    assert len(SCOPED) == 77, SCOPED
+    # ADR #489: 77 -> 78, the merge picker's related situations (scoped as the list it narrows).
+    assert len(SCOPED) == 78, SCOPED
     assert len(rbac.ROUTE_SCOPE) == len(ADMIN_ONLY) + len(UNSCOPED) + len(SCOPED)
 
 
@@ -1411,6 +1418,8 @@ async def test_unscoped_routes_answer_a_scoped_caller_identically(
 
 SCOPED_TARGETED = [
     ("GET", "/api/situations/{sid}"),
+    # ADR #489: the merge picker names its situation, so an out-of-scope one is a 404.
+    ("GET", "/api/situations/{sid}/related"),
     ("GET", "/api/entities/{ne_id}"),
     ("POST", "/api/situations/{sid}/feedback"),
     ("POST", "/api/labels"),

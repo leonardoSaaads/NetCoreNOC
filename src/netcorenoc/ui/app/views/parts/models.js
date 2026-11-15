@@ -13,8 +13,9 @@
  *
  * The first two are **generated data** (held-out streams no model trained or tuned on), the third
  * is **live** traffic; each caption says which. One colour per model, in league order — the same
- * colours as the Judge screen, which the line links to for everything else; the ROC carries the
- * legend.
+ * colours as the Judge screen, which the line links to for everything else. ADR #490: the score
+ * bars are the key — the ROC drew a seven-entry legend of its own that wrapped under the plot and
+ * made its column twice as tall as the two beside it.
  *
  * It reads `/api/judge?brief=true` (a few KiB; `model.read`). A role without it gets the one
  * line from `/api/decider` (`scorer.read`), and a role without that gets nothing. Labelling asks
@@ -88,7 +89,7 @@ export class ModelHealth extends Component {
             tone: tone.get(m.ref) }))}
           source=${HELD_OUT} note="mean pairwise F1 · ★ deciding" />
         <${Curve} title="ROC" xLabel="false positive rate" yLabel="true positive rate"
-          xRange=${[0, 1]} xLog=${true} reference="diagonal"
+          xRange=${[0, 1]} xLog=${true} reference="diagonal" keyed=${false}
           series=${models.map((m) => ({ name: m.name, tone: tone.get(m.ref), points: m.roc_curve || [] }))}
           source=${HELD_OUT} note="up and left is better" />
         <${Bars} title="Agreement with the champion" max=${1} unit="ratio"

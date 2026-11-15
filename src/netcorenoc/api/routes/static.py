@@ -260,6 +260,8 @@ _UI_MODULES = (
     "app/views/parts/orgmove.js",
     # ADR #483: the Overview before the first trap — three pictures of what to do.
     "app/views/parts/firstrun.js",
+    "app/views/parts/nocstart.js",  # ADR #490: the NOC's three set-up panels
+    "app/views/parts/personsecurity.js",  # ADR #490: a person's Security tab
     # ADR #473: the customers' books.
     "app/views/customers.js",
     "app/views/parts/custbook.js",

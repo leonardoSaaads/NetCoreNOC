@@ -548,6 +548,8 @@ ROUTE_ORDER_BASELINE: list[tuple[str, str]] = [
     ("GET", "/app/views/parts/ollamamodels.js"),
     ("GET", "/app/views/parts/orgmove.js"),
     ("GET", "/app/views/parts/firstrun.js"),
+    ("GET", "/app/views/parts/nocstart.js"),
+    ("GET", "/app/views/parts/personsecurity.js"),
     ("GET", "/app/views/customers.js"),
     ("GET", "/app/views/parts/custbook.js"),
     ("GET", "/app/views/parts/custcontacts.js"),
@@ -583,6 +585,7 @@ ROUTE_ORDER_BASELINE: list[tuple[str, str]] = [
     ("POST", "/api/situations/{sid}/split"),
     # v0.27.0 (ADR #428): an operator's answer to a pending proposal, after the gestures.
     ("POST", "/api/situations/{sid}/proposal"),
+    ("GET", "/api/situations/{sid}/related"),
     ("POST", "/api/situations/{sid}/name"),
     ("POST", "/api/situations/{sid}/promote"),
     ("POST", "/api/alarms/{aid}/clear"),
@@ -895,7 +898,9 @@ async def test_the_api_route_order_is_unchanged_by_the_ui_rewrite(store: Store) 
     # ADR #482: +4 (the sign-in's second step, recovery codes, and two resets of an authenticator,
     # each a concrete path shadowing nothing) — 197. ADR #486: +1 (`/api/audit/facets`, a
     # concrete segment below `/api/audit`); ADR #487: +2 (Ollama's detect, a model's try) — 200.
-    assert len(live) == 200, (
+    # ADR #489: +1 (`/api/situations/{sid}/related`, a concrete segment below a situation's id,
+    # shadowing nothing) — 201.
+    assert len(live) == 201, (
         f"the /api surface is {len(live)} pairs; v0.16.0 adds exactly five, v0.16.2 exactly one, "
         f"v0.16.3 exactly one, v0.16.5 exactly one — `POST /api/alarms/clear` — v0.18.0 exactly "
         f"one, `GET /api/correlation`, and v0.21.0 exactly thirteen for maintenance windows, "
@@ -1543,8 +1548,8 @@ def test_the_queue_put_on_the_hot_path_is_non_blocking() -> None:
 #: `engine/noc/` `commands`, `executor`, `playbook` and `runbook`, `store/noc_playbooks.py`,
 #: migration `0035_noc_automation.sql`, the `noc_exec` and `playbooks` routes, and the
 #: `views/playbooks` console module.
-SRC_TREE_DIGEST = "b516aaa046f3f103988363c09acd70886bddca1f13f1edab942eb710747236ec"
-SRC_FILE_COUNT = 529
+SRC_TREE_DIGEST = "981cbe40ca92fbc2d77900e8c63715bae8820ed61943b647045ab12cff535bc8"
+SRC_FILE_COUNT = 532
 SRC_VERSION_FILE = "src/netcorenoc/__init__.py"
 
 

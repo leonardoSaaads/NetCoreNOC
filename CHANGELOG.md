@@ -196,6 +196,29 @@ stored device credential is unreadable (#455).
   each model can be **tried** for an answer and a tool call, timed
   (`POST /api/noc/secrets/{id}/try`).
 
+### Changed — only a confirmed grouping is open; merging that asks New or Open (#489)
+
+- **Confirm grouping is the only press that opens a situation.** Merging, moving members, splitting
+  one off and clearing by hand keep it New; a merge into a New situation leaves it New.
+- *Grouping is wrong* is gone from the card; **Merge another situation in** (and **Move N members
+  elsewhere**, once members are ticked) sits in its place and asks **New or Open** first, then lists
+  the situations most likely related — devices in common, same customer, how close they started —
+  with Back. A New situation merged with an Open one joins the Open one.
+  `GET /api/situations/{sid}/related` is new.
+- A situation with no member left is no longer listed.
+
+### Changed — fewer words, aligned cards (#490)
+
+- **Overview**: *Planned work* counts every live window, shows the week ahead and a picture when
+  nothing is planned; the **trap pipeline** is a third of its height; the **models** card's ROC
+  uses the score bars as its key.
+- **Entities**: no empty column when no component is learned.
+- **People & access**: one person is shown like Your account — header, then Profile, Access and
+  Security tabs.
+- **NOC Overview**: three set-up panels (customer, agents, cases) replace the checklist card.
+- **Agents**: an agent's Overview is four numbers, then runs per day and its cases in two aligned
+  cards.
+
 ### Fixed — starting a site search no longer holds the event loop (#488)
 
 - Building the search's rows and payload and starting its worker run in a thread: a spawn start

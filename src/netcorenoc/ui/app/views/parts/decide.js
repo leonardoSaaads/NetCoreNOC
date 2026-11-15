@@ -30,7 +30,7 @@
 import { html } from "../../dom.js";
 import { Icon } from "../../icons.js";
 import { BulkClear } from "./bulkclear.js";
-import { age, plural, timeTitle } from "../../format.js";
+import { age, timeTitle } from "../../format.js";
 
 /**
  * The bar, and the judged note above it.
@@ -40,7 +40,7 @@ import { age, plural, timeTitle } from "../../format.js";
  * would be a second copy of the rule `judge.js` owns.
  */
 export function Decide({
-  status, judged, adjusting, grouping, restructurable, sending, marked,
+  status, judged, adjusting, grouping, restructurable, sending, restructure,
   activeCount, markedActive, confirmingClear, kase, canWork,
   onAdjust, onPromote, onVerdict, onClose, onAskClear, onClearMany,
 }) {
@@ -69,17 +69,14 @@ export function Decide({
         <${Icon} name="headset" /> Case in the NOC · ${CASE_WORDS[kase.status] ?? kase.status}
       </a>` : null}
 
-      ${/* **The two answers to one question**, and the question is "is this grouping right?"
-            (v0.20.0, DECISIONS #359). The second button read `Split (wrong grouping)`, which the
-            maintainer said *"will likely never be used"* — and they are right about the word.
-            `split` is the name of the ROUTE; what the operator is being asked is whether the
-            appliance got the grouping right.
-
-            Renamed and NOT removed. `confirm` asserts every pair positive and `split` asserts
-            the negatives, so a console offering only the first would feed the correlator a
-            corpus with no negative evidence in it — a worse defect than a badly-named button,
-            and an invisible one. The route, the payload and `PREREGISTRATION-0.16.0.md` §2's row
-            are untouched.
+      ${/* **What an operator does about a grouping** (ADR #489). *Confirm grouping* accepts it —
+            the only press that opens a situation. *Grouping is wrong* is gone: the maintainer
+            measured it as almost never pressed, because an operator who finds a grouping wrong
+            fixes it — merges it with the situation it belongs to, or moves the members that do
+            not belong — and those two gestures sit here now, in its place (`restructure.js`).
+            Negative evidence is not lost with it: a move and a split assert their departing
+            members apart from the rest, exactly as the marked verdict did. The `split` verdict
+            route stays for programs.
 
             The CLASS is what the DOM harness locates these by, so the next rewording costs a
             label and not four scenarios. */ null}
@@ -88,14 +85,8 @@ export function Decide({
                 onClick=${() => onVerdict("confirm")}>
           <${Icon} name="check" /> Confirm grouping
         </button>
-        <button type="button" class="warn verdict verdict-split" disabled=${sending}
-                onClick=${() => onVerdict("split")}>
-          <${Icon} name="cross" />${" "}
-          ${marked
-            ? `Grouping is wrong — ${plural(marked, "member")} do not belong`
-            : "Grouping is wrong"}
-        </button>
-        ${restructurable ? html`<button type="button" disabled=${sending}
+        ${restructure}
+        ${restructurable ? html`<button type="button" class="fb-close" disabled=${sending}
                 onClick=${onClose}>Close situation</button>` : null}
       </div>` : null}
 
@@ -106,8 +97,8 @@ export function Decide({
         : null}
     </div>
     ${/* ADR #480: what each step does, said once where it is decided. */ null}
-    ${status === "new" ? html`<p class="hint decide-note">Confirm or correct the grouping to open
-      it. The NOC works an open situation once somebody presses Start working this.</p>` : null}
+    ${status === "new" || status === "pending" ? html`<p class="hint decide-note">New until somebody presses
+      Confirm grouping — merging and moving members keep it New.</p>` : null}
     ${status === "open" && !kase && canWork ? html`<p class="hint decide-note">Open, and no NOC case
       yet. Start working this when this is the situation the NOC should work.</p>` : null}
   </div>`;

@@ -155,14 +155,22 @@ async def test_the_vault_offers_each_ai_provider_and_a_card_per_device_kind(
 
 @dom_test
 async def test_the_overview_says_what_the_agents_still_need(store: Store) -> None:
-    """ADR #478: with no AI provider, agent or device credential, the overview lists each step,
-    in words and with a link to where it is done."""
+    """ADR #478, #490: with no AI provider, agent or device credential, the overview shows the
+    three panels — a customer, the agents, the cases — each step in words and a link to where it
+    is done."""
     tables, _sid = await _tables(store)
     seen = _render(tables["admin"], "#/noc")
-    assert '"Get the NOC\'s agents working"' in seen["dump"]
-    for step in ("Connect an AI provider", "Hire an agent", "Make one agent the entry point"):
+    assert '"Get the NOC working, in three steps"' in seen["dump"]
+    for step in (
+        "Add your first customer",
+        "Set up the agents",
+        "All set — work the cases",
+        "An AI provider",
+        "An agent hired",
+        "One agent is the entry point",
+    ):
         assert f'"{step}"' in seen["dump"], step
-    assert '"Agents → AI providers"' in seen["dump"], "each step links to where it is done"
+    assert seen["dump"].count(".fr-cta") == 3, "each step links to where it is done"
 
 
 @dom_test
