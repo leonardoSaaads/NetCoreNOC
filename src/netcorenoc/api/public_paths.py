@@ -191,7 +191,7 @@ UNAUTHENTICATED_PATHS: frozenset[str] = frozenset(
         "/app/views/parts/caseacts.js",
         "/app/views/parts/casefeed.js",
         "/app/views/parts/casedetail.js",
-        "/app/views/playbooks.js",
+        "/app/views/routines.js",
         # ADR #468: the agents, the organization, the roster, a case's milestones and assignment.
         "/app/roster.js",
         "/app/views/agents.js",
@@ -219,6 +219,7 @@ UNAUTHENTICATED_PATHS: frozenset[str] = frozenset(
         "/app/views/parts/orgmove.js",
         # ADR #483: the Overview before the first trap.
         "/app/views/parts/firstrun.js",
+        "/app/views/parts/routineform.js",
         "/app/views/parts/nocstart.js",
         "/app/views/parts/personsecurity.js",
         # ADR #473: the customers' books.

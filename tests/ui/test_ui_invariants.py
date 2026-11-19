@@ -2053,106 +2053,58 @@ def test_the_console_and_the_store_agree_on_which_gestures_assert() -> None:
 
 
 @dom_test
-async def test_every_gesture_stays_reachable_in_every_status_the_server_accepts_it_in(
-    routes: dict[str, Any],
-) -> None:
-    """**DECISIONS #291, and the property it must not break: nothing is removed.**
+async def test_every_status_offers_exactly_its_own_gestures(routes: dict[str, Any]) -> None:
+    """ADR #491: what the bar offers is the situation's status, nothing else.
 
-    The maintainer's ask was that a judged situation stop offering Confirm and Split as though
-    nothing had happened. The answer is a disclosure, not a deletion — and the difference is what
-    this asserts. Four states:
-
-      * `new`, unjudged — the full triage surface, unchanged;
-      * `open` promoted or renamed but **not judged** — the same surface, because `open` means an
-        operator is working it and says nothing about the grouping (v0.16.2's split);
-      * `open` **judged** — the same controls, one click behind `Adjust the grouping`, with what
-        was already recorded stated above it;
-      * `resolved` — verdicts stay (the server answers 200), restructuring is absent (**409**).
-
-    What this does NOT cover: that the disclosure is discoverable. That is a browser question and
-    the live pass is where it is answered.
+    * `new` — Confirm grouping, the merge and the move, the marks and the name;
+    * `open` — Start working this and the merge, **no Confirm** whatever the history says (it is
+      confirmed; the "judged" fold that kept offering it after a merge is gone), no Close;
+    * `pending` — no Confirm and no restructure: Accept or Reject answer a proposal, and a Confirm
+      there used to open a second Open situation beside the one the alarms belonged to;
+    * `resolved` — nothing: no Confirm, no Close, and none of the restructures the server refuses.
     """
     sid, _count = uifixtures.largest_situation(routes["editor"])
     editor = routes["editor"]
 
-    # ADR #480: the promote — *Start working this*, which opens the NOC case — belongs to an
-    # `open` situation with no case, and is reported separately from `.fb`. Until v0.20.0 it
-    # was a `.fb` row of its own above the judged note and this filtered it back out by label;
-    # it now sits in the same decision bar as the verdicts and outside `.fb`, which is the
-    # distinction the disclosure already turned on — `.fb` is what folds, and a promote asserts
-    # nothing about the grouping. One list, one boolean, and no filtering by wording.
-    def judging(state: dict[str, Any]) -> list[str]:
-        return [str(label) for label in state["grouping"]]
+    def state(status: str, events: list[dict[str, Any]]) -> dict[str, Any]:
+        out: dict[str, Any] = domdriver.run_scenario(
+            "actionSurface",
+            {"routes": _in_state(editor, sid, status=status, events=events), "sid": sid},
+        )["before"]
+        return out
 
-    fresh = domdriver.run_scenario(
-        "actionSurface", {"routes": _in_state(editor, sid, status="new", events=[]), "sid": sid}
-    )["before"]
-    assert fresh["judged"] is None and fresh["adjust"] is False
+    fresh = state("new", [])
     assert "Confirm grouping" in fresh["grouping"], fresh["grouping"]
+    assert any("Merge another situation in" in b for b in fresh["grouping"]), fresh["grouping"]
     assert not fresh["promote"], "a new situation offers Start working this (ADR #480)"
     assert fresh["restructure"] and fresh["nameField"] and fresh["selectAll"]
     assert fresh["marks"] > 0 and fresh["declares"] >= 3 * fresh["marks"]
 
-    # `open`, promoted or renamed, nothing judged. Identical to `new` but for the promote button
-    # (ADR #480: an open situation with no case offers Start working this, a new one does not).
-    promoted = domdriver.run_scenario(
-        "actionSurface",
-        {"routes": _in_state(editor, sid, status="open", events=NOT_A_JUDGEMENT), "sid": sid},
-    )["before"]
-    assert promoted["judged"] is None, (
-        f"a rename and a hand-clear were read as a judgement: {promoted['judged']!r}. Neither "
-        f"asserts anything about the grouping, which is why the surface keys on the gesture and "
-        f"not on the status."
-    )
-    assert judging(promoted) == judging(fresh), (promoted["grouping"], fresh["grouping"])
-    assert promoted["promote"], "an open situation without a case offers no Start working this"
-    assert promoted["restructure"] is True
+    for events in (
+        [],
+        NOT_A_JUDGEMENT,
+        JUDGEMENT,
+        [{**JUDGEMENT[0], "kind": "merge", "confidence": 0.8}],
+    ):
+        opened = state("open", events)
+        assert not any("Confirm" in b for b in opened["grouping"]), (events, opened["grouping"])
+        assert not any("Close" in b for b in opened["grouping"]), opened["grouping"]
+        assert opened["judged"] is None and opened["adjust"] is False
+        assert opened["promote"], "an open situation without a case offers no Start working this"
+        assert opened["restructure"] is True
+        assert opened["marks"] == fresh["marks"] and opened["declares"] == fresh["declares"]
 
-    # `open`, judged: folded, and then unfolded to exactly the same controls.
-    judged = domdriver.run_scenario(
-        "actionSurface",
-        {
-            "routes": _in_state(editor, sid, status="open", events=JUDGEMENT),
-            "sid": sid,
-            "adjust": True,
-        },
-    )
-    assert judged["before"]["judged"], "a judged situation does not say what was recorded"
-    assert "admin" in judged["before"]["judged"], judged["before"]["judged"]
-    assert judged["before"]["adjust"] is True
-    assert judged["before"]["grouping"] == [], (
-        f"the grouping controls are still open on a judged situation: "
-        f"{judged['before']['grouping']}"
-    )
-    assert judging(judged["after"]) == judging(fresh), (
-        f"Adjust does not restore the same controls: {judged['after']['grouping']} vs "
-        f"{fresh['grouping']}. Nothing may be REMOVED by this decision, only folded."
-    )
-    assert judged["after"]["restructure"] is True
-    # The marks and the declarations are never folded: they are how a split is composed, and a
-    # declaration is not a judgement about the grouping at all.
-    for state in (fresh, promoted, judged["before"]):
-        assert state["marks"] == fresh["marks"] and state["selectAll"]
-        assert state["declares"] == fresh["declares"]
-        assert state["nameField"]
+    pending = state("pending", [])
+    assert pending["grouping"] == [], pending["grouping"]
+    assert pending["restructure"] is False and not pending["promote"]
 
-    # `resolved`: the verdicts the server accepts, and none of the three it refuses with 409.
-    resolved = domdriver.run_scenario(
-        "actionSurface",
-        {
-            "routes": _in_state(editor, sid, status="resolved", events=JUDGEMENT),
-            "sid": sid,
-            "adjust": True,
-        },
-    )
-    assert resolved["after"]["restructure"] is False, (
+    resolved = state("resolved", JUDGEMENT)
+    assert resolved["grouping"] == [], resolved["grouping"]
+    assert resolved["restructure"] is False, (
         "the restructure block is offered on a resolved situation; the server answers 409 to all "
         "three of its gestures, so the console would be offering what will be refused"
     )
-    assert "Confirm grouping" in resolved["after"]["grouping"], resolved["after"]["grouping"]
-    assert not any("Close" in b for b in resolved["after"]["grouping"]), (
-        f"Close is offered on a situation that has already closed: {resolved['after']['grouping']}"
-    )
+    assert resolved["nameField"], "a resolved situation can still be named"
 
 
 def _two_live(captured: dict[str, Any], sid: int) -> tuple[dict[str, Any], int]:
@@ -2219,20 +2171,18 @@ async def test_moving_several_members_is_one_request_and_moving_all_is_a_merge(
 
 
 @dom_test
-async def test_a_restructured_situation_still_offers_confirm(routes: dict[str, Any]) -> None:
-    """v0.29.0 (ADR #436): a move or a merge changes a grouping; it does not say it is right.
+async def test_a_restructured_new_situation_still_offers_confirm(routes: dict[str, Any]) -> None:
+    """ADR #436, #489: a move or a merge changes a New grouping; it does not say it is right.
 
-    The next thing an operator does after moving the wrong alarms out is confirm what is left,
-    and folding the verdicts behind *Adjust the grouping* on any asserting gesture hid Confirm at
-    exactly that moment. Only a **verdict** folds them; the control is `test_the_action_surface…`'s
-    judged arm, which still folds.
+    The next thing an operator does after moving the wrong alarms out is confirm what is left, so a
+    New situation keeps Confirm after any restructure — and stays New until it is pressed.
     """
     sid, _count = uifixtures.largest_situation(routes["editor"])
     for kind in ("move", "merge", "operator_split"):
         event = {**JUDGEMENT[0], "kind": kind, "confidence": 0.8}
         state = domdriver.run_scenario(
             "actionSurface",
-            {"routes": _in_state(routes["editor"], sid, status="open", events=[event]), "sid": sid},
+            {"routes": _in_state(routes["editor"], sid, status="new", events=[event]), "sid": sid},
         )["before"]
         assert "Confirm grouping" in state["grouping"], (kind, state["grouping"])
         assert state["restructure"] is True, kind

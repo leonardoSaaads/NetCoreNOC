@@ -5,7 +5,8 @@
  * contacts and instructions, and in its Access the device credentials the agents may use; (2) **the
  * agents** — an AI provider, then an agent (or a team of them) with one entry point; (3) **work the
  * cases**. Each panel says done or to do in words and a mark, never by colour alone, and the first
- * one left to do is the highlighted one. The panels disappear when every step is done.
+ * one left to do is the highlighted one. The panels disappear when every step is done or the
+ * first case reaches the NOC (ADR #491).
  *
  * The facts are the overview's own `setup` block (`engine/noc/overview.setup`); the pictures are
  * inline SVG in the console's classes (`.fr-*`), so they follow light and dark.
@@ -73,7 +74,9 @@ function Check({ done, children }) {
 }
 
 export function NocStart({ s }) {
-  if (!s || s.ready) return null;
+  // ADR #491: the panels are what to do after the deploy — gone once every step is done, or once
+  // the first case reaches the NOC, whichever comes first.
+  if (!s || s.ready || s.first_case) return null;
   const agents = s.ai_provider && s.agent && s.entry;
   const customer = s.customer && s.device_access;
   const steps = [

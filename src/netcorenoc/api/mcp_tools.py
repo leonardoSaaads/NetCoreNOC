@@ -152,14 +152,23 @@ TOOLS: tuple[Tool, ...] = (
         open_world=True,
         untrusted=True,
     ),
-    _t("noc_list_playbooks", "GET", "/api/noc/playbooks", "List playbooks", **_READ),
-    _t("noc_get_playbook", "GET", "/api/noc/playbooks/{playbook_id}", "Get a playbook", **_READ),
-    _t("noc_create_playbook", "POST", "/api/noc/playbooks", "Write a playbook"),
+    # ADR #492: routines (formerly playbooks) — a customer's troubleshooting, run in one call.
+    _t("noc_list_playbooks", "GET", "/api/noc/playbooks", "List routines", **_READ),
+    _t("noc_get_playbook", "GET", "/api/noc/playbooks/{playbook_id}", "Get a routine", **_READ),
+    _t("noc_create_playbook", "POST", "/api/noc/playbooks", "Write a routine"),
     _t(
         "noc_update_playbook",
         "POST",
         "/api/noc/playbooks/{playbook_id}",
-        "Replace a playbook",
+        "Replace a routine",
+    ),
+    _t(
+        "noc_run_playbook",
+        "POST",
+        "/api/noc/playbooks/{playbook_id}/run",
+        "Run a routine on a case",
+        open_world=True,
+        untrusted=True,
     ),
     # ADR #473: the customers' books — read before acting; memory and notes kept as they work.
     _t("noc_list_customers", "GET", "/api/noc/customers", "The NOC's customers", **_READ),

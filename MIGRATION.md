@@ -80,6 +80,18 @@ Two rules that have held since v0.1.0 and are not going to change:
 
 *(This table has no rows for v0.17.0 or v0.18.0: neither release wrote one, and inventing upgrade notes for a release somebody else built would be describing an upgrade nobody tested.)*
 
+## Unreleased — routines, by customer and tier (#491-#493)
+
+Migration **0046** applies at start and is additive. **What you will notice**: NOC → Playbooks is
+**NOC → Routines** (the old address still opens it); every existing playbook becomes a tier-1
+routine for every customer, so nothing stops running. **What to do**: give a routine a customer
+and a tier where it should be narrower — a tier-1 agent no longer sees a routine above its tier,
+and a token holding the agent grant that is not a hired agent is held to tier 1. **API**:
+`PlaybookIn` takes `customer_id` and `tier`; `GET /api/noc/playbooks` takes `customer_id` and
+`situation_id`; `POST /api/noc/playbooks/{id}/run` (MCP `noc_run_playbook`) is new. Also, no
+action needed: a Pending situation is answered by Accept or Reject only, and *Close situation* is
+gone (*Clear all active* resolves it) (#491).
+
 ## Unreleased — two-factor sign-in, required for every person (#482)
 
 Migration **0045** applies at start and is additive. **What you will notice**: every session ends

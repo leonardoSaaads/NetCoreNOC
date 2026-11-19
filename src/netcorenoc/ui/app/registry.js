@@ -52,7 +52,7 @@ import { Secrets } from "./views/secrets.js";
 import { Cases } from "./views/cases.js";
 import { NocOverview } from "./views/nocoverview.js";
 import { NocKpis } from "./views/nockpis.js";
-import { Playbooks } from "./views/playbooks.js";
+import { Routines, PlaybooksAlias } from "./views/routines.js";
 import { Agents } from "./views/agents.js";
 import { Org } from "./views/org.js";
 import { Customers } from "./views/customers.js";
@@ -185,10 +185,15 @@ export const VIEWS = [
     summary: "How fast the NOC takes a case, documents it and restores service, against targets.",
   },
   {
-    // ADR #463: the trees agents write after resolving a case, run before the NOC is called.
-    id: "playbooks", label: "Playbooks", icon: "playbook", group: "work", plane: "noc",
-    capability: "playbooks.read", component: Playbooks,
-    summary: "Troubleshooting trees agents wrote; each runs on matching cases before the queue.",
+    // ADRs #463, #492: each customer's troubleshooting, by tier; agents run one in a single call.
+    id: "routines", label: "Routines", icon: "playbook", group: "work", plane: "noc",
+    capability: "playbooks.read", component: Routines,
+    summary: "Each customer's troubleshooting, by tier: agents run one in a single call.",
+  },
+  {
+    // `#/playbooks`, the screen's old name, kept for links and bookmarks.
+    id: "playbooks", label: "Routines", icon: "playbook", group: null, hidden: true, plane: "noc",
+    capability: "playbooks.read", component: PlaybooksAlias,
   },
   {
     // ADR #473: the customers the NOC serves. The sidebar lists each one below this entry and,

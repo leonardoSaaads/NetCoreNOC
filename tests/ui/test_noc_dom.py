@@ -68,7 +68,7 @@ async def test_the_top_bar_switches_planes_and_the_sidebar_follows(store: Store)
         "Overview",
         "Cases",
         "KPIs",
-        "Playbooks",
+        "Routines",
         "All customers",
         "All agents",
         "Organization",
@@ -77,10 +77,10 @@ async def test_the_top_bar_switches_planes_and_the_sidebar_follows(store: Store)
     # ADR #473: the customers the NOC serves, between the work and the agents.
     assert noc["navGroups"] == ["Work", "Customers", "Agents", "NOC"]
     assert "GET /api/noc/access" in noc["requestPaths"]
-    # ADR #470: the KPIs and the playbooks are a lead's — an editor nobody named is not offered
-    # them (and each route refuses them on its own).
+    # ADR #470: the KPIs and the routines (ADR #492) are a lead's — an editor nobody named is not
+    # offered them (and each route refuses them on its own).
     editor = _render(tables["editor"], "#/cases")
-    assert "KPIs" not in editor["navItems"] and "Playbooks" not in editor["navItems"]
+    assert "KPIs" not in editor["navItems"] and "Routines" not in editor["navItems"]
     assert editor["navItems"][:2] == ["Overview", "Cases"]
     # A viewer reads cases (the customer's side), so the switch is there — and the NOC plane
     # offers them the overview, the cases and the customers' books (ADR #473) and nothing of the

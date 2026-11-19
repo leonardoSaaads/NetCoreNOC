@@ -43,8 +43,18 @@ __all__ = [
     "Connection",
     "Cursor",
     "Database",
+    "OutOfRangeError",
     "translate",
 ]
+
+
+class OutOfRangeError(ValueError):
+    """A parameter no column can hold — an id past 2**31 - 1, say (ADR #493).
+
+    The driver refuses it while encoding, before anything reaches the server, so the transaction is
+    untouched. Such a value names no row, and the API answers it as a request it cannot serve, not
+    as the server error it used to be (`GET /api/noc/customers/99999999999` was a 500)."""
+
 
 #: Errors a retry can outlive: the connection dropped, the server is restarting or failing over,
 #: the disk or the connection slots are full, a deadlock or a serialisation conflict. Anything else
@@ -129,6 +139,14 @@ class Connection:
                 rows = await self.raw.fetch(text, *args)
                 return Cursor(rows, len(rows))
             status = await self.raw.execute(text, *args)
+        except asyncpg.exceptions.DataError as exc:
+            # The driver's own refusal to encode an argument ("value out of int32 range"): nothing
+            # was sent, so the transaction is as it was. The server's "integer out of range" is
+            # another message, and falls through as any other failed statement.
+            if "out of int" in str(exc):
+                raise OutOfRangeError("a number in the request is out of range") from exc
+            self._failed = self._open
+            raise
         except asyncpg.PostgresError:
             self._failed = self._open
             raise

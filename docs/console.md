@@ -9,7 +9,7 @@ The console has two **planes**, switched from the middle of the top bar (ADR #45
 * **Broker** (phase 1) — receiving traps, correlating them into situations, training the models
   that do it, and the inventory.
 * **NOC** (phase 2) — working the situations that reach the operations centre, with people and AI
-  agents: **Cases**, **KPIs** and **Playbooks**, the **Customers** (each with its book, its
+  agents: **Cases**, **KPIs** and **Routines**, the **Customers** (each with its book, its
   equipment's credentials and its email), the **Agents** (and the AI providers they run on), and
   **Vault access**, who holds the credentials used to reach
   equipment.
@@ -53,7 +53,7 @@ disabled controls.
 ## NOC — Work
 
 The NOC plane's sidebar reads like Paperclip's company (ADR #468): **Work** (Overview, Cases,
-KPIs, Playbooks), **Customers** (all of them, then each by name with its open cases and, under the
+KPIs, Routines), **Customers** (all of them, then each by name with its open cases and, under the
 one open, the six parts of its book — ADRs #473, #481), **Agents** (all of them, then each by name with
 its state and open cases) and **NOC** (Organization, Vault access).
 
@@ -62,7 +62,7 @@ its state and open cases) and **NOC** (Organization, Vault access).
 | **Overview** | The NOC now (ADR #470): the live cases as **Queue**, **Working** and **Pending**, each split by tier (an agents' tier, or the NOC team), by priority and by who holds them, and the takes running late. Each tile opens the cases it counts. Names are shown to roles that may see people. **Equipment reachability** (ADR #476) lists the elements whose management endpoint stopped answering the vault's checks — a switch that loses power sends no trap — each a link to its element and, for a custodian, its credential. Until the agents can work on their own, **three panels** (ADR #490) say what to set up, in order — **a customer** (its basic information and, in its Access, a device credential agents may use), **the agents** (an AI provider, an agent or a team, an entry point), then **work the cases** — each step done or to do in words, each a link |
 | **Cases** | What the NOC has to take, what it is working, what waits on someone else, and what is over. A list view: **Queue**, **Working**, **Pending**, **Resolved**, **All**, each with its count, a filter over the rows on screen (number or words), and *Only mine*. Every row: priority (its colour on the row's edge too), the case, its status, **who holds it** — an agent at its tier, a person, the NOC team, or nobody — the **take** clock counted and drawn ("12m left", "late 15m"), the customer-update clock, the next update and when it opened. Read again every 15 s. A live case **hears its alarms** (ADR #474): what joined its situation, raised again or cleared is an event on its feed (an alarm just told of waits five minutes, so a flapping port is a line every five minutes; one back in a newer situation is named with it, a link), and a pending case whose fault came back returns to the queue. A case is opened from the Broker, by **Start working this** on an open situation (ADR #480) — confirming a grouping alone opens no case. |
 | **KPIs** | How fast the NOC takes a case, documents it and restores service, over 24 hours, 7 or 30 days: taken within target, median time to take, the time past target summed over every late take, customer updates within 30 minutes; per priority, the take and restore targets, and the takes missed |
-| **Playbooks** | Which troubleshooting trees check a new case before the NOC is called, and how each has done. A list — the name, what it matches (vendors, trap OIDs, severities), on or off, its runs and how they ended — and one playbook opened below it as its tree: each step, what it does, where each answer leads, down to the leaves (resolve, wait, NOC queue), its JSON and its last runs |
+| **Routines** | Each customer's troubleshooting, by tier (ADR #492). Routines grouped by customer, filtered by customer, tier and a word — each a card with its tier, what it matches, its checks and runs — and one opened below as its flow of checks, where each answer leads (resolve, wait, NOC queue), its last runs and who asked for each, and its JSON. **New routine** (leads): start from a template, say who it is for (customer, tier), when it runs, the steps and how it ends. `#/playbooks` opens it too |
 
 A situation the Broker opens becomes a case in the NOC queue (ADR #459). A case opens as a
 **record**, as a case management system draws one (ADR #468):
@@ -110,9 +110,12 @@ A situation the Broker opens becomes a case in the NOC queue (ADR #459). A case 
 * **Automated** means a playbook is checking the case (ADR #463): each of its steps, and the
   device's answer, appears in the feed as an internal event under the playbook's name. Taking the
   case stops it — the person wins.
-* **Playbooks are written by agents** (or by a person the vault trusts), through the API, after
-  they resolve a case; one is active as soon as it is stored, and acts only through read-only
-  commands and credentials whose agent access is on. *Switch off* stops it matching new cases.
+* **Routines are written by a lead or an agent** (ADR #492) — in the console's guided form or
+  through the API — for one customer or for every customer, with a tier: a tier-1 agent never sees
+  a tier-2 routine. One is active as soon as it is stored and acts only through read-only commands
+  and credentials whose agent access is on. An agent **runs one on a case** in a single call
+  (`noc_run_playbook`): the checks run and are audited under it, and the routine's conclusion comes
+  back as advice — nothing is applied. *Off* stops it matching new cases and being run.
 
 ## NOC — Customers
 

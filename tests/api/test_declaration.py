@@ -724,11 +724,13 @@ async def test_f43_every_path_served_today_still_registers(store: Store) -> None
     # Unreleased: 357 -> 360 and 200 -> 201 — the merge picker's related situations (ADR #489: one
     # /api pair), the NOC's three set-up panels and a person's Security tab (ADR #490: two UI
     # modules).
-    assert len(served) == 360, f"the served surface moved: {len(served)} method/path pairs"
+    # Unreleased: 360 -> 362 and 201 -> 202 — routines (ADR #492): running one on a case (one /api
+    # pair), and the screen's two modules in place of Playbooks' one.
+    assert len(served) == 362, f"the served surface moved: {len(served)} method/path pairs"
     api_pairs = {(method, path) for method, path in served if path.startswith("/api")}
     # **v0.19.0: 53 -> 55.** `GET /api/models` and `POST /api/models/register`: what the
     # models are doing, and turning one of this appliance's own fits into an artefact.
-    assert len(api_pairs) == 201, (
+    assert len(api_pairs) == 202, (
         f"the /api surface moved: {len(api_pairs)} pairs. v0.16.0 adds exactly five — the "
         f"operator's five gestures — v0.16.2 adds exactly one, `POST …/promote` (DECISIONS #273), "
         f"v0.16.5 adds exactly one, `POST /api/alarms/clear` (DECISIONS #301), "
@@ -926,11 +928,13 @@ async def test_f42_every_path_served_today_still_registers(store: Store) -> None
     # Unreleased: 357 -> 360 and 200 -> 201 — the merge picker's related situations (ADR #489: one
     # /api pair), the NOC's three set-up panels and a person's Security tab (ADR #490: two UI
     # modules).
-    assert len(served) == 360, f"the served surface moved: {len(served)} method/path pairs"
+    # Unreleased: 360 -> 362 and 201 -> 202 — routines (ADR #492): running one on a case (one /api
+    # pair), and the screen's two modules in place of Playbooks' one.
+    assert len(served) == 362, f"the served surface moved: {len(served)} method/path pairs"
     api_pairs = {(method, path) for method, path in served if path.startswith("/api")}
     # **v0.19.0: 53 -> 55.** `GET /api/models` and `POST /api/models/register`: what the
     # models are doing, and turning one of this appliance's own fits into an artefact.
-    assert len(api_pairs) == 201, (
+    assert len(api_pairs) == 202, (
         f"the /api surface moved: {len(api_pairs)} pairs. v0.16.0 adds exactly five — the "
         f"operator's five gestures — v0.16.2 adds exactly one, `POST …/promote` (DECISIONS #273), "
         f"v0.16.5 adds exactly one, `POST /api/alarms/clear` (DECISIONS #301), "
@@ -1032,7 +1036,9 @@ def test_every_unscoped_declaration_carries_a_written_justification() -> None:
     # ADRs #470, #471: 59 -> 61 — the caller's own NOC grants, and an AI key's models (custody).
     # ADR #482: 61 -> 63 — the caller's own recovery codes and authenticator: an account.
     # ADR #487: 63 -> 65 — finding a local Ollama and trying a model: custody, not scope.
-    assert len(entries) == 65, entries
+    # ADR #492: 65 -> 66 — running a routine on a case: the case is named in the body, so the route
+    # checks it against the caller's scope itself (an out-of-scope case is a 404 like an unknown).
+    assert len(entries) == 66, entries
     unjustified = [lines[i].strip() for i in entries if not lines[i - 1].strip().startswith("#")]
     assert not unjustified, (
         "every `unscoped` route must be preceded by a comment saying why it is not scoped:\n  "
@@ -1235,7 +1241,8 @@ def test_the_three_postures_are_all_populated() -> None:
     # ADRs #470, #471: 59 -> 61, the two named at the justification test above.
     # ADR #482: 61 -> 63, the two named at the justification test above.
     # ADR #487: 63 -> 65, the two named there too.
-    assert len(UNSCOPED) == 65, UNSCOPED
+    # ADR #492: 65 -> 66, running a routine on a case, named there too.
+    assert len(UNSCOPED) == 66, UNSCOPED
     # v0.16.0: 12 -> 17. Every one of the five gestures names a network element and every one
     # is below `admin`, so every one is `scoped` — the write perimeter F34 established,
     # widened by exactly the routes this release adds.

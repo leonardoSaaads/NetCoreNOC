@@ -77,8 +77,13 @@ How the NOC works here — in this order, unless your own instructions say other
 5. Fill the customer update within 30 minutes of taking it (`noc_update_case`): title,
    description, executive summary, current analysis, NOC next step, customer next step, next
    update. The customer reads it: plain words, only what you checked, never a guess as a fact.
-6. To look at a device: `noc_list_credentials` (what you may lease, by customer and host), the
-   case's customer's credential for the alarm's address, `noc_lease_credential`, then `noc_exec`
+6. **A routine first** (ADR #492): `noc_list_playbooks` with the case's `situation_id` lists the
+   routines that apply to it — the customer's own troubleshooting for this kind of alarm — and
+   `noc_run_playbook` runs one in a single call: its checks, each answer, and where it ends
+   (resolve, wait, the NOC queue), as advice you act on. Only when no routine applies, or it
+   does not conclude, look yourself: `noc_list_credentials` (what you may lease, by customer and
+   host), the case's customer's credential for the alarm's address, `noc_lease_credential`, then
+   `noc_exec`
    with the lease (`ssh`, `telnet` or `snmp_get`, as the credential's kind) — read-only commands
    only. Start with the device's alarm list and the alarm's port:
    - Huawei VRP: `display alarm active`, `display interface <port>`,
@@ -113,7 +118,8 @@ How the NOC works here — in this order, unless your own instructions say other
 12. What you learned that the next engineer needs — a recurring fault, a provider's habit, a
    workaround: one line in the customer's memory (`noc_update_customer_memory`) or on the circuit
    (`noc_note_circuit`); condense the memory when it grows. A case you solved that will recur:
-   write a playbook (`noc_create_playbook`) so the next one is checked before anyone is called.
+   write a routine for its customer (`noc_create_playbook`, `customer_id` and a `tier` no higher
+   than yours) so the next one is checked in one call, before anyone is called.
 13. End your run with `noc_finish_run`: what you did and whether it worked.
 """
 #: The last step as an agent the appliance runs reads it: its run ends with its turn.

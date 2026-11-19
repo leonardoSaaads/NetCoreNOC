@@ -21,6 +21,12 @@ def _scoped(ne_ids: frozenset[int] | None) -> tuple[str, tuple[Any, ...]]:
 
 
 class NocOverviewMixin(StoreBase):
+    async def noc_any_case(self) -> bool:
+        """Whether the NOC has ever had a case — the set-up panels' end (ADR #491)."""
+        cur = await self.conn.execute("SELECT EXISTS (SELECT 1 FROM noc_case) AS any_case")
+        row = await cur.fetchone()
+        return bool(row and row[0])
+
     async def noc_case_census(self, ne_ids: frozenset[int] | None = None) -> list[dict[str, Any]]:
         """The live cases counted by status, priority, tier and holder: a person who took it, the
         agent it is routed to (or that took it), or nobody."""

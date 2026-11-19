@@ -15,7 +15,9 @@ from netcorenoc.store.base import StoreBase
 
 _PLAYBOOK = (
     "id, name, document, version, enabled, source_case, created_at, created_by, updated_at, "
-    "updated_by"
+    "updated_by, organization_id, tier, "
+    # ADR #492: the customer a routine is for, by name; NULL for every customer.
+    "(SELECT o.name FROM organization o WHERE o.id = organization_id) AS customer"
 )
 
 
@@ -25,7 +27,9 @@ class NocPlaybookMixin(StoreBase):
         cur = await self.conn.execute(
             f"SELECT {_PLAYBOOK}, (SELECT COUNT(*) FROM noc_playbook_run r "  # nosec B608
             "WHERE r.playbook_id = p.id) AS runs, (SELECT MAX(started_at) FROM noc_playbook_run r "
-            f"WHERE r.playbook_id = p.id) AS last_run_at FROM noc_playbook p {where}ORDER BY id"
+            f"WHERE r.playbook_id = p.id) AS last_run_at FROM noc_playbook p {where}"
+            # ADR #492: a customer's own routines before every customer's, then oldest first.
+            "ORDER BY organization_id IS NULL, organization_id, id"
         )
         return [dict(r) for r in await cur.fetchall()]
 
@@ -38,24 +42,41 @@ class NocPlaybookMixin(StoreBase):
         return dict(row) if row else None
 
     async def noc_create_playbook(
-        self, name: str, document: str, source_case: int | None, now: float, actor: str
+        self,
+        name: str,
+        document: str,
+        source_case: int | None,
+        now: float,
+        actor: str,
+        *,
+        organization_id: int | None = None,
+        tier: int = 1,
     ) -> int:
         cur = await self.conn.execute(
             "INSERT INTO noc_playbook (name, document, source_case, created_at, created_by, "
-            "updated_at, updated_by) VALUES (?, ?, ?, ?, ?, ?, ?) RETURNING id",
-            (name, document, source_case, now, actor, now, actor),
+            "updated_at, updated_by, organization_id, tier) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) "
+            "RETURNING id",
+            (name, document, source_case, now, actor, now, actor, organization_id, tier),
         )
         row = await cur.fetchone()
         assert row is not None
         return int(row[0])
 
     async def noc_update_playbook(
-        self, playbook_id: int, name: str, document: str, now: float, actor: str
+        self,
+        playbook_id: int,
+        name: str,
+        document: str,
+        now: float,
+        actor: str,
+        *,
+        organization_id: int | None = None,
+        tier: int = 1,
     ) -> None:
         await self.conn.execute(
             "UPDATE noc_playbook SET name = ?, document = ?, version = version + 1, "
-            "updated_at = ?, updated_by = ? WHERE id = ?",
-            (name, document, now, actor, playbook_id),
+            "updated_at = ?, updated_by = ?, organization_id = ?, tier = ? WHERE id = ?",
+            (name, document, now, actor, organization_id, tier, playbook_id),
         )
 
     async def noc_enable_playbook(
@@ -71,7 +92,7 @@ class NocPlaybookMixin(StoreBase):
     ) -> list[dict[str, Any]]:
         cur = await self.conn.execute(
             "SELECT r.id, r.playbook_id, p.name, r.version, r.situation_id, r.started_at, "
-            "r.ended_at, r.outcome, r.trace FROM noc_playbook_run r "
+            "r.ended_at, r.outcome, r.trace, r.started_by FROM noc_playbook_run r "
             "JOIN noc_playbook p ON p.id = r.playbook_id "
             "WHERE (?::bigint IS NULL OR r.playbook_id = ?) "
             "AND (?::bigint IS NULL OR r.situation_id = ?) ORDER BY r.id DESC LIMIT ?",
@@ -79,11 +100,13 @@ class NocPlaybookMixin(StoreBase):
         )
         return [dict(r) for r in await cur.fetchall()]
 
-    async def noc_run_start(self, playbook_id: int, version: int, sid: int, now: float) -> int:
+    async def noc_run_start(
+        self, playbook_id: int, version: int, sid: int, now: float, started_by: str | None = None
+    ) -> int:
         cur = await self.conn.execute(
-            "INSERT INTO noc_playbook_run (playbook_id, version, situation_id, started_at) "
-            "VALUES (?, ?, ?, ?) RETURNING id",
-            (playbook_id, version, sid, now),
+            "INSERT INTO noc_playbook_run (playbook_id, version, situation_id, started_at, "
+            "started_by) VALUES (?, ?, ?, ?, ?) RETURNING id",
+            (playbook_id, version, sid, now, started_by),
         )
         row = await cur.fetchone()
         assert row is not None
@@ -124,7 +147,10 @@ class NocPlaybookMixin(StoreBase):
         )
         rows = [dict(r) for r in await cur.fetchall()]
         cur = await self.conn.execute(
-            "SELECT s.severity, host(n.ip) AS ip, n.vendor, e.key AS entity FROM situation s "
+            "SELECT s.severity, host(n.ip) AS ip, n.vendor, e.key AS entity, "
+            # ADR #492: the customer the root element is in, which a routine for one matches on.
+            "COALESCE(n.organization_id, (SELECT id FROM organization WHERE is_default "
+            "ORDER BY id LIMIT 1)) AS organization_id FROM situation s "
             "LEFT JOIN alarm a ON a.id = COALESCE(s.root_alarm_id, (SELECT MIN(alarm_id) "
             "FROM situation_alarm WHERE situation_id = s.id)) LEFT JOIN ne n ON n.id = a.ne_id "
             "LEFT JOIN entity e ON e.id = a.entity_id WHERE s.id = ?",
@@ -138,6 +164,7 @@ class NocPlaybookMixin(StoreBase):
             "ip": head["ip"] if head else None,
             "vendor": head["vendor"] if head else None,
             "entity": head["entity"] if head else None,
+            "organization_id": head["organization_id"] if head else None,
         }
 
     async def noc_secret_for(

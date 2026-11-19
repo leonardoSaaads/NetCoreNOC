@@ -252,6 +252,9 @@ UNDRIVEN_QUERY_PARAMS: dict[tuple[str, str], tuple[str, ...]] = {
     ("GET", "/api/noc/customers/{customer_id}/circuits"): ("limit", "offset", "q", "status"),
     ("GET", "/api/noc/customers/{customer_id}/docs/{doc_id}"): ("limit", "offset"),
     ("POST", "/api/noc/customers/{customer_id}/docs"): ("category", "name", "title"),
+    # ADR #492: a customer's routines and those that apply to a case, recorded unfiltered; both
+    # filters, and the tier ceiling beneath them, are driven in `tests/api/test_noc_routines.py`.
+    ("GET", "/api/noc/playbooks"): ("customer_id", "situation_id"),
 }
 
 #: Headers dropped from the record, with the reason each one is not a behaviour of this project.

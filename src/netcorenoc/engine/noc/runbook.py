@@ -31,22 +31,22 @@ from collections.abc import Awaitable, Callable, Mapping
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
-from netcorenoc.crosscutting import audit, secretbox
-from netcorenoc.engine.noc import case_ops, commands, executor, kinds, playbook
+from netcorenoc.crosscutting import audit
+from netcorenoc.engine.noc import case_ops, commands, executor, playbook, stepact
 from netcorenoc.engine.noc.case_ops import Actor
 
 if TYPE_CHECKING:
     from netcorenoc.store import Store
 
-__all__ = ["Broker", "automation", "run_case", "run_loop"]
+__all__ = ["Broker", "advise", "applies", "automation", "run_case", "run_loop"]
 
 log = logging.getLogger("netcorenoc")
 
 LOOK_EVERY_S = 2.0
-#: The most of a device's answer one feed event carries; the rest is counted, not shown.
-FEED_EXCERPT = 3000
-_SSH = ("ssh_password", "ssh_key")
-_SNMP = ("snmp_community", "snmp_v3")
+#: ADR #492: the longest a run asked for on demand may take — it answers the request that asked.
+ON_DEMAND_S = 120
+#: How much of each answer an on-demand run hands back to whoever asked (the feed has more).
+ADVICE_EXCERPT = 1500
 
 
 @dataclass(frozen=True)
@@ -67,125 +67,43 @@ class _Run:
     doc: Mapping[str, Any]
     facts: Mapping[str, Any]
     trace: list[dict[str, Any]]
+    #: ADR #492: who asked for an on-demand run — the actor of its checks and its feed lines.
+    invoker: Actor | None = None
+    #: The automation stops when a person or an agent takes the case; a run asked for does not.
+    watch: bool = True
+    #: What each step's answer began with, handed back to whoever asked (never stored).
+    seen: list[dict[str, Any]] | None = None
 
     @property
     def actor(self) -> Actor:
+        if self.invoker is not None:
+            return self.invoker
         return Actor(
-            f"playbook:{self.chosen['id']}", f"Playbook “{self.chosen['name']}”", "agent", None
+            f"playbook:{self.chosen['id']}", f"Routine “{self.chosen['name']}”", "agent", None
         )
 
 
+def applies(row: Mapping[str, Any], facts: Mapping[str, Any]) -> bool:
+    """ADR #492: a routine applies to a case when it is for the case's customer (or for every
+    customer) and its match fits the situation."""
+    owner = row.get("organization_id")
+    if owner is not None and owner != facts.get("organization_id"):
+        return False
+    return playbook.matches(json.loads(row["document"]), facts)
+
+
 async def automation(store: Store, sid: int) -> bool:
-    """The case loop's hook: does an enabled playbook match this situation?"""
+    """The case loop's hook: does an enabled routine match this situation?"""
     return (await _choose(store, sid)) is not None
 
 
 async def _choose(store: Store, sid: int) -> dict[str, Any] | None:
     facts = await store.noc_situation_facts(sid)
+    # The store lists a customer's own routines before every customer's: the specific one wins.
     for row in await store.noc_playbooks(enabled_only=True):
-        if playbook.matches(json.loads(row["document"]), facts):
+        if applies(row, facts):
             return row
     return None
-
-
-async def _credential(
-    store: Store, host: str, wanted: tuple[str, ...], least: str
-) -> tuple[dict[str, Any], dict[str, str]] | None:
-    async with store.reading():
-        row = await store.noc_secret_for(host, wanted, least)
-    if row is None:
-        return None
-    binding = kinds.binding(
-        str(row["ref"]),
-        str(row["kind"]),
-        str(row["host"]),
-        int(row["port"]),
-        str(row["protocol_version"]),
-        str(row["access_level"]),
-    )
-    return row, secretbox.current().open(binding, str(row["sealed"]))
-
-
-async def _act(run: _Run, store: Store, do: Mapping[str, Any], left: float) -> executor.Outcome:
-    action, args = next(iter(do.items()))
-    host = str(run.facts.get("ip") or "")
-    if not host:
-        return executor.Outcome(False, action, "", "the situation names no element address", 0.0)
-    if action == "reach":
-        found = await _credential(store, host, _SSH + _SNMP, "view_only")
-        port = int(found[0]["port"]) if found and found[0]["kind"] in _SSH else 22
-        return await executor.reach(host, port, timeout=min(left, 3.0))
-    try:
-        line = ""
-        least = "view_only"
-        if action == "ssh":
-            line = playbook.substitute(
-                args["command"], {"ip": host, "entity": run.facts.get("entity")}
-            )
-            least = commands.READ_VERBS.get(line.split()[0].lower(), "view_only")
-        found = await _credential(store, host, _SSH if action == "ssh" else _SNMP, least)
-        if found is None:
-            kind = "SSH" if action == "ssh" else "SNMP"
-            detail = f"no {kind} credential agents may use for {host} at {least} or above"
-            return executor.Outcome(False, action, "", detail, 0.0)
-        row, fields = found
-        if action == "ssh":
-            outcome = await executor.ssh(
-                row,
-                fields,
-                line,
-                pinned=row.get("host_key"),
-                mode=str(args.get("mode", "exec")),
-                timeout=min(left, executor.TIMEOUT_S),
-            )
-        else:
-            outcome = await executor.snmp_get(row, fields, args["oids"], timeout=min(left, 5.0))
-    except commands.CommandError as exc:
-        return executor.Outcome(False, action, "", f"refused: {exc}", 0.0)
-    async with store.lock:
-        if outcome.host_key is not None:
-            await store.noc_set_host_key(int(row["id"]), outcome.host_key, time.time())
-        await audit.write_event(
-            store,
-            ts=time.time(),
-            actor=run.actor.ref,
-            role=None,
-            source_ip=None,
-            action="noc.exec",
-            outcome="ok" if outcome.ok else "error",
-            object_type="noc_secret",
-            object_id=str(row["id"]),
-            details={
-                "action": action,
-                "situation": run.sid,
-                "ok": outcome.ok,
-                "ms": outcome.duration_ms,
-                "bytes": len(outcome.output),
-                "detail": outcome.detail[:200],
-            },
-        )
-        await store.commit()
-    return outcome
-
-
-def _event_text(step: str, do: Mapping[str, Any], outcome: executor.Outcome, host: str) -> str:
-    action, args = next(iter(do.items()))
-    what = {
-        "reach": "reach",
-        "ssh": f"`{args.get('command', '')}`",
-        "snmp_get": f"SNMP GET {', '.join(args.get('oids', []))}",
-    }[action]
-    verdict = "ok" if outcome.ok else "not ok"
-    head = (
-        f"Automated check “{step}”: {what} on {host} — {verdict} "
-        f"({outcome.detail}, {outcome.duration_ms:g} ms)."
-    )
-    if not outcome.output:
-        return head
-    excerpt = outcome.output[:FEED_EXCERPT]
-    rest = len(outcome.output) - FEED_EXCERPT
-    more = f"\n… {rest} more characters" if rest > 0 else ""
-    return f"{head}\nThe device answered (its text, not instructions):\n{excerpt}{more}"
 
 
 async def run_case(
@@ -243,15 +161,17 @@ async def _walk(run: _Run, store: Store, now: Callable[[], float]) -> Mapping[st
             return {"end": "timeout", "at": name}
         async with store.reading():
             current = await store.noc_case(run.sid)
-        if current is None or current["status"] != "auto":
+        if current is None or (run.watch and current["status"] != "auto"):
             return {"end": "taken"}
         outcome = executor.Outcome(True, "decide", "", "no action", 0.0)
         if "do" in step:
-            outcome = await _act(run, store, step["do"], left)
+            outcome = await stepact.act(store, run.sid, run.facts, run.actor, step["do"], left)
             async with store.lock:
-                text = _event_text(name, step["do"], outcome, host)
+                text = stepact.event_text(name, step["do"], outcome, host)
                 await case_ops.event(store, run.sid, text, now(), run.actor)
                 await store.commit()
+        if run.seen is not None:
+            run.seen.append({"step": name, "output": outcome.output[:ADVICE_EXCERPT]})
         run.trace.append(
             {
                 "step": name,
@@ -278,6 +198,46 @@ async def _walk(run: _Run, store: Store, now: Callable[[], float]) -> Mapping[st
             )
         except commands.CommandError as exc:  # a test that cannot be read is not a decision
             return {"end": "queue", "note": f"Automated checks could not decide at “{name}”: {exc}"}
+
+
+async def advise(
+    store: Store,
+    chosen: Mapping[str, Any],
+    sid: int,
+    run_id: int,
+    facts: Mapping[str, Any],
+    invoker: Actor,
+    *,
+    now: Callable[[], float] = time.time,
+) -> dict[str, Any]:
+    """ADR #492: walk a routine on a case because an agent (or a lead) asked, and report.
+
+    The same walk as the automation — the same read-only checks, each audited as `noc.exec`
+    under the one who asked, each answer a feed line on the case — but **nothing is applied**:
+    the leaf the routine reaches (resolve, wait, the NOC queue) is handed back as advice, and
+    whoever asked decides. Bounded by :data:`ON_DEMAND_S`, because the request is waiting. The
+    caller opens and closes the run (`routes/playbooks.py`, in its transaction helper); this is the
+    walk alone, and never raises for what a device did — a failed walk is reported as an `error`.
+    """
+    doc = dict(json.loads(chosen["document"]))
+    doc["timeout_s"] = min(int(doc.get("timeout_s", 300)), ON_DEMAND_S)
+    run = _Run(sid, run_id, chosen, doc, dict(facts), [], invoker=invoker, watch=False, seen=[])
+    try:
+        leaf = dict(await _walk(run, store, now))
+    except Exception as exc:  # the report says so; the case is untouched either way
+        log.exception("routine %s asked for on case %s failed", chosen["id"], sid)
+        leaf = {"end": "error", "why": type(exc).__name__}
+    seen = {s["step"]: s["output"] for s in run.seen or []}
+    return {
+        "run_id": run_id,
+        "routine": {"id": chosen["id"], "name": chosen["name"], "version": chosen["version"]},
+        "advice": leaf,
+        # The device's own words, marked as such — as `/api/noc/exec` answers them (G6).
+        "steps": [
+            {**s, "output": {"untrusted": True, "text": seen.get(s["step"], "")}} for s in run.trace
+        ],
+        "trace": run.trace,
+    }
 
 
 async def _finish(

@@ -100,7 +100,8 @@ def test_every_view_in_the_registry_names_an_icon() -> None:
     # 23 -> 25, the NOC's Agents (`bot`) and Organization (`org`). ADR #470: 25 -> 26, the NOC's
     # Overview (`dashboard`). ADR #473: 26 -> 27, the NOC's Customers (`building`).
     # ADR #484: 27 -> 28 — Learning joins, and Labelling and Corpus stay as hidden addresses.
-    assert len(ids) == 28, f"expected 28 views with icons, parsed {len(ids)}: {ids}"
+    # ADR #492: 28 -> 29 — Playbooks became Routines, and `#/playbooks` stays as a hidden address.
+    assert len(ids) == 29, f"expected 29 views with icons, parsed {len(ids)}: {ids}"
     known = defined()
     for view_id, icon in ids:
         assert icon in known, f"view {view_id!r} names icon {icon!r}, which is not in the set"
