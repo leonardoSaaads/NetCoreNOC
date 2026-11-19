@@ -219,6 +219,30 @@ stored device credential is unreadable (#455).
 - **Agents**: an agent's Overview is four numbers, then runs per day and its cases in two aligned
   cards.
 
+### Added — routines: each customer's troubleshooting, by tier, in one call (#492)
+
+- **Playbooks are Routines.** A routine is for one customer or for every customer (a customer's own
+  is chosen first) and has a tier: an agent sees, runs and writes routines at or below its own tier,
+  and one above it answers 404. Migration `0046_routines.sql`.
+- **An agent runs a routine on a case** — `POST /api/noc/playbooks/{id}/run`, MCP
+  `noc_run_playbook`: the read-only checks run, each audited under the agent and posted to the
+  feed, and the conclusion comes back as advice; nothing is applied. One run per case at a time.
+- **NOC → Routines**: grouped by customer, filtered by customer, tier and a word, each opened as its
+  flow of checks with who ran it; a guided form, with templates, to write one.
+
+### Changed — each status its own gestures; an import that shows its file; full-width screens (#491, #493)
+
+- A Pending situation is answered by Accept or Reject only — *Confirm* there opened a second Open
+  situation. *Confirm grouping* is offered on New only; *Close situation* is gone (*Clear all
+  active* resolves). The NOC Overview's set-up panels go with the first case (#491).
+- *Import a trap list* shows the columns it reads, a template to download, a drop zone that refuses
+  a MIB with what to do instead, and a preview of the file before the check (#493).
+- Settings → Email: provider cards with their marks; *Server details* no longer closes on every
+  keystroke and its tick boxes fit. Models, Autonomy, Learning and the Audit log use the page's
+  width; the audit log's paragraph is a badge (#493).
+- An id or a number past what its column holds (`GET /api/noc/customers/99999999999`) is a **422**;
+  it was a 500 and a traceback (#493).
+
 ### Fixed — starting a site search no longer holds the event loop (#488)
 
 - Building the search's rows and payload and starting its worker run in a thread: a spawn start

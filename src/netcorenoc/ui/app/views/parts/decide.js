@@ -30,7 +30,6 @@
 import { html } from "../../dom.js";
 import { Icon } from "../../icons.js";
 import { BulkClear } from "./bulkclear.js";
-import { age, timeTitle } from "../../format.js";
 
 /**
  * The bar, and the judged note above it.
@@ -40,26 +39,17 @@ import { age, timeTitle } from "../../format.js";
  * would be a second copy of the rule `judge.js` owns.
  */
 export function Decide({
-  status, judged, adjusting, grouping, restructurable, sending, restructure,
+  status, sending, restructure,
   activeCount, markedActive, confirmingClear, kase, canWork,
-  onAdjust, onPromote, onVerdict, onClose, onAskClear, onClearMany,
+  onPromote, onVerdict, onAskClear, onClearMany,
 }) {
+  // ADR #491: Confirm only where a grouping still waits for it — a New situation. Never on Open (it
+  // is confirmed), on Pending (Accept or Reject answer it) or once it is over (Resolved).
+  const confirmable = status === "new";
   return html`<div>
-    ${judged && !adjusting ? html`<div class="judged">
-      <p class="judged-note">
-        <${Icon} name="check" />${" "}
-        <b>${JUDGED_TEXT[judged.kind] ?? "This grouping has been judged"}</b>
-        ${judged.actor ? ` by ${judged.actor_name || judged.actor}` : ""}${" "}
-        <span class="age" title=${timeTitle(judged.at)}>${age(judged.at)} ago</span>
-      </p>
-      <button type="button" onClick=${onAdjust} title=${ADJUST_TITLE}>Adjust the grouping</button>
-    </div>` : null}
-
     <div class="decide">
-      ${/* ADR #480: *Start working this* opens the NOC case, and only an OPEN situation —
-            one whose grouping somebody confirmed or corrected — offers it. Of ten situations a
-            storm opens, the NOC works the one the others propagate from; a new situation is
-            still a question about the grouping. Once the case exists the button is its link. */ null}
+      ${/* ADR #480: *Start working this* opens the NOC case of an OPEN situation. Once the case
+            exists the button is its link. */ null}
       ${status === "open" && !kase && canWork ? html`<button type="button" class="tap promote"
         disabled=${sending} title=${PROMOTE_TITLE} onClick=${onPromote}>
         <${Icon} name="headset" /> Start working this
@@ -69,25 +59,17 @@ export function Decide({
         <${Icon} name="headset" /> Case in the NOC · ${CASE_WORDS[kase.status] ?? kase.status}
       </a>` : null}
 
-      ${/* **What an operator does about a grouping** (ADR #489). *Confirm grouping* accepts it —
-            the only press that opens a situation. *Grouping is wrong* is gone: the maintainer
-            measured it as almost never pressed, because an operator who finds a grouping wrong
-            fixes it — merges it with the situation it belongs to, or moves the members that do
-            not belong — and those two gestures sit here now, in its place (`restructure.js`).
-            Negative evidence is not lost with it: a move and a split assert their departing
-            members apart from the rest, exactly as the marked verdict did. The `split` verdict
-            route stays for programs.
-
-            The CLASS is what the DOM harness locates these by, so the next rewording costs a
-            label and not four scenarios. */ null}
-      ${grouping ? html`<div class="fb">
-        <button type="button" class="primary verdict verdict-confirm" disabled=${sending}
+      ${/* **What an operator does about a grouping** (ADRs #489, #491): *Confirm grouping* accepts
+            it — the only press that opens a situation — and merging or moving members corrects
+            it (`restructure.js`). *Close situation* is gone: *Clear all active* is the hygiene that
+            ends a situation, and a close left its alarms active under a situation already over.
+            The CLASS is what the DOM harness locates these by. */ null}
+      ${confirmable || restructure ? html`<div class="fb">
+        ${confirmable ? html`<button type="button" class="primary verdict verdict-confirm" disabled=${sending}
                 onClick=${() => onVerdict("confirm")}>
           <${Icon} name="check" /> Confirm grouping
-        </button>
+        </button>` : null}
         ${restructure}
-        ${restructurable ? html`<button type="button" class="fb-close" disabled=${sending}
-                onClick=${onClose}>Close situation</button>` : null}
       </div>` : null}
 
       ${activeCount > 0
@@ -96,9 +78,8 @@ export function Decide({
                    onAsk=${onAskClear} onGo=${onClearMany} />`
         : null}
     </div>
-    ${/* ADR #480: what each step does, said once where it is decided. */ null}
-    ${status === "new" || status === "pending" ? html`<p class="hint decide-note">New until somebody presses
-      Confirm grouping — merging and moving members keep it New.</p>` : null}
+    ${status === "new" ? html`<p class="hint decide-note">New until somebody presses Confirm
+      grouping — merging and moving members keep it New.</p>` : null}
     ${status === "open" && !kase && canWork ? html`<p class="hint decide-note">Open, and no NOC case
       yet. Start working this when this is the situation the NOC should work.</p>` : null}
   </div>`;
@@ -114,19 +95,3 @@ const CASE_WORDS = {
   validate: "validate resolution", resolved: "resolved", closed: "closed",
 };
 
-/* What is already on record, in the words of the gesture that recorded it.
- *
- * Keyed on `ASSERTING_KINDS` and nothing wider: `rename`, `manual_clear` and the three closes all
- * promote a situation and none of them judges its grouping, so none of them belongs here. Each
- * line says what the appliance was TOLD, not what it concluded — the distinction v0.16.2 drew
- * between promoting and affirming, in the one place an operator reads it back. */
-const JUDGED_TEXT = {
-  verdict: "This grouping has been judged",
-  move: "An alarm has been moved out of this grouping",
-  merge: "Another situation has been merged into this one",
-  operator_split: "Members have been split out of this grouping",
-};
-
-const ADJUST_TITLE =
-  "Reopens the grouping controls. The judgement already on record is kept — a second one is a " +
-  "second row of evidence, not a correction to the first.";

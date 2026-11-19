@@ -42,6 +42,7 @@ from netcorenoc.api.perimeter import (
 )
 from netcorenoc.crosscutting import auth
 from netcorenoc.ingest import trappack
+from netcorenoc.store import OutOfRangeError
 
 if TYPE_CHECKING:
     from netcorenoc.crosscutting.runtime import RuntimeConfig
@@ -56,6 +57,14 @@ async def _invalid_request(_request: Request, exc: RequestValidationError) -> JS
     response bodies. Where and why is enough to fix a request."""
     errors = [{k: e[k] for k in ("type", "loc", "msg") if k in e} for e in exc.errors()]
     return JSONResponse(status_code=422, content={"detail": jsonable_encoder(errors)})
+
+
+async def _out_of_range(_request: Request, _exc: OutOfRangeError) -> JSONResponse:
+    """An id or a number past what its column holds names nothing that exists (ADR #493): a 422
+    like any other unusable request, where it used to be a 500 and a traceback in the log."""
+    return JSONResponse(
+        status_code=422, content={"detail": "a number in the request is out of range"}
+    )
 
 
 async def _server_error(_request: Request, _exc: Exception) -> JSONResponse:
@@ -95,6 +104,7 @@ def create_app(
     app.add_middleware(BodyLimit)
     app.middleware("http")(perimeter.security_headers)
     app.add_exception_handler(RequestValidationError, _invalid_request)  # type: ignore[arg-type]
+    app.add_exception_handler(OutOfRangeError, _out_of_range)  # type: ignore[arg-type]
     app.add_exception_handler(Exception, _server_error)
 
     # Everything the route modules need, resolved once. Each `register()` rebinds the fields it

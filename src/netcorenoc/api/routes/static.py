@@ -230,7 +230,7 @@ _UI_MODULES = (
     "app/views/parts/caseacts.js",
     "app/views/parts/casefeed.js",
     "app/views/parts/casedetail.js",
-    "app/views/playbooks.js",
+    "app/views/routines.js",  # ADR #492: formerly playbooks.js
     # ADR #468: the NOC's agents and its organization (Paperclip's), the sidebar's roster, and a
     # case's milestones and assignment (Salesforce's record).
     "app/roster.js",
@@ -260,6 +260,7 @@ _UI_MODULES = (
     "app/views/parts/orgmove.js",
     # ADR #483: the Overview before the first trap — three pictures of what to do.
     "app/views/parts/firstrun.js",
+    "app/views/parts/routineform.js",  # ADR #492: writing a routine
     "app/views/parts/nocstart.js",  # ADR #490: the NOC's three set-up panels
     "app/views/parts/personsecurity.js",  # ADR #490: a person's Security tab
     # ADR #473: the customers' books.

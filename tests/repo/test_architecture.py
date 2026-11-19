@@ -524,7 +524,7 @@ ROUTE_ORDER_BASELINE: list[tuple[str, str]] = [
     ("GET", "/app/views/parts/caseacts.js"),
     ("GET", "/app/views/parts/casefeed.js"),
     ("GET", "/app/views/parts/casedetail.js"),
-    ("GET", "/app/views/playbooks.js"),
+    ("GET", "/app/views/routines.js"),
     ("GET", "/app/roster.js"),
     ("GET", "/app/views/agents.js"),
     ("GET", "/app/views/org.js"),
@@ -548,6 +548,7 @@ ROUTE_ORDER_BASELINE: list[tuple[str, str]] = [
     ("GET", "/app/views/parts/ollamamodels.js"),
     ("GET", "/app/views/parts/orgmove.js"),
     ("GET", "/app/views/parts/firstrun.js"),
+    ("GET", "/app/views/parts/routineform.js"),
     ("GET", "/app/views/parts/nocstart.js"),
     ("GET", "/app/views/parts/personsecurity.js"),
     ("GET", "/app/views/customers.js"),
@@ -730,6 +731,7 @@ ROUTE_ORDER_BASELINE: list[tuple[str, str]] = [
     ("GET", "/api/noc/playbooks/{playbook_id}"),
     ("POST", "/api/noc/playbooks/{playbook_id}"),
     ("POST", "/api/noc/playbooks/{playbook_id}/enabled"),
+    ("POST", "/api/noc/playbooks/{playbook_id}/run"),
     ("GET", "/api/noc/agents"),
     ("POST", "/api/noc/agents"),
     ("GET", "/api/noc/agents/me"),
@@ -899,8 +901,9 @@ async def test_the_api_route_order_is_unchanged_by_the_ui_rewrite(store: Store) 
     # each a concrete path shadowing nothing) — 197. ADR #486: +1 (`/api/audit/facets`, a
     # concrete segment below `/api/audit`); ADR #487: +2 (Ollama's detect, a model's try) — 200.
     # ADR #489: +1 (`/api/situations/{sid}/related`, a concrete segment below a situation's id,
-    # shadowing nothing) — 201.
-    assert len(live) == 201, (
+    # shadowing nothing) — 201. ADR #492: +1 (`POST …/playbooks/{playbook_id}/run`, a concrete
+    # segment below a routine's id, shadowing nothing) — 202.
+    assert len(live) == 202, (
         f"the /api surface is {len(live)} pairs; v0.16.0 adds exactly five, v0.16.2 exactly one, "
         f"v0.16.3 exactly one, v0.16.5 exactly one — `POST /api/alarms/clear` — v0.18.0 exactly "
         f"one, `GET /api/correlation`, and v0.21.0 exactly thirteen for maintenance windows, "
@@ -1548,8 +1551,8 @@ def test_the_queue_put_on_the_hot_path_is_non_blocking() -> None:
 #: `engine/noc/` `commands`, `executor`, `playbook` and `runbook`, `store/noc_playbooks.py`,
 #: migration `0035_noc_automation.sql`, the `noc_exec` and `playbooks` routes, and the
 #: `views/playbooks` console module.
-SRC_TREE_DIGEST = "981cbe40ca92fbc2d77900e8c63715bae8820ed61943b647045ab12cff535bc8"
-SRC_FILE_COUNT = 532
+SRC_TREE_DIGEST = "a64495cea726a300630c9993b9ecbe714f0c31a011a78a232d177cf0d6dd02bc"
+SRC_FILE_COUNT = 535
 SRC_VERSION_FILE = "src/netcorenoc/__init__.py"
 
 

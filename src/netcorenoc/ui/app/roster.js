@@ -30,7 +30,7 @@ let access = null;
 let timer = null;
 const listeners = new Set();
 /** The screens a NOC grant opens, and the grant (ADR #470). */
-const GATED = { kpis: "lead", playbooks: "lead" };
+const GATED = { kpis: "lead", routines: "lead", playbooks: "lead" };
 
 /** The caller's NOC grants as last read, or null before the first read. */
 export function nocAccess() { return access; }

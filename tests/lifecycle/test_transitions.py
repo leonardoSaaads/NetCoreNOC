@@ -76,11 +76,15 @@ async def test_every_attention_edge_moves_new_to_open_and_leaves_open_alone(
 
 
 @pytest.mark.parametrize("act", sorted(ATTENTION))
-async def test_attention_on_a_proposal_makes_it_an_open_situation_of_its_own(
+async def test_attention_on_a_proposal_never_opens_a_second_situation(
     store: Store, act: str
 ) -> None:
-    """v0.27.0 (ADR #428): an operator who works a pending bag on its own terms has judged it a
-    situation; the proposal lapses with the promotion, and the target is untouched."""
+    """ADR #491: a pending bag is answered by Accept or Reject, never opened beside its target.
+
+    v0.27.0 (ADR #428) let any act of attention open a pending bag as an Open situation of its own,
+    so a Confirm pressed on a Pending card made a second Open situation next to the one the alarms
+    belonged to — the duplicate the maintainer reported. The proposal and its target are untouched.
+    """
     async with store.lock:
         target = await store.create_situation(TS, act="correlate")
         await store.promote_situation(target, TS, "promote")
@@ -88,7 +92,7 @@ async def test_attention_on_a_proposal_makes_it_an_open_situation_of_its_own(
         await store.set_proposal(proposal, target, 0.9)
         await store.promote_situation(proposal, TS + 1, act)
         states = await store.lifecycle_states([target, proposal])
-    assert states == {target: ("open", None), proposal: ("open", None)}, (act, states)
+    assert states == {target: ("open", None), proposal: ("pending", target)}, (act, states)
 
 
 @pytest.mark.parametrize("act", ["rename", "close", "idle", "correlate", "no-such-act"])

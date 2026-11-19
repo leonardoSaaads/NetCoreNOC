@@ -27,7 +27,7 @@ ADMIN, ACCESS, AUDIT, SETTINGS = "People", "Access policy", "Audit", "Settings"
 PUBLIC = "Sign-in and recovery"
 VAULT, AGENTS = "NOC — Secrets", "NOC — Agents and leases"
 CASES = "NOC — Cases"
-AUTOMATION = "NOC — Executor and playbooks"
+AUTOMATION = "NOC — Executor and routines"
 ORG, MCP = "NOC — Organization", "NOC — MCP"
 CUSTOMERS = "NOC — Customers"
 
@@ -213,11 +213,14 @@ REFERENCE: dict[tuple[str, str], Entry] = {
     ("GET", "/api/noc/people"): Entry(CASES, "People a specified post may name"),
     ("POST", "/api/noc/exec"): Entry(AUTOMATION, "Act on a device with a lease (read only)"),
     ("POST", "/api/noc/secrets/{secret_id}/hostkey"): Entry(VAULT, "Forget a pinned host key"),
-    ("GET", "/api/noc/playbooks"): Entry(AUTOMATION, "Playbooks: what each matches, its runs"),
-    ("POST", "/api/noc/playbooks"): Entry(AUTOMATION, "Store a playbook (read-only steps)"),
-    ("GET", "/api/noc/playbooks/{playbook_id}"): Entry(AUTOMATION, "One playbook, tree and runs"),
-    ("POST", "/api/noc/playbooks/{playbook_id}"): Entry(AUTOMATION, "Replace a playbook's tree"),
+    ("GET", "/api/noc/playbooks"): Entry(AUTOMATION, "Routines: customer, tier, match, runs"),
+    ("POST", "/api/noc/playbooks"): Entry(AUTOMATION, "Store a routine (read-only steps)"),
+    ("GET", "/api/noc/playbooks/{playbook_id}"): Entry(AUTOMATION, "One routine, tree and runs"),
+    ("POST", "/api/noc/playbooks/{playbook_id}"): Entry(AUTOMATION, "Replace a routine's tree"),
     ("POST", "/api/noc/playbooks/{playbook_id}/enabled"): Entry(AUTOMATION, "Switch it on or off"),
+    ("POST", "/api/noc/playbooks/{playbook_id}/run"): Entry(
+        AUTOMATION, "Run a routine on a case and report"
+    ),
     # ADRs #465-#467: the NOC's agents, their runs, routing a case, and the MCP endpoint.
     ("GET", "/api/noc/agents"): Entry(ORG, "The NOC's agents and who reports to whom"),
     ("POST", "/api/noc/agents"): Entry(ORG, "Hire an agent (its key is shown once)"),

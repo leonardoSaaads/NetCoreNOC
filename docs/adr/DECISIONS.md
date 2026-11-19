@@ -7213,3 +7213,66 @@ From this release an entry is about six lines: decision, reason, release.*
   and by status.
 - **Reason**: each of these was reported as space without information or text in place of a reading;
   the facts are unchanged, only how much room they take and how they line up.
+
+## 491. Each status offers its own gestures; a pending proposal is answered, never promoted (unreleased)
+
+- **Context**: an operator accepted a Pending situation's proposal to join an Open one by pressing
+  *Confirm grouping* on its card; that promoted it, and a second Open situation stood beside the one
+  the alarms belonged to. *Confirm grouping* also showed on Open situations — after a merge, and
+  after *Clear all active* — though Open means confirmed, and *Close situation* duplicated what
+  *Clear all active* already does.
+- **Decision** (`store/situations.py`): `promote` and `feedback` have one edge, `new → open`; the
+  promote UPDATE holds `status = 'new'`. A pending situation is answered only by Accept or Reject on
+  its proposal (`card.js`), which joins the Open one.
+- **Decision** (`views/parts/decide.js`, `judge.js`): the bar is the status's — New: Confirm, merge,
+  move; Open: Start working this, merge, move; Pending and Resolved: nothing of the bar. No Confirm
+  on Open whatever the history, and no Close: clearing the alarms resolves the situation.
+- **Decision** (`views/parts/nocstart.js`, `store/noc_overview.noc_any_case`): the NOC Overview's
+  three set-up panels go once the first case reaches the NOC, as well as when every step is done.
+- **Reason**: one meaning per state; a gesture the state cannot use is not offered.
+
+## 492. Routines: a customer's and a tier's, run by an agent in one call (unreleased)
+
+- **Context**: Playbooks (ADR #463) matched every customer's cases alike and ran only as automation
+  before the NOC was called. A provider's fault is worked its own way, an agent typed the same
+  commands case after case, and a check on a core router is not a first-line agent's.
+- **Decision** (migration `0046_routines.sql`): `noc_playbook.organization_id` (NULL: every
+  customer) and `tier` (1–4, the least tier of agent that may see and run it);
+  `noc_playbook_run.started_by` and the outcome `advised`.
+- **Decision** (`engine/noc/runbook.py`, `stepact.py`): a routine applies to a case when it is for
+  the case's customer (or every customer) and its match fits; a customer's own routine is chosen
+  before one for every customer. `advise` runs the same read-only walk on demand — each check a
+  `noc.exec` row under whoever asked and a line on the case's feed — and **hands back the leaf as
+  advice, never applied**, bounded to 120 s, one run per case at a time.
+- **Decision** (`api/routes/playbooks.py`): `POST /api/noc/playbooks/{id}/run` (MCP
+  `noc_run_playbook`). Tier is enforced on every read, write and run: a hired agent sees and writes
+  at or below its tier, any other token with the agent grant is held to tier 1, a person who passes
+  the lead gate sees all; a routine above the caller answers 404 like one that does not exist. The
+  case named in the body is checked against the caller's scope (`situation_in_scope`). Listing with
+  `situation_id` returns only the enabled routines that apply. Viewers never reach routines
+  (`playbooks.read` and the lead gate).
+- **Decision** (`views/routines.js`, `parts/routineform.js`): NOC → Routines, grouped by customer,
+  filtered by customer, tier and a word; a routine opens as its flow of checks with its runs ("By"
+  names who asked). Writing one is a guided form — templates, who it is for (customer, tier), when
+  it runs, steps (reach, SSH, SNMP; a test; then/otherwise), how it ends — compiled to the same
+  validated tree; a tree the form cannot draw is edited as JSON. `#/playbooks` still opens it.
+- **Reason**: Ansible's shape — declarative steps, a fixed set of modules, nothing evaluated — per
+  customer, with least privilege by tier, and an agent's troubleshooting as one audited call.
+
+## 493. An import that shows the file it wants; Settings and lists at the page's width (unreleased)
+
+- **Decision** (`views/parts/importbox.js`): *Import a trap list* shows its columns as a table
+  (needed or not, an example row), a **Template** download, and a drop zone (CSV or TXT, never a
+  MIB — a MIB by name or by `DEFINITIONS ::= BEGIN` is refused with what to do instead). A chosen
+  file is previewed — its first rows, each column marked read or ignored — before *Check*; the
+  server's all-or-nothing check and import are unchanged.
+- **Decision** (`views/parts/email.js`, `brands.js`): Settings → Email's providers are cards with
+  the provider's mark (Simple Icons, CC0, where one exists; a monogram on the company's colour
+  otherwise) and where it sends from. *Server details* keeps its own open state (it was a `<details>`
+  whose `open` every keystroke reset) and its tick boxes are no longer stretched across the row.
+- **Decision** (`style.css`): Models and Autonomy, Learning and the Audit log use the page's width
+  like every other tab and list; the Learning diagram stops growing at a readable height. The Audit
+  log's paragraph on the hash chain is a *Hash-chained* badge with a tooltip.
+- **Decision** (`views/parts/decider.js`): the models table's role badge uses `league-role-*` (ADR
+  #485), so *deciding* is a pill, not a stretched box.
+- **Reason**: reported as unclear or misaligned; the facts are unchanged.

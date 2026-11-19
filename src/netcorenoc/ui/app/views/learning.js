@@ -117,7 +117,8 @@ export class Learning extends Component {
   render(_props, { live, corpus, picked }) {
     const all = (live.situations || []).filter((s) => s.status !== "resolved");
     const pending = all.filter((s) => s.status === "pending");
-    const judgeable = all.filter((s) => s.alarm_count >= 2 && s.status !== "pending");
+    // ADR #491: only a New grouping waits for a verdict — an Open one is confirmed already.
+    const judgeable = all.filter((s) => s.alarm_count >= 2 && s.status === "new");
     const stats = (corpus && corpus.stats) || {};
     const numbers = {
       alarms: live.stats ? live.stats.active_alarms : null,

@@ -69,6 +69,8 @@ NOC_ROUTE_PERMISSIONS: dict[tuple[str, str], str] = {
     ("GET", "/api/noc/playbooks/{playbook_id}"): "playbooks.read",
     ("POST", "/api/noc/playbooks/{playbook_id}"): "playbooks.write",
     ("POST", "/api/noc/playbooks/{playbook_id}/enabled"): "playbooks.write",
+    # ADR #492: running a routine on a case reads the device the way the automation does.
+    ("POST", "/api/noc/playbooks/{playbook_id}/run"): "playbooks.read",
     # -- the NOC's agents and their runs (ADRs #465-#467) --
     ("GET", "/api/noc/agents"): "agents.read",
     ("POST", "/api/noc/agents"): "agents.manage",
@@ -188,6 +190,9 @@ NOC_ROUTE_SCOPE: dict[tuple[str, str], Literal["scoped", "unscoped", "admin_only
     ("POST", "/api/noc/playbooks/{playbook_id}"): "unscoped",
     # Switching one off is a kill switch; on, the same gate as writing it.
     ("POST", "/api/noc/playbooks/{playbook_id}/enabled"): "unscoped",
+    # ADR #492: a run names its case in the body, checked with `situation_in_scope` as the case
+    # routes check theirs (out of scope and no such case answer one 404); the routine names none.
+    ("POST", "/api/noc/playbooks/{playbook_id}/run"): "unscoped",
     # The agents (ADRs #465-#467): an agent is a member of the NOC's staff, not an element; every
     # scope reads the same organization. The cases each one has are listed by number.
     ("GET", "/api/noc/agents"): "unscoped",

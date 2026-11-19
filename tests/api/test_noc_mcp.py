@@ -98,6 +98,7 @@ async def test_an_agent_works_a_case_through_the_sdk(store: Store) -> None:
             listed = await client.list_tools()
             names = {t.name for t in listed.tools}
             assert {"noc_me", "noc_take_case", "noc_exec", "noc_create_playbook"} <= names
+            assert "noc_run_playbook" in names, "ADR #492: a routine is one call"
             assert "noc_hire_agent" not in names, "hiring is an admin's"
             take = next(t for t in listed.tools if t.name == "noc_take_case")
             assert take.input_schema["required"] == ["sid"]

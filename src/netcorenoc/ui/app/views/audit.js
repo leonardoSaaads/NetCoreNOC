@@ -123,10 +123,9 @@ export class Audit extends Component {
     return html`<div class="auditv2">
       <section class="audit-chain">
         <span class="audit-chain-mark"><${Icon} name="shield" /></span>
-        <div><b>Tamper-evident.</b> Every row is hash-chained and keyed; verify offline with${" "}
-          <code class="mono">python -m netcorenoc audit verify</code>.${" "}
+        <div class="audit-chain-text"><span class="badge" title="Each row is chained to the one before and keyed: an edit or a deletion breaks the chain">Hash-chained</span>
           ${facets && facets.first ? html`<span class="muted">${count(facets.total)} rows since${" "}
-            ${absolute(facets.first)}.</span>` : null}</div>
+            ${absolute(facets.first)}</span>` : null}</div>
         <div class="audit-chain-acts">
           <button type="button" class="btn-ghost" disabled=${!rows || !rows.length}
             onClick=${() => save("audit-view.csv", csv(rows), "text/csv")}><${Icon} name="download" /> Download view</button>

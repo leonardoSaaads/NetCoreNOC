@@ -271,6 +271,8 @@ def test_the_agents_are_told_what_to_do_with_nothing_typed() -> None:
         "noc_send_customer_update",
         "pending_customer",
         "show xcvr status port",
+        # ADR #492: a routine first — one call instead of a session of commands.
+        "noc_run_playbook",
     ):
         assert step in mcp.GUIDE, step
     assert mcp.GUIDE_END[0] in mcp.GUIDE

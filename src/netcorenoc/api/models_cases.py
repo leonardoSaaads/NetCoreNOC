@@ -19,6 +19,7 @@ __all__ = [
     "PostIn",
     "ReleaseIn",
     "ResolveIn",
+    "RoutineRunIn",
     "StatusIn",
 ]
 
@@ -135,13 +136,24 @@ class SendUpdateIn(BaseModel):
 
 
 class PlaybookIn(BaseModel):
-    """A playbook to store or replace: the tree as a JSON object (`engine/noc/playbook.py` is the
-    authority on its shape), and the case it was learned from."""
+    """A routine to store or replace: the tree as a JSON object (`engine/noc/playbook.py` is the
+    authority on its shape), the case it was learned from, and (ADR #492) the customer it is for —
+    none for every customer — and the least tier of agent that may see and run it."""
 
     model_config = ConfigDict(extra="forbid")
 
     document: dict[str, Any]
     source_case: int | None = Field(default=None, ge=1)
+    customer_id: int | None = Field(default=None, ge=1)
+    tier: int = Field(default=1, ge=1, le=4)
+
+
+class RoutineRunIn(BaseModel):
+    """ADR #492: run a routine on a case, on demand — its checks run, its conclusion is reported."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    situation_id: int = Field(ge=1)
 
 
 class PlaybookEnabledIn(BaseModel):

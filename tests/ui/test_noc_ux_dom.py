@@ -157,9 +157,16 @@ async def test_the_vault_offers_each_ai_provider_and_a_card_per_device_kind(
 async def test_the_overview_says_what_the_agents_still_need(store: Store) -> None:
     """ADR #478, #490: with no AI provider, agent or device credential, the overview shows the
     three panels — a customer, the agents, the cases — each step in words and a link to where it
-    is done."""
+    is done. ADR #491: until the first case reaches the NOC; after it, no panel at all."""
     tables, _sid = await _tables(store)
-    seen = _render(tables["admin"], "#/noc")
+    routes = dict(tables["admin"])
+    overview = routes["/api/noc/overview"]["json"]
+    assert overview["setup"]["first_case"], "the fixture's NOC has its case"
+    after = _render(routes, "#/noc")
+    assert '"Get the NOC working, in three steps"' not in after["dump"], "gone with the first case"
+    before = {**overview, "setup": {**overview["setup"], "first_case": False}}
+    routes["/api/noc/overview"] = {**routes["/api/noc/overview"], "json": before}
+    seen = _render(routes, "#/noc")
     assert '"Get the NOC working, in three steps"' in seen["dump"]
     for step in (
         "Add your first customer",

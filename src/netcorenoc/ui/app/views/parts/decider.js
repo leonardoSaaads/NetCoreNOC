@@ -162,7 +162,7 @@ function League({ rows }) {
       cells: {
         rank: String(r.rank),
         name: r.name,
-        role: html`<span class=${cx("league-role", `league-${r.role}`)}>${ROLE[r.role] || r.role}</span>`,
+        role: html`<span class=${cx("league-role", `league-role-${r.role}`)}>${ROLE[r.role] || r.role}</span>`,
         score: r.score == null ? "—" : r.score.toFixed(3),
         latency: r.latency_us == null ? "—" : r.latency_us.toFixed(1),
       },

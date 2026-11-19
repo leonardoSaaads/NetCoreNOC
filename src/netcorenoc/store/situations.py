@@ -87,9 +87,12 @@ TRANSITIONS: dict[str, dict[str | None, str]] = {
     # -- attention: an operator worked the situation --
     # A pending proposal an operator works on its own terms has been judged a situation of its
     # own: attention takes it to `open` exactly as it takes a `new` one, and the proposal lapses.
-    "promote": {"new": "open", "pending": "open"},
+    # ADR #491: a pending proposal is answered by Accept (it joins its Open target) or Reject (a New
+    # situation of its own) — never opened as a second Open situation beside the one it proposes to
+    # join. That second Open situation is what a Confirm on a Pending card used to make.
+    "promote": {"new": "open"},
     # ADR #489: a `confirm` verdict only — the route promotes on nothing else.
-    "feedback": {"new": "open", "pending": "open"},
+    "feedback": {"new": "open"},
     # -- restructuring and clearing: they change a grouping, they do not accept it (ADR #489) --
     "move": {},
     "merge": {},
@@ -191,10 +194,11 @@ class SituationMixin(SituationEventMixin):
         """
         if act not in ATTENTION:
             raise ValueError(f"{act!r} is not an act of attention; it cannot promote a situation")
-        # A pending situation an operator works is theirs (ADR #428).
+        # ADR #491: only the states the table gives this act an edge from — `new` for every act
+        # since a pending proposal is answered, not promoted.
         await self.conn.execute(
             "UPDATE situation SET status='open', proposed_into=NULL, proposal_confidence=NULL, "
-            "updated_at=? WHERE id=? AND status IN ('new','pending')",
+            "updated_at=? WHERE id=? AND status='new'",
             (ts, situation_id),
         )
 

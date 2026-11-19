@@ -5,6 +5,9 @@
  * details", which is open for **Custom SMTP** and offers every field Zabbix's media type does —
  * host, port, security, authentication, sender, certificate verification and a timeout.
  *
+ * ADR #493: each provider is a card with its mark and where it sends from, and "Server details" keeps
+ * its own open state — a `<details open=…>` was shut again by every keystroke.
+ *
  * The password is write-only: the field is always empty, the server says only whether one is
  * saved (and whether it comes from `NETCORENOC_SMTP_PASSWORD`), and an empty field keeps it.
  */
@@ -15,6 +18,8 @@ import { Loading, Failed, SectionHeading } from "../../widgets.js";
 import { InfoTip } from "../../info.js";
 import { can, session } from "../../session.js";
 import { PasswordInput } from "../../password.js";
+import { BrandMark } from "../../brands.js";
+import { Icon } from "../../icons.js";
 
 const SECURITY = [["starttls", "STARTTLS (587)"], ["tls", "SSL/TLS (465)"], ["none", "None (25)"]];
 const FIELDS = ["enabled", "provider", "host", "port", "security", "username", "sender",
@@ -32,7 +37,7 @@ export class EmailPanel extends Component {
   constructor(props) {
     super(props);
     this.state = { data: null, error: null, form: null, busy: false, outcome: null,
-      testTo: session().email || "", test: null };
+      testTo: session().email || "", test: null, server: false };
   }
 
   componentDidMount() { this.load(); }
@@ -86,7 +91,7 @@ export class EmailPanel extends Component {
     }
   }
 
-  render(_props, { data, error, form, busy, outcome, testTo, test }) {
+  render(_props, { data, error, form, busy, outcome, testTo, test, server }) {
     if (error) return html`<${Failed} error=${error} retry=${() => this.load()} what="the email settings" />`;
     if (!data) return html`<${Loading} label="Reading the email settings" />`;
     const writable = can("config.write");
@@ -96,18 +101,21 @@ export class EmailPanel extends Component {
       ? "Set by NETCORENOC_SMTP_PASSWORD; this field is ignored."
       : data.password_set ? "A password is saved. Leave empty to keep it." : "";
     return html`<div class="settingsview email">
-      <div class="settings-intro"><p><b>Outgoing email.</b> Used to send password-reset links, so a
-        person who forgot a password can choose a new one from the sign-in screen. Pick your provider,
-        enter the address and an app password, and send a test.</p>
-        <p><span class=${cx("badge", data.recovery_available ? "badge-ok" : "badge-warn")}>
-          ${data.recovery_available ? "Recovery by email is on" : data.enabled ? "Email on, recovery off" : "Email is off"}</span></p></div>
+      <div class="email-status">
+        <span class=${cx("badge", data.recovery_available ? "badge-ok" : "badge-warn")}>
+          ${data.recovery_available ? "Recovery by email is on" : data.enabled ? "Email on, recovery off" : "Email is off"}</span>
+        <span class="muted">Password-reset links. Pick a provider, sign in, send a test.</span></div>
 
       <section class="panel-block">
         <${SectionHeading} icon="mail" title="Provider" />
         <div class="provider-grid" role="radiogroup" aria-label="Email provider">
           ${Object.entries(data.providers).map(([key, p]) => html`<button type="button" key=${key}
             role="radio" aria-checked=${form.provider === key} disabled=${!writable}
-            class=${cx("provider", form.provider === key && "on")} onClick=${() => this.pick(key)}>${p.label}</button>`)}
+            class=${cx("provider", form.provider === key && "on")} onClick=${() => this.pick(key)}>
+            ${key === "custom" ? html`<span class="brand-tile provider-own" aria-hidden="true"><${Icon} name="network" /></span>`
+              : html`<${BrandMark} brand=${key} size=${32} />`}
+            <span class="provider-text"><b>${p.label}</b><small>${p.host ? `${p.host}:${p.port}` : "Your own server"}</small></span>
+            ${form.provider === key ? html`<span class="provider-check" aria-hidden="true"><${Icon} name="check" /></span>` : null}</button>`)}
         </div>
         <p class="hint provider-note">${provider.note}</p>
       </section>
@@ -143,9 +151,14 @@ export class EmailPanel extends Component {
             email (set in People & access, or by each person under Your account).</span></label>
       </section>
 
-      <details class="panel-block email-server" open=${custom}>
-        <summary>Server details${custom ? "" : ` — ${provider.host}:${provider.port}`}</summary>
-        <div class="email-grid">
+      <section class="panel-block email-server">
+        <button type="button" class="email-server-head" aria-expanded=${custom || server ? "true" : "false"}
+          disabled=${custom} onClick=${() => this.setState({ server: !server })}>
+          <${Icon} name="settings" /> <b>Server details</b>
+          <span class="muted">${form.host ? `${form.host}:${form.port} · ${(SECURITY.find(([v]) => v === form.security) || ["", ""])[1].split(" ")[0]}` : "not set yet"}</span>
+          ${custom ? null : html`<span class=${cx("email-server-chev", server && "is-open")}><${Icon} name="chevron" /></span>`}
+        </button>
+        ${custom || server ? html`<div class="email-grid">
           <label class="pe-field"><span>SMTP server</span>
             <input value=${form.host} placeholder="smtp.example.com" disabled=${!writable}
               onInput=${(e) => this.set({ host: e.currentTarget.value.trim() })} /></label>
@@ -169,8 +182,8 @@ export class EmailPanel extends Component {
         ${form.security === "none" ? html`<p class="warnbox">Without TLS the password and every message
           cross the network in clear text. Use it only for a relay on a trusted network.</p>` : null}
         ${form.verify_tls ? null : html`<p class="warnbox">An unverified certificate lets anyone on the
-          path pose as the server and read the password.</p>`}
-      </details>
+          path pose as the server and read the password.</p>`}` : null}
+      </section>
 
       ${writable ? html`<div class="roles-foot save-bar">
         <button type="button" class="primary" disabled=${busy} onClick=${() => this.save()}>

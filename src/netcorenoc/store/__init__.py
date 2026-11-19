@@ -36,7 +36,7 @@ from netcorenoc.store.dataset import (
     MAX_CLIENT_MEMBERS,
     DatasetMixin,
 )
-from netcorenoc.store.db import OPEN_ERRORS, STORAGE_ERRORS, Database
+from netcorenoc.store.db import OPEN_ERRORS, STORAGE_ERRORS, Database, OutOfRangeError
 from netcorenoc.store.decider import DeciderMixin
 from netcorenoc.store.devices import DeviceMixin
 from netcorenoc.store.entities import EntityMixin
@@ -104,6 +104,7 @@ __all__ = [
     "IngestResult",
     "LinkRow",
     "MissingSchemaError",
+    "OutOfRangeError",
     "Store",
     "StoreBase",
     "StoreRefusedError",

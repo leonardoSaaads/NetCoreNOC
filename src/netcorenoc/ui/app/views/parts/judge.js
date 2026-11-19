@@ -27,18 +27,13 @@
  * operator marked nothing** — a plain split — and never an empty list. A `confirm` never carries
  * exclusions, because a confirm asserts every pair positive and an exclusion would contradict it.
  *
- * ## What an operator may do, and when (v0.16.4, DECISIONS #291)
+ * ## What an operator may do, and when (ADR #491)
  *
- * The surface turns on two facts and neither of them is the status alone:
- *
- *   * **`judged`** — is an `ASSERTING_KINDS` gesture already on record? `open` means *"an operator
- *     is working it"* (#254) and is reached by a bare promote or a rename, neither of which says
- *     anything about the grouping. A judged situation folds its grouping controls behind one
- *     disclosure that names what was recorded; **nothing is removed**, which is directive 2.
- *   * **`restructurable`** — the server answers **409** to move, merge and operator-split on a
- *     resolved situation (*"that situation has resolved; reload the card"*) and **200** to a
- *     verdict there. Measured, both, with a live situation as the control. The console offers
- *     exactly what will be accepted rather than inventing a second rule.
+ * The status decides it. **New**: Confirm grouping, merge, move members. **Pending**: Accept or
+ * Reject the proposal above the bar — a Confirm there used to open a second Open situation beside
+ * the one the alarms belonged to. **Open**: Start working this, merge, move — no Confirm, it is
+ * confirmed. **Resolved**: nothing but the record. The server answers 409 to a restructure on a
+ * resolved situation, so the console offers exactly what will be accepted.
  */
 
 import { html, Component } from "../../dom.js";
@@ -48,7 +43,7 @@ import { History, NameField, RESOLUTION_TEXT } from "./lifecycle.js";
 import { Restructure } from "./restructure.js";
 import { post } from "../../api.js";
 import { Loading, Failed } from "../../widgets.js";
-import { alarmName, deviceName, lastJudgement, percent, plural } from "../../format.js";
+import { alarmName, deviceName, percent, plural } from "../../format.js";
 import { Members } from "./members.js";
 import { Decide } from "./decide.js";
 import { can, canEdit } from "../../session.js";
@@ -56,14 +51,10 @@ import { can, canEdit } from "../../session.js";
 export class Detail extends Component {
   constructor(props) {
     super(props);
-    // `adjusting` is the disclosure a JUDGED situation puts its grouping controls behind. It is
-    // per-visit component state and nothing else — a card that remembered it would be a second,
-    // private notion of situation state, which is what DECISIONS #267 refused to build.
     this.state = {
       marked: new Set(),
       sending: false,
       outcome: null,
-      adjusting: false,
       confirmingClear: false,
     };
   }
@@ -178,17 +169,6 @@ export class Detail extends Component {
     }
   }
 
-  async close() {
-    const { sid } = this.props;
-    this.setState({ sending: true });
-    try {
-      await post(`/api/situations/${sid}/close`, {});
-      this.setState({ sending: false, outcome: { ok: true, kind: "close" } });
-    } catch (error) {
-      this.setState({ sending: false, outcome: { ok: false, error } });
-    }
-  }
-
   render({ sid, detail, withheld }) {
     if (!detail) return html`<${Loading} label=${`Reading situation #${sid}`} />`;
     if (detail.__error) {
@@ -203,29 +183,12 @@ export class Detail extends Component {
     const active = detail.alarms.filter((a) => a.status === "active");
     const activeCount = active.length;
     const markedActive = active.filter((a) => this.state.marked.has(a.id)).length;
-    // **The two facts the action surface turns on** (v0.16.4, DECISIONS #291).
-    //
-    // `judged` is whether an ASSERTING gesture is already on record, and it is not the same
-    // question as the status: `open` means "an operator is working it" (#254) and is reached by a
-    // bare promote or a rename, neither of which says anything about the grouping. Keying the
-    // surface on the status would hide Confirm from the ordinary path — promote, investigate,
-    // then judge — which is the path an operator actually walks.
-    //
-    // `restructurable` agrees with the server rather than inventing a second rule. Measured: the
-    // three restructuring routes answer **409** on a resolved situation (*"that situation has
-    // resolved; reload the card"*), because reopening is a decision nobody has made; the two
-    // verdict routes answer **200** there and leave the status alone, because a label about a
-    // frozen bag is still evidence. So the console offers exactly what will be accepted.
-    const judged = lastJudgement(detail.events);
-    const restructurable = detail.status !== "resolved";
-    // A judged situation folds its grouping controls behind one disclosure. Nothing is removed —
-    // directive 2 — and an unjudged one is unchanged, which is where an operator does this work.
-    //
-    // v0.29.0 (ADR #436): **only a verdict folds them.** A move, a merge or a split CHANGES the
-    // grouping; it does not say the result is right, and the next thing an operator does after
-    // restructuring is confirm what they built. Folding on any asserting gesture hid Confirm at
-    // exactly that moment.
-    const grouping = judged?.kind !== "verdict" || this.state.adjusting;
+    // **What the bar offers is the status's** (ADR #491). Open means somebody confirmed the
+    // grouping, so an Open card offers no Confirm — and no "judged" fold, which kept offering it
+    // after a merge. New is a grouping to confirm, merge or correct; Pending is a proposal answered
+    // by Accept or Reject above the bar; Open is worked and may still take a merge or a move; a
+    // resolved one is over.
+    const restructurable = detail.status === "new" || detail.status === "open";
 
     return html`<div class="detail-body">
       ${/* v0.16.4: the `Frozen while open — 60 updates withheld. Collapse to resume.` paragraph
@@ -257,8 +220,7 @@ export class Detail extends Component {
             pressed and in what words is `views/parts/decide.js`; this file owns when a press
             sends, what it sends and what the server answered. */ null}
       ${editable ? html`<${Decide}
-        status=${detail.status} judged=${judged} adjusting=${this.state.adjusting}
-        grouping=${grouping} restructurable=${restructurable} sending=${this.state.sending}
+        status=${detail.status} sending=${this.state.sending}
         restructure=${restructurable ? html`<${Restructure}
           sid=${sid} status=${detail.status} marked=${this.state.marked} post=${post}
           total=${detail.alarms.length + (detail.redacted_members?.count ?? 0)}
@@ -266,10 +228,8 @@ export class Detail extends Component {
         activeCount=${activeCount} markedActive=${markedActive}
         confirmingClear=${this.state.confirmingClear}
         kase=${detail.case ? { ...detail.case, sid } : null} canWork=${can("cases.work")}
-        onAdjust=${() => this.setState({ adjusting: true })}
         onPromote=${() => this.promote()}
         onVerdict=${(kind) => this.verdict(kind)}
-        onClose=${() => this.close()}
         onAskClear=${(on) => this.setState({ confirmingClear: on })}
         onClearMany=${() => this.clearMany(markedActive > 0)} />` : null}
 
