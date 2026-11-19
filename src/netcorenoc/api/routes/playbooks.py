@@ -330,7 +330,8 @@ def register(app: FastAPI, ctx: AppContext) -> None:
             if agent
             else Actor(str(principal.ref), principal.actor, "person", principal.role)
         )
-        if body.situation_id in _ON_DEMAND:
+        sid = body.situation_id
+        if sid in _ON_DEMAND:
             raise HTTPException(status_code=409, detail="a routine is already running on this case")
         if len(_ON_DEMAND) >= MAX_ON_DEMAND:
             raise HTTPException(
@@ -338,8 +339,38 @@ def register(app: FastAPI, ctx: AppContext) -> None:
                 detail=f"{MAX_ON_DEMAND} routines are running already; try again in a minute",
                 headers={"Retry-After": "30"},
             )
-        _ON_DEMAND.add(body.situation_id)
+        _ON_DEMAND.add(sid)
         try:
-            return await runbook.advise(store, row, body.situation_id, invoker)
+            # The run is opened and closed here, each in the transaction helper; the walk between
+            # them is the engine's, outside any transaction, since it waits on devices (ADR #462).
+            async with write_txn():
+                # Who asked, by name for the screen; the audit row below carries the exact ref.
+                run_id = await store.noc_run_start(
+                    int(row["id"]), int(row["version"]), sid, time.time(), invoker.name[:120]
+                )
+            report = await runbook.advise(store, row, sid, run_id, facts, invoker)
+            trace = report.pop("trace")
+            async with write_txn():
+                await store.noc_run_end(
+                    run_id, time.time(), "advised", json.dumps(trace, separators=(",", ":"))[:60000]
+                )
+                await audit_row(
+                    request,
+                    principal,
+                    "noc.playbook.run",
+                    "ok",
+                    object_type="noc_case",
+                    object_id=str(sid),
+                    # The same exact identity as each check's `noc.exec` row (the engine's `ref`).
+                    actor=invoker.ref,
+                    details={
+                        "playbook": row["id"],
+                        "version": row["version"],
+                        "outcome": "advised",
+                        "advice": str(report["advice"].get("end")),
+                        "steps": len(trace),
+                    },
+                )
+            return report
         finally:
-            _ON_DEMAND.discard(body.situation_id)
+            _ON_DEMAND.discard(sid)

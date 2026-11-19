@@ -12,6 +12,7 @@
 import { html, Component, cx } from "../../dom.js";
 import { post } from "../../api.js";
 import { Icon } from "../../icons.js";
+import { severityTone } from "../../widgets.js";
 
 const SEVERITIES = ["critical", "major", "minor", "warning"];
 const ACTIONS = [["ssh", "Run a command (SSH)"], ["snmp_get", "Read SNMP values"], ["reach", "Reach the element"]];
@@ -181,7 +182,7 @@ export class RoutineForm extends Component {
             onInput=${(e) => this.set({ oids: e.currentTarget.value })} /></label>
         </div>
         <div class="rt-sevs">${SEVERITIES.map((s) => html`<label key=${s} class=${cx("rt-chip", st.severities.includes(s) && "on")}>
-          <span class=${cx("rt-dot", `sev-${s}`)} aria-hidden="true"></span><input type="checkbox" checked=${st.severities.includes(s)} onChange=${(e) => this.set({ severities: e.currentTarget.checked
+          <span class=${cx("rt-dot", severityTone(s))} aria-hidden="true"></span><input type="checkbox" checked=${st.severities.includes(s)} onChange=${(e) => this.set({ severities: e.currentTarget.checked
             ? [...st.severities, s] : st.severities.filter((x) => x !== s) })} /> ${s}</label>`)}</div>
       </section>
 

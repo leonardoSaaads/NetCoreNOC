@@ -204,60 +204,29 @@ async def advise(
     store: Store,
     chosen: Mapping[str, Any],
     sid: int,
+    run_id: int,
+    facts: Mapping[str, Any],
     invoker: Actor,
     *,
     now: Callable[[], float] = time.time,
 ) -> dict[str, Any]:
-    """ADR #492: run a routine on a case because an agent (or a lead) asked, and report.
+    """ADR #492: walk a routine on a case because an agent (or a lead) asked, and report.
 
     The same walk as the automation — the same read-only checks, each audited as `noc.exec`
     under the one who asked, each answer a feed line on the case — but **nothing is applied**:
     the leaf the routine reaches (resolve, wait, the NOC queue) is handed back as advice, and
-    whoever asked decides. Bounded by :data:`ON_DEMAND_S`, because the request is waiting.
+    whoever asked decides. Bounded by :data:`ON_DEMAND_S`, because the request is waiting. The
+    caller opens and closes the run (`routes/playbooks.py`, in its transaction helper); this is the
+    walk alone, and never raises for what a device did — a failed walk is reported as an `error`.
     """
-    async with store.lock:
-        run_id = await store.noc_run_start(
-            # Who asked, by name for the screen; the audit row below carries the exact ref.
-            int(chosen["id"]),
-            int(chosen["version"]),
-            sid,
-            now(),
-            invoker.name[:120],
-        )
-        facts = await store.noc_situation_facts(sid)
-        await store.commit()
     doc = dict(json.loads(chosen["document"]))
     doc["timeout_s"] = min(int(doc.get("timeout_s", 300)), ON_DEMAND_S)
-    run = _Run(sid, run_id, chosen, doc, facts, [], invoker=invoker, watch=False, seen=[])
+    run = _Run(sid, run_id, chosen, doc, dict(facts), [], invoker=invoker, watch=False, seen=[])
     try:
         leaf = dict(await _walk(run, store, now))
     except Exception as exc:  # the report says so; the case is untouched either way
         log.exception("routine %s asked for on case %s failed", chosen["id"], sid)
         leaf = {"end": "error", "why": type(exc).__name__}
-    async with store.lock:
-        at = now()
-        await store.noc_run_end(
-            run_id, at, "advised", json.dumps(run.trace, separators=(",", ":"))[:60000]
-        )
-        await audit.write_event(
-            store,
-            ts=at,
-            actor=invoker.ref,
-            role=invoker.role,
-            source_ip=None,
-            action="noc.playbook.run",
-            outcome="ok",
-            object_type="noc_case",
-            object_id=str(sid),
-            details={
-                "playbook": chosen["id"],
-                "version": chosen["version"],
-                "outcome": "advised",
-                "advice": str(leaf.get("end")),
-                "steps": len(run.trace),
-            },
-        )
-        await store.commit()
     seen = {s["step"]: s["output"] for s in run.seen or []}
     return {
         "run_id": run_id,
@@ -267,6 +236,7 @@ async def advise(
         "steps": [
             {**s, "output": {"untrusted": True, "text": seen.get(s["step"], "")}} for s in run.trace
         ],
+        "trace": run.trace,
     }
 
 

@@ -595,7 +595,7 @@ UI_HASHES: dict[str, str] = {
     ),
     "app/views/parts/roles.js": "e48e102554a1a3ce688c555c2bcd3f5f7826d466c892d99bf5c6889b058a9986",
     "app/views/parts/routineform.js": (
-        "1139d7141b92206aeac809c46d15b723990402c7de0a5b4979c9fdf8d2e4bf3e"
+        "0d0d4cd176115b2f4a6bfcea53ea9edd1406dd528b8656a8fdcfe32a3ba67de5"
     ),
     "app/views/parts/scopeexamples.js": (
         "82cd57e5a52dca80c9ab79a5f2e0b0d26c508de2ab9d48a3147eb8b188cb83cd"
@@ -797,7 +797,7 @@ UI_SIZES: dict[str, int] = {
     "app/views/parts/restructure.js": 13_341,
     "app/views/parts/retention.js": 5_092,
     "app/views/parts/roles.js": 4_973,
-    "app/views/parts/routineform.js": 16_472,
+    "app/views/parts/routineform.js": 16_526,
     "app/views/parts/scopeexamples.js": 3_471,
     "app/views/parts/searchpanel.js": 5_893,
     "app/views/parts/secretdetail.js": 14_281,
