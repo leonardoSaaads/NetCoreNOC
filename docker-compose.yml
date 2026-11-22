@@ -267,6 +267,10 @@ services:
     ports:
       - "${NETCORENOC_TRAP_PORT:-162}:${NETCORENOC_TRAP_PORT:-162}/udp"
       - "8080:8080"
+      # ADR #494: a broker on its own port listens on that UDP port inside the container, so the
+      # host must publish it too. Nothing is published by default (nothing new is open by default);
+      # uncomment and set the block your brokers use (Brokers → Add a broker → its port):
+      # - "1163-1170:1163-1170/udp"
 
     # --- hardening (mirrors the SECURITY.md / Dockerfile `docker run` recipe) ---------------
     read_only: true                       # root filesystem is immutable...

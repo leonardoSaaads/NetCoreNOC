@@ -34,14 +34,16 @@ SSE_UPDATE_S = 2.0
 def register(app: FastAPI, ctx: AppContext) -> None:
     """Register the events routes on `app`."""
     store, engine, security, governance = ctx.store, ctx.engine, ctx.security, ctx.governance
-    scope_for, all_warnings, extra_stats = ctx.scope_for, ctx.all_warnings, ctx.extra_stats
+    all_warnings, extra_stats, broker_scope = ctx.all_warnings, ctx.extra_stats, ctx.broker_scope
     route = DeclaredRoutes(app)
 
     # -- SSE: primary live-update path -------------------------------------------------
 
     @route.get("/api/events")
     async def events(
-        request: Request, principal: auth.Principal = Depends(security)
+        request: Request,
+        broker_id: int | None = None,
+        principal: auth.Principal = Depends(security),
     ) -> StreamingResponse:
         """The live stream, re-authorized and re-scoped on **every event**.
 
@@ -50,6 +52,9 @@ def register(app: FastAPI, ctx: AppContext) -> None:
         would otherwise keep pushing unfiltered snapshots for as long as it stayed open. Each
         snapshot therefore re-reads the live policy, re-resolves both the capability set and the
         scope, and **ends the stream** if `events.stream` has since been revoked (F30).
+
+        `broker_id` keeps the stream on one broker's network — the Overview's broker selector
+        (ADR #496); the scope is narrowed, never widened, on every event like the rest.
         """
 
         async def snapshot() -> str | None:
@@ -63,7 +68,7 @@ def register(app: FastAPI, ctx: AppContext) -> None:
             )
             if "events.stream" not in capabilities:
                 return None  # revoked mid-stream: stop sending, rather than serve a stale grant
-            scope = await scope_for(principal)
+            scope = await broker_scope(principal, broker_id)
             async with store.reading():
                 # **One assembly, shared with `GET /api/stats`** (F115). These two surfaces
                 # publish the same object and built it twice until v0.16.7, when a key added to
@@ -74,7 +79,7 @@ def register(app: FastAPI, ctx: AppContext) -> None:
                 stats_out: dict[str, Any] = await live_stats(
                     store, engine, scope, all_warnings, extra_stats
                 )
-                graph_out = await store.graph_snapshot(min_edge_n=MIN_EDGE_N)
+                graph_out = await store.graph_snapshot(min_edge_n=MIN_EDGE_N, broker_id=broker_id)
                 # F38 applies to the stream too: truncating globally would make a scoped
                 # subscriber's live list a function of traffic they cannot see.
                 # **v0.16.0: `None`, not `"open"`.** The correlator now creates a situation as

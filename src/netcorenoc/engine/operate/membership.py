@@ -60,10 +60,11 @@ async def reload(engine: Engine) -> None:
         engine.members.setdefault(sid, []).append(member)
         engine.sit_of[member.alarm_id] = sid
     newest = await engine.store.newest_alarm_id()
-    correlator = engine.correlator
-    for alarm_id in [a for a in {*correlator.index, *correlator.live} if a > newest]:
-        correlator.remove(alarm_id)
-    correlator.grouper.prune(set(engine.members))
+    for lane in engine.lanes:  # ADR #495: every broker's correlator forgets what rolled back
+        correlator = lane.correlator
+        for alarm_id in [a for a in {*correlator.index, *correlator.live} if a > newest]:
+            correlator.remove(alarm_id)
+        correlator.grouper.prune(set(engine.members))
     engine.upkeep.discard()
     engine.upkeep.retain(())  # every root sample is rebuilt from the members just read
     run_id = engine.capture.run_id
@@ -133,4 +134,4 @@ def cleared(engine: Engine, alarm_id: int) -> None:
     situation, and a cleared member is an ordinary thing for a situation to hold — `all_cleared` is
     the query that asks whether every one of them is.
     """
-    engine.correlator.remove(alarm_id)
+    engine.lanes.remove(alarm_id)

@@ -74,7 +74,7 @@ class GapMixin(EngineBase):
         total_dropped = self.dropped_provider()
         self.gap.observe("queue_full", total_dropped - self._dropped_baseline, now)
         self._dropped_baseline = total_dropped
-        self.gap.observe("window_overflow", self.correlator.take_overflow(), now)
+        self.gap.observe("window_overflow", self.lanes.take_overflow(), now)
         for reason, closed in await self.gap.flush(self.store, now):
             await audit.write_event(
                 self.store,

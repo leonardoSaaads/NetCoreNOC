@@ -80,6 +80,35 @@ Two rules that have held since v0.1.0 and are not going to change:
 
 *(This table has no rows for v0.17.0 or v0.18.0: neither release wrote one, and inventing upgrade notes for a release somebody else built would be describing an upgrade nobody tested.)*
 
+## Unreleased — brokers: one appliance, many networks (#494-#498)
+
+Migration **0047** applies at start and is additive. **Everything you have becomes the Default
+broker's**: every element, situation, window, learned affinity and setting, and every trap no other
+broker claims — so an appliance that adds no broker groups exactly as before (`make eval` is
+byte-identical) and its old addresses (`#/graph`, `#/timeline`, `#/entities`, `#/learning`,
+`#/promotion`) open the same screens.
+
+**What you will notice**: the sidebar has a **Brokers** section; Network graph, Timeline, Entities,
+Learning and the Judge live under each broker, and *Evidence* is gone. With more than one broker,
+Settings → Models and Site training move into each broker's Learning. The Overview has a broker
+selector (All brokers by default).
+
+**What to do, to separate networks**: Brokers → *Add a broker* (admin). Choose how its traps
+arrive — its **own UDP port** (point its devices at it; publish the port if you run Docker:
+`ports: ["1163:1163/udp"]`), a **remote proxy** (`python -m netcorenoc proxy --server https://…
+--token-file …` on a host in its network; the token is shown once), or its **ranges** on the
+standard port. Elements already in the Default broker stay there; move one with
+`POST /api/elements/{ne_id}/broker` or let its traps arrive through its broker (a new element is
+created there: an element is (broker, address)).
+
+**API**: `broker_id` narrows `/api/stats`, `/graph`, `/situations`, `/timeline`, `/entities`,
+`/inventory`, `/events`, `/activity/*`, `/maintenance-windows`, `/decider`, `/judge` and `/search`;
+`POST /api/decider` and `POST /api/search` take `broker_id` (default 1); situation rows, element
+details and windows carry `broker_id`. New: `/api/brokers` (list, read, create, change, delete,
+token), `POST /api/elements/{ne_id}/broker`, and `POST /api/brokers/ingest` (the proxy's door,
+authenticated by its token only). Visibility policies accept **`broker:<id>`**. Capabilities
+`brokers.read` (viewer) and `brokers.write` (admin) are new. A manual merge across brokers is a 409.
+
 ## Unreleased — routines, by customer and tier (#491-#493)
 
 Migration **0046** applies at start and is additive. **What you will notice**: NOC → Playbooks is

@@ -209,12 +209,13 @@ class AutonomyMixin(StoreBase):
     # -- the search ------------------------------------------------------------------------
 
     async def open_search_run(
-        self, *, by: str, seed: int, budget: dict[str, Any], at: float
+        self, *, by: str, seed: int, budget: dict[str, Any], at: float, broker_id: int = 1
     ) -> int:
+        """A search fits a model on **one broker's** labels (ADR #495)."""
         cur = await self.conn.execute(
-            "INSERT INTO search_run (started_at, started_by, seed, budget, status) "
-            "VALUES (?, ?, ?, ?, 'running') RETURNING id",
-            (at, by, seed, json.dumps(budget, sort_keys=True, separators=(",", ":"))),
+            "INSERT INTO search_run (started_at, started_by, seed, budget, status, broker_id) "
+            "VALUES (?, ?, ?, ?, 'running', ?) RETURNING id",
+            (at, by, seed, json.dumps(budget, sort_keys=True, separators=(",", ":")), broker_id),
         )
         row = await cur.fetchone()
         assert row is not None
@@ -265,8 +266,15 @@ class AutonomyMixin(StoreBase):
             ),
         )
 
-    async def search_runs(self, limit: int = 10) -> list[dict[str, Any]]:
-        cur = await self.conn.execute("SELECT * FROM search_run ORDER BY id DESC LIMIT ?", (limit,))
+    async def search_runs(
+        self, limit: int = 10, broker_id: int | None = None
+    ) -> list[dict[str, Any]]:
+        """The newest searches; one broker's when it is named (ADR #495)."""
+        only, args = ("WHERE broker_id=? ", (broker_id,)) if broker_id is not None else ("", ())
+        cur = await self.conn.execute(
+            f"SELECT * FROM search_run {only}ORDER BY id DESC LIMIT ?",  # nosec B608 - literal
+            (*args, limit),
+        )
         rows = [dict(r) for r in await cur.fetchall()]
         for row in rows:
             row["budget"] = json.loads(row["budget"])

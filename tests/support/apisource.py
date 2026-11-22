@@ -43,6 +43,7 @@ MODULE_ORDER: tuple[str, ...] = (
     "models_cases.py",  # NOC cases and their feed (ADRs #459-#461)
     "models_agents.py",  # the NOC's agents and case routing (ADRs #465-#467)
     "models_customers.py",  # the customers' books (ADR #473)
+    "models_brokers.py",  # the brokers and a remote proxy's batch (ADR #494)
     "public_paths.py",  # v0.26.0: the unauthenticated-path allowlist, off `declare.py`
     "reference.py",  # v0.30.0: one sentence per route, for the API reference
     "shipped_view.py",  # v0.26.0: the shipped model as the console sees it, off `routes/decider.py`
@@ -58,6 +59,7 @@ MODULE_ORDER: tuple[str, ...] = (
     # `routes/events.py` both publish and both used to assemble for themselves. It sits
     # before `app.py` because it is a helper the route modules import, not a registration.
     "livestats.py",
+    "broker_view.py",  # ADR #496: a read narrowed to one broker's network, for the read routes
     "noc_gate.py",  # the vault's custody and step-up gates, which both NOC route modules import
     "case_view.py",  # how a case and its feed read, shared by both case route modules
     "case_close.py",  # the broker's half of resolving a case
@@ -131,6 +133,9 @@ MODULE_ORDER: tuple[str, ...] = (
     "routes/customer_docs.py",
     "routes/circuits.py",
     "routes/customer_mail.py",
+    # ADR #494: the proxy's door before `POST /api/brokers/{broker_id}`, which would read it.
+    "routes/broker_ingest.py",
+    "routes/brokers.py",
     "routes/mcp.py",
 )
 

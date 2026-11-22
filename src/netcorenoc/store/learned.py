@@ -9,41 +9,53 @@ from netcorenoc.store.types import EdgeRow
 
 
 class LearnedMixin(StoreBase):
-    async def load_edges(self, kind: str) -> list[EdgeRow]:
+    async def load_edges(self, kind: str, broker_id: int = 1) -> list[EdgeRow]:
+        """One broker's learned pairs of one kind (ADR #494). The trap catalogue's raise/clear
+        pairs are kept under the Default broker and shared by every broker."""
         cur = await self.conn.execute(
-            "SELECT kind, a_id, b_id, weight, n, g FROM edge WHERE kind=? ORDER BY a_id, b_id",
-            (kind,),
+            "SELECT kind, a_id, b_id, weight, n, g FROM edge WHERE kind=? AND broker_id=? "
+            "ORDER BY a_id, b_id",
+            (kind, broker_id),
         )
         return [
             EdgeRow(r["kind"], r["a_id"], r["b_id"], r["weight"], r["n"], r["g"])
             for r in await cur.fetchall()
         ]
 
-    async def upsert_edges(self, rows: list[EdgeRow], ts: float) -> None:
+    async def upsert_edges(self, rows: list[EdgeRow], ts: float, broker_id: int = 1) -> None:
         await self.conn.executemany(
-            "INSERT INTO edge (kind, a_id, b_id, weight, n, g, version, updated_at) "
-            "VALUES (?, ?, ?, ?, ?, ?, 1, ?) ON CONFLICT (kind, a_id, b_id) DO UPDATE SET "
-            "weight=excluded.weight, n=excluded.n, g=excluded.g, version=edge.version+1, "
-            "updated_at=excluded.updated_at",
-            [(r.kind, r.a_id, r.b_id, r.weight, r.n, r.g, ts) for r in rows],
+            "INSERT INTO edge (kind, broker_id, a_id, b_id, weight, n, g, version, updated_at) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?) ON CONFLICT (kind, broker_id, a_id, b_id) "
+            "DO UPDATE SET weight=excluded.weight, n=excluded.n, g=excluded.g, "
+            "version=edge.version+1, updated_at=excluded.updated_at",
+            [(r.kind, broker_id, r.a_id, r.b_id, r.weight, r.n, r.g, ts) for r in rows],
         )
 
-    async def upsert_episodes(self, rows: list[tuple[str, tuple[int, ...], int, float]]) -> None:
-        """Persist dirty episode counts (`engine/correlate/episodes.py`)."""
+    async def upsert_episodes(
+        self, rows: list[tuple[str, tuple[int, ...], int, float]], broker_id: int = 1
+    ) -> None:
+        """Persist one broker's dirty episode counts (`engine/correlate/episodes.py`, ADR #494)."""
         if not rows:
             return
         await self.conn.executemany(
-            "INSERT INTO episode_pair (kind, k, count, last_ts) VALUES (?, ?, ?, ?) "
-            "ON CONFLICT (kind, k) DO UPDATE SET count=excluded.count, last_ts=excluded.last_ts",
-            [(kind, ",".join(map(str, key)), count, last) for kind, key, count, last in rows],
+            "INSERT INTO episode_pair (broker_id, kind, k, count, last_ts) VALUES (?, ?, ?, ?, ?) "
+            "ON CONFLICT (broker_id, kind, k) DO UPDATE SET count=excluded.count, "
+            "last_ts=excluded.last_ts",
+            [
+                (broker_id, kind, ",".join(map(str, key)), count, last)
+                for kind, key, count, last in rows
+            ],
         )
 
     async def prune_episodes(self, older_than: float) -> None:
         await self.conn.execute("DELETE FROM episode_pair WHERE last_ts < ?", (older_than,))
 
-    async def load_episodes(self) -> list[tuple[str, tuple[int, ...], int, float]]:
+    async def load_episodes(
+        self, broker_id: int = 1
+    ) -> list[tuple[str, tuple[int, ...], int, float]]:
         cur = await self.conn.execute(
-            "SELECT kind, k, count, last_ts FROM episode_pair ORDER BY kind, k"
+            "SELECT kind, k, count, last_ts FROM episode_pair WHERE broker_id=? ORDER BY kind, k",
+            (broker_id,),
         )
         return [
             (str(r[0]), tuple(int(x) for x in str(r[1]).split(",")), int(r[2]), float(r[3]))

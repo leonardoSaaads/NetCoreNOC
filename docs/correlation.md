@@ -45,6 +45,14 @@ comes back is the same for every decider: [`operate.md`](operate.md#4-how-alarms
 The rest of this page describes the additive formula, which is what a model's explanation is
 compared against and what runs when you choose it.
 
+## Each broker learns alone (decision #495)
+
+Everything below happens **per broker** — per monitored network: its correlation window and
+grouping, its learned class and element affinities, its episodes and lead precedence, its judge's
+ranking of the league on its own labels, and its decider (an admin may pin a different model in
+each). The raise/clear pairs and the trap catalogue are learned once and shared. A broker added
+later starts from the packaged league in its offline order, exactly as a new appliance does.
+
 ## Every trap becomes three numbers
 
 A trap is reduced to a **device** (the source IP), a **class** (the trap OID, as an opaque token —

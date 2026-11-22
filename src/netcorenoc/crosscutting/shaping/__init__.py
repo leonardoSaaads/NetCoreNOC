@@ -28,9 +28,10 @@ The engine, the store, and the audit log always keep full fidelity — shaping i
 New endpoints that return any protected field MUST pass their body through :func:`shape` (or a
 helper here); a field with no rule is emitted unchanged, so add a rule when you add such a field.
 
-⚠ **Scoping is a presentation control and is NOT tenant isolation.** Correlation still learns
-across every NE, and a situation may still form across a boundary a principal cannot see — it is
-then redacted, not prevented. See `docs/architecture/DESIGN.md` (v0.7.0) and `SCOPE-0.7.md`.
+⚠ **Scoping is a presentation control and is NOT tenant isolation.** Correlation learns per
+broker (ADR #495); within one it learns across every NE, and a situation may still form across a
+boundary a principal cannot see — it is then redacted, not prevented. See
+`docs/architecture/DESIGN.md` (v0.7.0) and `SCOPE-0.7.md`.
 
 Every name below resolved from `netcorenoc.shaping` before v0.7.4 and still does: the enclosing
 module changed, the code did not.
@@ -79,6 +80,7 @@ from netcorenoc.crosscutting.shaping.scope import (
     parse_scope_policy,
     scope_policy_errors,
     visible_nes,
+    within,
 )
 from netcorenoc.crosscutting.shaping.scope import _can_never_match as _can_never_match
 from netcorenoc.crosscutting.shaping.scope import _layers as _layers
@@ -126,4 +128,5 @@ __all__ = [
     "timezone_selfcheck",
     "visible_nes",
     "wall_clock",
+    "within",
 ]

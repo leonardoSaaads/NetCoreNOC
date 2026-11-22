@@ -46,9 +46,13 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import logging
+import os
 import sys
 import time
+from pathlib import Path
 
+from netcorenoc import __version__
 from netcorenoc.crosscutting import audit
 from netcorenoc.crosscutting.settings import Settings
 from netcorenoc.engine.correlate import scoring
@@ -291,7 +295,19 @@ def main(argv: list[str] | None = None) -> int:
         "reset-two-factor", help="forget an account's authenticator; it enrols again (audited)"
     )
     forget.add_argument("username")
+    proxy = sub.add_parser(
+        "proxy", help="a broker's remote proxy: receive here, forward to the server"
+    )
+    proxy.add_argument("--server", required=True, help="the appliance, https://noc.example.com")
+    proxy.add_argument("--token-file", help="the broker's token (else NETCORENOC_PROXY_TOKEN)")
+    proxy.add_argument("--listen", default="0.0.0.0:162", help="UDP address:port for traps")
+    proxy.add_argument("--spool", default="proxy-spool", help="directory for the local spool")
+    proxy.add_argument("--max-spool-mb", type=int, default=1024, help="the spool's maximum size")
+    proxy.add_argument("--ca-file", help="a CA bundle that signs the server's certificate")
+    proxy.add_argument("--allowlist", default="", help="sources accepted, as CIDRs (default all)")
     args = parser.parse_args(argv)
+    if args.command == "proxy":
+        return _proxy(args)  # needs no database: it runs in the customer's network
 
     settings = _settings(importing=args.command == "db" and args.db_command == "import-sqlite")
     if args.command == "audit":
@@ -330,6 +346,39 @@ def main(argv: list[str] | None = None) -> int:
         return asyncio.run(_reset_two_factor(settings, args.username))
     parser.error("unknown command")
     return 2
+
+
+def _proxy(args: argparse.Namespace) -> int:
+    """ADR #494: the remote proxy. The token is read from a file or the environment, never from
+    the command line, where every user of the host could read it in the process list."""
+    from netcorenoc.ingest import forwarder
+
+    token = (
+        Path(args.token_file).read_text(encoding="utf-8").strip()
+        if args.token_file
+        else os.environ.get("NETCORENOC_PROXY_TOKEN", "").strip()
+    )
+    if not token:
+        print("a proxy needs its broker's token: --token-file, or NETCORENOC_PROXY_TOKEN")
+        return 2
+    host, _, port = args.listen.rpartition(":")
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
+    try:
+        config = forwarder.ProxyConfig(
+            server=forwarder.check_server(args.server),
+            token=token,
+            spool_dir=Path(args.spool),
+            host=host.strip("[]") or "0.0.0.0",  # nosec B104 - a trap receiver's interface
+            port=int(port),
+            max_bytes=max(16, args.max_spool_mb) * 1024 * 1024,
+            ca_file=args.ca_file,
+            allowlist=args.allowlist,
+            version=__version__,
+        )
+    except ValueError as exc:
+        print(f"proxy: {exc}")
+        return 2
+    return forwarder.run(config)
 
 
 if __name__ == "__main__":

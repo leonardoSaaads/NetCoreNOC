@@ -34,6 +34,7 @@ from typing import TYPE_CHECKING, Any
 
 from fastapi import Request
 
+from netcorenoc.api.broker_view import BrokerScope
 from netcorenoc.api.governance_cache import GovernancePolicies
 from netcorenoc.api.perimeter import Perimeter, RateLimiter
 from netcorenoc.crosscutting import auth, shaping
@@ -61,6 +62,8 @@ class AppContext:
     security: Callable[[Request], Awaitable[auth.Principal]]
     guarded: list[Any]
     scope_for: Callable[[auth.Principal], Awaitable[shaping.Scope]]
+    # ADR #496: the same scope, narrowed to one broker's elements when a screen names one.
+    broker_scope: BrokerScope
     all_warnings: Callable[[], list[str]]
     write_txn: Callable[[], AbstractAsyncContextManager[None]]
     governance: GovernancePolicies

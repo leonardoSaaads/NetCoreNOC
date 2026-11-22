@@ -8,8 +8,7 @@ That distinction is the point of the v0.7.3 separation. `MODULE-ARCHITECTURE.md`
 genuine layer violation — `main.py` importing `netcorenoc.api` — because `main.py` was the `Engine`
 (domain) *and* the thing that builds the HTTP server, in one module. The entry point may
 legitimately reach up into `http`; **the `Engine` may not**. Splitting them resolves the violation
-structurally rather than by exemption, and
-`tests/repo/test_layers.py::test_the_engine_does_not_import_the_http_layer` holds the line.
+structurally; `test_layers.py::test_the_engine_does_not_import_the_http_layer` holds the line.
 
 Shutdown is graceful and bounded (§A.5): stop accepting datagrams, cancel the tasks, drain what is
 still queued within a deadline, run one final maintenance pass, close the store. The audit chain
@@ -39,7 +38,7 @@ from netcorenoc.crosscutting.settings import (
 )
 from netcorenoc.crosscutting.supervisor import Supervisor as Supervisor
 from netcorenoc.engine.noc import case_loop, probe, runbook
-from netcorenoc.engine.operate import intake, pipeline
+from netcorenoc.engine.operate import intake, listening, pipeline
 from netcorenoc.engine.operate.deadline import KPI_KEY, Kpi
 from netcorenoc.engine.operate.engine import Engine
 from netcorenoc.engine.operate.intake import SpoolFeed
@@ -397,6 +396,7 @@ async def _serve(settings: Settings, store: Store) -> None:
         "noc-checks": lambda: probe.check_loop(store, settings.noc_check_s),
         "noc-cases": lambda: case_loop.case_loop(store, runbook.automation),
         **agent_runtime.loops(store, engine, app),
+        "broker-ports": lambda: listening.loop(engine, transport),  # ADR #494, beside them
     }
     tasks = [
         asyncio.create_task(supervisor.run("engine", run_engine)),

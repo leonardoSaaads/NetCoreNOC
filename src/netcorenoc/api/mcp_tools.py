@@ -123,6 +123,7 @@ TOOLS: tuple[Tool, ...] = (
     _t("list_situations", "GET", "/api/situations", "List situations", **_READ),
     _t("get_situation", "GET", "/api/situations/{sid}", "Get a situation", **_READ),
     _t("get_element", "GET", "/api/elements/{ne_id}", "Get a network element", **_READ),
+    _t("list_brokers", "GET", "/api/brokers", "List brokers (monitored networks)", **_READ),
     _t("noc_list_agents", "GET", "/api/noc/agents", "The NOC's organization", **_READ),
     _t("noc_get_agent", "GET", "/api/noc/agents/{agent_id}", "Get an agent", **_READ),
     _t("noc_invoke_agent", "POST", "/api/noc/agents/{agent_id}/invoke", "Wake an agent"),

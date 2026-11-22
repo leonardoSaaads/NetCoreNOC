@@ -270,6 +270,15 @@ _UI_MODULES = (
     "app/views/parts/custdocs.js",
     "app/views/parts/circuits.js",
     "app/views/parts/circuitedit.js",
+    # ADR #494: the brokers — their list, one broker's page and screens, adding one, choosing one;
+    # and the work area's heading, which a broker's screens title.
+    "app/brokers.js",
+    "app/heading.js",
+    "app/views/brokers.js",
+    "app/views/parts/brokerhome.js",
+    "app/views/parts/brokerlearn.js",
+    "app/views/parts/brokerpick.js",
+    "app/views/parts/brokerwizard.js",
 )
 
 _VENDOR_ASSETS = (

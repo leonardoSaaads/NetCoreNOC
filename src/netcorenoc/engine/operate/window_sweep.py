@@ -109,11 +109,15 @@ class WindowSweepMixin(EngineBase):
         the **same** `(device, class, instance)` row, would open a *second* situation for an alarm
         that is already in one.
         """
-        _window_id, _ne_id, device_id, class_id, _instance, raised_at, _cleared, _s = row
+        _window_id, ne_id, device_id, class_id, _instance, raised_at, _cleared, _s = row
         first_seen = float(raised_at) if raised_at is not None else now
         if situation is None:
+            broker_id = await self.store.ne_broker(int(ne_id))  # ADR #495: the element's broker
             situation = await self.store.create_situation(
-                first_seen, self.scorer_config_id, act="surface"
+                first_seen,
+                self.lanes.of(broker_id).scorer_config_id,
+                act="surface",
+                broker_id=broker_id,
             )
             self.members[situation] = []
         await self.store.add_alarm_to_situation(situation, alarm_id)

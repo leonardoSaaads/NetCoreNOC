@@ -76,6 +76,8 @@ class WindowDraft:
     needs_confirmation: bool
     status: str
     idempotency_key: str | None
+    #: ADR #496: the broker this window is for; None for one not tied to a broker.
+    broker_id: int | None = None
 
 
 class MaintenanceWindowMixin(StoreBase):
@@ -86,7 +88,8 @@ class MaintenanceWindowMixin(StoreBase):
             "INSERT INTO maintenance_window (name, description, organization_id, status, tz, "
             "starts_at, ends_at, all_day, patch_s, ledger_enabled, visibility, owner_ref, "
             "owner_role, created_by_agent, needs_confirmation, created_at, updated_at, "
-            "idempotency_key) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) RETURNING id",
+            "idempotency_key, broker_id) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) "
+            "RETURNING id",
             (
                 draft.name,
                 draft.description,
@@ -106,6 +109,7 @@ class MaintenanceWindowMixin(StoreBase):
                 now,
                 now,
                 draft.idempotency_key,
+                draft.broker_id,
             ),
         )
         row = await cur.fetchone()

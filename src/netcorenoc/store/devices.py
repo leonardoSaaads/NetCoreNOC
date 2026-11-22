@@ -22,28 +22,36 @@ class DeviceMixin(StoreBase):
         self._touched[key] = ts
         return True
 
-    async def device_id(self, ip: str, ts: float) -> int:
+    async def device_id(self, ip: str, ts: float, broker_id: int = 1) -> int:
         """The device for a source IP, which is its element: the device is the element since ADR
         #452, so this is :meth:`ne_id`. Kept so the callers that speak of devices keep their
         names."""
-        return await self.ne_id(ip, ts)
+        return await self.ne_id(ip, ts, broker_id)
 
-    async def ne_id(self, ip: str, ts: float) -> int:
-        """The reporting element for a source IP (also the device's id, ADR #452)."""
-        cached = self._ne_ids.get(ip)
+    async def ne_id(self, ip: str, ts: float, broker_id: int = 1) -> int:
+        """The reporting element for a source IP **in a broker** (also the device's id, ADR #452).
+
+        ADR #494: an element is (broker, address), so two customers' private ranges may both hold
+        10.0.0.1. An element a broker sees first takes the broker's customer as its organization —
+        the one query here beyond the insert, and only on an element's first trap.
+        """
+        key = (broker_id, ip)
+        cached = self._ne_ids.get(key)
         if cached is not None:
             if self._should_touch("n", cached, ts):
                 await self.conn.execute("UPDATE ne SET last_seen=? WHERE id=?", (ts, cached))
             return cached
         cur = await self.conn.execute(
-            "INSERT INTO ne (ip, vendor, first_seen, last_seen) VALUES (?, NULL, ?, ?) "
-            "ON CONFLICT (ip) DO UPDATE SET last_seen=excluded.last_seen RETURNING id",
-            (ip, ts, ts),
+            "INSERT INTO ne (ip, vendor, first_seen, last_seen, broker_id, organization_id) "
+            "VALUES (?, NULL, ?, ?, ?, (SELECT b.organization_id FROM broker b "
+            "JOIN organization o ON o.id = b.organization_id WHERE b.id = ? AND NOT o.is_default)) "
+            "ON CONFLICT (broker_id, ip) DO UPDATE SET last_seen=excluded.last_seen RETURNING id",
+            (ip, ts, ts, broker_id, broker_id),
         )
         row = await cur.fetchone()
         assert row is not None
-        self._ne_ids[ip] = int(row[0])
-        return self._ne_ids[ip]
+        self._ne_ids[key] = int(row[0])
+        return self._ne_ids[key]
 
     async def entity_level0(self, ne_id: int, ip: str, ts: float) -> int:
         """The level-0 entity (the NE itself). Insert-or-get; the store lock serialises this

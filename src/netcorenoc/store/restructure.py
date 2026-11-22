@@ -101,6 +101,12 @@ class RestructureMixin(SituationMixin):
         makes that visible rather than silent.
         """
         new_id = await self.create_situation(ts, act="operator_split")
+        # ADR #495: what departs stays in its broker — the new situation is the original's.
+        await self.conn.execute(
+            "UPDATE situation SET broker_id = (SELECT broker_id FROM situation WHERE id=?) "
+            "WHERE id=?",
+            (situation_id, new_id),
+        )
         marks = ",".join("?" * len(departing))
         if departing:
             await self.conn.execute(

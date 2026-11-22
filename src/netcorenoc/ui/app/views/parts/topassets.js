@@ -11,6 +11,7 @@
 
 import { html, Component, cx } from "../../dom.js";
 import { get } from "../../api.js";
+import { withBroker } from "../../brokers.js";
 import { SectionMark, SeverityMix } from "../../widgets.js";
 import { Trend } from "../../stack.js";
 import { SCALE, UNPLACED, count, plural } from "../../format.js";
@@ -37,15 +38,17 @@ export class TopAssets extends Component {
   componentDidMount() { this.read(); }
 
   componentDidUpdate(previous) {
-    if (previous.rangeS !== this.props.rangeS || previous.tick !== this.props.tick) this.read();
+    if (previous.rangeS !== this.props.rangeS || previous.tick !== this.props.tick
+      || previous.brokerId !== this.props.brokerId) this.read();
   }
 
   async read() {
     const tier = TIERS.find((t) => t.key === this.state.tier) ?? TIERS[1];
     try {
-      const data = await get(`/api/activity/top?range_s=${this.props.rangeS}&buckets=24` +
-        `&limit=${SHOWN}&bands=${tier.bands}`);
-      this.setState({ data, error: null });
+      const asked = this.props.brokerId;
+      const data = await get(withBroker(`/api/activity/top?range_s=${this.props.rangeS}&buckets=24` +
+        `&limit=${SHOWN}&bands=${tier.bands}`, asked));
+      if (asked === this.props.brokerId) this.setState({ data, error: null });
     } catch (error) {
       this.setState({ error });
     }

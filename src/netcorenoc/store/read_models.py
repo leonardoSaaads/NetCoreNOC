@@ -231,7 +231,14 @@ class ReadModelsMixin(ClassRuleMixin):
             out[name] = int(row[0])
         return out
 
-    async def graph_snapshot(self, min_edge_n: float) -> dict[str, Any]:
+    async def graph_snapshot(
+        self, min_edge_n: float, broker_id: int | None = None
+    ) -> dict[str, Any]:
+        """The map: elements and their learned affinities — one broker's when it is named.
+
+        Each broker learns its own affinities (ADR #495), so an edge never joins two networks; the
+        filter is in SQL so a broker's map reads that network's rows alone."""
+        only, args = ("WHERE d.broker_id=? ", (broker_id,)) if broker_id is not None else ("", ())
         cur = await self.conn.execute(
             # nosec B608 - `_label_join` returns a fixed literal; every value in this statement is
             # a bound parameter or a column name.
@@ -242,13 +249,18 @@ class ReadModelsMixin(ClassRuleMixin):
             # `ne` and is gone, so the label joins on the element's own id.
             "SELECT d.id, d.ip, l.label, "  # nosec B608
             "(SELECT COUNT(*) FROM alarm a WHERE a.ne_id=d.id AND a.status='active') "
-            "AS active_alarms FROM ne d " + self._label_join("l", "ne", "d.id") + "ORDER BY d.id"
+            "AS active_alarms FROM ne d "
+            + self._label_join("l", "ne", "d.id")
+            + only
+            + "ORDER BY d.id",
+            args,
         )
         nodes = [dict(r) for r in await cur.fetchall()]
         cur = await self.conn.execute(
             "SELECT a_id, b_id, weight, n FROM edge WHERE kind='device' AND n>=? AND weight>0 "
-            "ORDER BY a_id, b_id",
-            (min_edge_n,),
+            + ("AND broker_id=? " if broker_id is not None else "")
+            + "ORDER BY a_id, b_id",
+            (min_edge_n, *args),
         )
         edges = [dict(r) for r in await cur.fetchall()]
         return {"nodes": nodes, "edges": edges}

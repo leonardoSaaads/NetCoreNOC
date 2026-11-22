@@ -52,6 +52,8 @@ import { DEFAULT_VIEW } from "./registry.js";
  * the playbooks), the agents one by one, and the NOC itself (its organization, its vault). */
 export const GROUPS = [
   { id: "operations", label: "Operations", plane: "broker" },
+  // ADR #494: each monitored network, with its own map, timeline, elements, windows and models.
+  { id: "brokers", label: "Brokers", plane: "broker" },
   { id: "evidence", label: "Evidence", plane: "broker" },
   { id: "administer", label: "Administer", plane: "broker" },
   { id: "work", label: "Work", plane: "noc" },

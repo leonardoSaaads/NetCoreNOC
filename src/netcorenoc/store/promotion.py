@@ -43,12 +43,14 @@ class PromotionMixin(StoreBase):
         created_by: str | None,
         created_at: float,
         note: str = "",
+        broker_id: int = 1,
     ) -> int:
-        """Append one immutable model version. Never UPDATE, never DELETE (triggers abort)."""
+        """Append one immutable model version. Never UPDATE, never DELETE (triggers abort). ADR
+        #495: a site model is one broker's, fitted on its labels and a member of its league only."""
         cur = await self.conn.execute(
             "INSERT INTO model_version (kind, contract_version, params_document, params_hash, "
-            "challenger_run_id, created_by, created_at, note) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?) RETURNING id",
+            "challenger_run_id, created_by, created_at, note, broker_id) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id",
             (
                 kind,
                 contract_version,
@@ -58,6 +60,7 @@ class PromotionMixin(StoreBase):
                 created_by,
                 created_at,
                 note,
+                broker_id,
             ),
         )
         row = await cur.fetchone()

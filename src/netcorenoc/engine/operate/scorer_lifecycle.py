@@ -31,16 +31,41 @@ operator's warnings.
 from __future__ import annotations
 
 import logging
+from typing import TYPE_CHECKING, Any
 
 from netcorenoc.crosscutting import audit
 from netcorenoc.engine.correlate import scoring
+from netcorenoc.engine.correlate.correlate import Correlator
+from netcorenoc.engine.evaluation.league_shadow import LeagueShadow
 from netcorenoc.engine.model import league, league_judge, model_version
-from netcorenoc.engine.operate.engine_base import EngineBase
+
+if TYPE_CHECKING:  # pragma: no cover - type-only, no runtime edge (tests/repo/test_layers.py)
+    from netcorenoc.store import Store
 
 log = logging.getLogger("netcorenoc")
 
 
-class ScorerLifecycleMixin(EngineBase):
+class ScorerLifecycleMixin:
+    """ADR #495: this runs **per broker** — `lanes.Lane` inherits it — so each broker has its own
+    decider: its mode and pin, the judge's champion on its labels, and its site model. The
+    attributes below are the lane's; the Default broker's lane reads exactly what the appliance
+    read before brokers (the legacy active pointer included)."""
+
+    broker_id: int = 1
+    store: Store
+    correlator: Correlator
+    latency_us: dict[str, float]
+    league_shadow: LeagueShadow
+    decider_ref: str = "additive:default"
+    league_members: league.League | None = None
+    champion: league.Member | None = None
+    challengers: tuple[league.Member, ...] = ()
+    league_view: dict[str, Any] | None = None
+    scorer_config_id: int | None = None
+    scorer_model_version_id: int | None = None
+    scorer_warnings: list[str]
+    _loaded_key: tuple[object, ...] | None
+
     async def load_scorer_config(self) -> None:
         """Load the active scoring configuration — **the reload point** (§DESIGN v0.6.0).
 
@@ -55,9 +80,14 @@ class ScorerLifecycleMixin(EngineBase):
         for want of one.
         """
         try:
-            mode = await self.store.decider_mode()
+            mode = await self.store.decider_mode(self.broker_id)
             row = await self.store.active_scorer_config()
-            model_row = None if row is not None else await self.store.active_model_version()
+            if self.broker_id == 1:
+                model_row = None if row is not None else await self.store.active_model_version()
+            else:  # another broker's site model is its own newest, never the legacy pointer
+                model_row = (
+                    await self.store.newest_site_model(self.broker_id) if mode == "site" else None
+                )
         except Exception as exc:  # a config read must never stop correlation
             self._loaded_key = None  # retry on the next pass; the DB may come back
             self._use_default_scorer(f"scoring configuration unreadable ({type(exc).__name__})")
@@ -134,7 +164,7 @@ class ScorerLifecycleMixin(EngineBase):
     async def _league_now(self) -> league.League:
         """The packaged league plus this site's newest adapted model, if it validates."""
         members = league.load()
-        row = await self.store.newest_site_model()
+        row = await self.store.newest_site_model(self.broker_id)
         if row is not None:
             try:
                 members = members.with_member(
@@ -177,11 +207,11 @@ class ScorerLifecycleMixin(EngineBase):
             if member.ref not in self.latency_us:
                 vectors = league.benchmark_vectors()
                 self.latency_us[member.ref] = league_judge.measure_latency(member, vectors)
-        decision = await self.store.latest_league_decision()
+        decision = await self.store.latest_league_decision(self.broker_id)
         choice = league_judge.choose(
             members,
             current=None if decision is None else str(decision["champion"]),
-            pinned=await self.store.decider_pin(),
+            pinned=await self.store.decider_pin(self.broker_id),
             latency_us=self.latency_us,
         )
         champion = members.by_ref(choice.champion) if choice is not None else None

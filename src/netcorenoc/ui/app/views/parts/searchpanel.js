@@ -1,4 +1,4 @@
-/* Settings → Site training: the in-product search that adapts the GAM to this site (ADR #413).
+/* A broker's Site training: the in-product search that adapts the GAM to its labels (ADR #413).
  *
  * Random search over a bounded space with successive halving, seeded and resumable, run out of
  * process by the slow loop — so it never holds the lock the receiver needs, and **Stop** takes
@@ -12,6 +12,7 @@
 
 import { html, Component } from "../../dom.js";
 import { get, post } from "../../api.js";
+import { withBroker } from "../../brokers.js";
 import { Loading, Failed, SectionHeading, DataTable, TimeCell, cell } from "../../widgets.js";
 import { can } from "../../session.js";
 
@@ -33,7 +34,7 @@ export class SearchPanel extends Component {
 
   async read() {
     try {
-      const data = await get("/api/search");
+      const data = await get(withBroker("/api/search", this.props.brokerId));
       const form = this.state.form || { ...data.defaults, seed: 0 };
       this.setState({ data, form, error: null });
     } catch (error) {
@@ -75,7 +76,10 @@ export class SearchPanel extends Component {
             onClick=${() => this.act("/api/search/stop", {})}>${busy ? "Stopping…" : "Stop the search"}</button>` : null}`
         : writable ? html`<form class="grid-form" onSubmit=${(e) => {
             e.preventDefault();
-            this.act("/api/search", Object.fromEntries(BUDGET.map(([k]) => [k, Number(form[k])])));
+            this.act("/api/search", {
+              ...Object.fromEntries(BUDGET.map(([k]) => [k, Number(form[k])])),
+              ...(this.props.brokerId ? { broker_id: Number(this.props.brokerId) } : {}),
+            });
           }}>
             ${BUDGET.map(([key, label, note, lo, hi]) => html`<div key=${key}>
               <label for=${`se-${key}`}>${label}</label>

@@ -87,6 +87,27 @@ protocols, passphrases). The form prints the Cisco IOS lines and a Net-SNMP test
 One user serves every device configured with it; the appliance localizes the keys to each device's
 engine ID itself.
 
+**More than one network?** Add a **broker** for each (Brokers → *Add a broker*, ADR #494), and
+choose how its traps arrive:
+
+* **its own UDP port** — point that network's devices at it (`udp/1163`, say); two networks may
+  reuse the same private addresses this way. With Docker, publish the port
+  (`ports: ["1163:1163/udp"]`);
+* **a remote proxy**, for a network this server cannot hear directly — on a host in that network:
+
+  ```sh
+  install -m 600 /dev/null /etc/netcorenoc/proxy.token   # paste the token shown once
+  python -m netcorenoc proxy --server https://noc.example.com \
+    --token-file /etc/netcorenoc/proxy.token --listen 0.0.0.0:162 \
+    --spool /var/lib/netcorenoc/proxy
+  ```
+
+  It keeps every trap on its own disk while its link is down and sends the backlog when it
+  returns; the broker's page shows its last batch;
+* **its ranges** (CIDR) on the standard port, when addresses do not repeat across customers.
+
+Everything else stays the **Default** broker's.
+
 **Check it is receiving** — the health control in the top bar, or:
 
 ```sh

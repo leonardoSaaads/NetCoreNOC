@@ -37,19 +37,22 @@ import { Destructive } from "../destructive.js";
 import { SETTINGS, MECHANISM, HARDENING, STRUCTURAL } from "../parameters.js";
 import { DatasetRetention } from "./parts/retention.js";
 import { Hardening, Structural, RestartRequired } from "./parts/facts.js";
-import { Correlation } from "./parts/decider.js";
 import { Autonomy } from "./parts/autonomy.js";
-import { SearchPanel } from "./parts/searchpanel.js";
 import { SnmpPanel } from "./parts/snmp.js";
 import { EmailPanel } from "./parts/email.js";
 import { Icon } from "../icons.js";
+import { Correlation } from "./parts/decider.js";
+import { SearchPanel } from "./parts/searchpanel.js";
+import { brokerList } from "../brokers.js";
 
 // The key stays `correlation` so every address written since v0.26.0 (and `#/scorer`) still lands
 // here; the label says what the tab is about now (v0.27.0): the models and how one is chosen.
+// ADR #495: where networks are separated, Models and Site training are each broker's own — Brokers
+// → a broker → Learning — and these two tabs are not offered here (`separated`).
 const TABS = [
-  ["correlation", "Models", "scorer.read", Correlation, "scorer"],
+  ["correlation", "Models", "scorer.read", Correlation, "scorer", true],
   ["autonomy", "Autonomy", "scorer.read", Autonomy, "auto"],
-  ["search", "Site training", "model.read", SearchPanel, "cpu"],
+  ["search", "Site training", "model.read", SearchPanel, "cpu", true],
   ["snmp", "SNMP", "config.read", SnmpPanel, "signal"],
   ["email", "Email", "config.read", EmailPanel, "mail"],
   ["system", "System", "config.read", null, "settings"],
@@ -57,7 +60,8 @@ const TABS = [
 
 export function Settings(props) {
   const asked = (props.query && props.query.get("tab")) || props.tab || "correlation";
-  const allowed = TABS.filter(([, , cap]) => can(cap));
+  const separated = can("brokers.read") && (brokerList() || []).length > 1;
+  const allowed = TABS.filter(([, , cap, , , perBroker]) => can(cap) && !(perBroker && separated));
   const tab = allowed.find(([key]) => key === asked) || allowed[0];
   if (!tab) return null;
   const Body = tab[3] || SystemSettings;
@@ -67,6 +71,8 @@ export function Settings(props) {
         aria-selected=${tab[0] === key} class=${cx("access-tab", tab[0] === key && "on")}
         onClick=${() => props.navigate(`#/settings?tab=${key}`)}><${Icon} name=${icon} /> ${label}</button>`)}
     </div>
+    ${separated ? html`<p class="hint">Which model decides, and site training, are each broker's own:
+      <a href="#/brokers">Brokers</a> → a broker → Learning.</p>` : null}
     <${Body} key=${tab[0]} />
   </div>`;
 }

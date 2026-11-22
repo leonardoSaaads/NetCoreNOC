@@ -101,12 +101,14 @@ def test_every_view_in_the_registry_names_an_icon() -> None:
     # Overview (`dashboard`). ADR #473: 26 -> 27, the NOC's Customers (`building`).
     # ADR #484: 27 -> 28 — Learning joins, and Labelling and Corpus stay as hidden addresses.
     # ADR #492: 28 -> 29 — Playbooks became Routines, and `#/playbooks` stays as a hidden address.
-    assert len(ids) == 29, f"expected 29 views with icons, parsed {len(ids)}: {ids}"
+    # ADR #494: 29 -> 30 — Brokers, each monitored network with its screens under it.
+    assert len(ids) == 30, f"expected 30 views with icons, parsed {len(ids)}: {ids}"
     known = defined()
     for view_id, icon in ids:
         assert icon in known, f"view {view_id!r} names icon {icon!r}, which is not in the set"
-    # `access` and its `users` alias draw one icon: they are the same screen.
-    assert len({icon for _v, icon in ids}) == 26, (
+    # `access` and its `users` alias draw one icon: they are the same screen. ADR #494: Brokers
+    # brings its own (`network`), so 26 -> 27.
+    assert len({icon for _v, icon in ids}) == 27, (
         "two views share an icon; they are not the same screen"
     )
 

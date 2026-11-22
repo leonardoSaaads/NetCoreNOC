@@ -48,7 +48,8 @@
 
 import { html, Component } from "../dom.js";
 import { get } from "../api.js";
-import { Loading, Failed, SectionHeading } from "../widgets.js";
+import { brokerName, withBroker } from "../brokers.js";
+import { Loading, Failed, SectionHeading, Empty } from "../widgets.js";
 
 /** The two counted reads re-read on this period, so the screen is never older than it. */
 const REFRESH_MS = 30_000;
@@ -104,6 +105,14 @@ export class Overview extends Component {
     if (this.timer) clearInterval(this.timer);
   }
 
+  /** ADR #496: the broker chosen at the heading's right (`?broker=`), or null for all of them. */
+  broker() { return Number(this.props.query && this.props.query.get("broker")) || null; }
+
+  componentDidUpdate(previous) {
+    const before = Number(previous.query && previous.query.get("broker")) || null;
+    if (before !== this.broker()) this.setState({ activity: null }, () => this.readActivity());
+  }
+
   /**
    * The one read this screen makes. A failure is reported beside the chart, never as a zero.
    *
@@ -113,14 +122,16 @@ export class Overview extends Component {
    * the range the operator picked.
    */
   async readActivity() {
+    const broker = this.broker();
     try {
       const { rangeS } = this.state;
-      this.setState({
-        activity: await get(`/api/activity/active?buckets=${RANGE_BUCKETS}&range_s=${rangeS}`),
-        activityError: null,
-      });
+      const activity = await get(withBroker(
+        `/api/activity/active?buckets=${RANGE_BUCKETS}&range_s=${rangeS}`, broker,
+      ));
+      // Another broker was chosen while this was in flight: its answer is not this screen's.
+      if (broker === this.broker()) this.setState({ activity, activityError: null });
     } catch (error) {
-      this.setState({ activityError: error });
+      if (broker === this.broker()) this.setState({ activityError: error });
     }
   }
 
@@ -157,6 +168,11 @@ export class Overview extends Component {
 
     const quiet = stats.active_alarms === 0 && situations.length === 0 && stats.devices === 0;
     // ADR #483: before the first trap, three pictures of what to do instead of a paragraph.
+    if (quiet && this.broker()) {
+      return html`<${Empty} title=${`Nothing from ${brokerName(this.broker())} yet`}
+        will="Its alarms, situations and devices appear here as its traps arrive."
+        meanwhile="Its page says how its traps reach this server, and whether they are arriving." />`;
+    }
     if (quiet) return html`<${FirstRun} />`;
 
     const nodes = (live.graph && live.graph.nodes) || [];
@@ -178,7 +194,7 @@ export class Overview extends Component {
             height, so every row ends level. Order is the order of the questions: is planned work
             skewing the counts; how bad; what needs someone; where; is the appliance coping. */ null}
       <div class="ov-grid">
-        ${can("mw.read") ? html`<div class="ov-12 ov-slot"><${PlannedWork} /></div>` : null}
+        ${can("mw.read") ? html`<div class="ov-12 ov-slot"><${PlannedWork} key=${this.broker() || "all"} brokerId=${this.broker()} /></div>` : null}
         <section class="panel-block ov-5 ov-fill"><${Severity} census=${stats.severity} /><//>
         <section class="panel-block ov-7">
           <${SectionHeading} icon="pulse" title="What is happening" />
@@ -186,13 +202,14 @@ export class Overview extends Component {
                         retry=${() => this.readActivity()} />
         <//>
         <div class="ov-5 ov-slot"><${SituationSummary} stats=${stats} situations=${situations} /></div>
-        <div class="ov-7 ov-slot"><${TopAssets} rangeS=${rangeS} tick=${tick} /></div>
+        <div class="ov-7 ov-slot"><${TopAssets} rangeS=${rangeS} tick=${tick} brokerId=${this.broker()} /></div>
         <div class="ov-12 ov-slot"><${Pipeline} stats=${stats} rate=${live.trapRate} rangeS=${rangeS} tick=${tick} /></div>
         <div class="ov-5 ov-slot"><${Estate} nodes=${nodes} edges=${(live.graph && live.graph.edges) || []} /></div>
         <div class="ov-7 ov-slot"><${Keeping} stats=${stats} rate=${live.trapRate} rangeS=${rangeS} tick=${tick} /></div>
         <section class="panel-block ov-12 ov-models">
           <${SectionHeading} icon="scorer" title="The models" />
-          <${ModelHealth} admin=${can("model.register")} />
+          <${ModelHealth} key=${this.broker() || "all"} admin=${can("model.register")}
+            brokerId=${this.broker() || undefined} />
           <p class="learned-line">
             <b>${count(stats.devices)}</b>${" "}devices${" "}·${" "}
             <b>${count(stats.classes)}</b>${" "}alarm classes${" "}·${" "}learned from the stream

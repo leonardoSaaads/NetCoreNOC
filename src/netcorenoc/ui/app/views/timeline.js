@@ -18,6 +18,7 @@
 
 import { html, Component } from "../dom.js";
 import { get } from "../api.js";
+import { withBroker } from "../brokers.js";
 import { Loading, Empty, Failed } from "../widgets.js";
 import { plural } from "../format.js";
 import { can } from "../session.js";
@@ -69,7 +70,7 @@ export class Timeline extends Component {
    *  a failure leaves that control empty and the timeline working. */
   async options() {
     const [inv, cat] = await Promise.allSettled([
-      get("/api/inventory"),
+      get(withBroker("/api/inventory", this.props.brokerId)),
       can("classes.read") ? get("/api/catalogue?limit=200") : { classes: [] },
     ]);
     const elements = inv.status === "fulfilled" ? inv.value.elements : [];
@@ -94,7 +95,8 @@ export class Timeline extends Component {
         range = Math.min(MAX_S, Math.max(900, Math.ceil(Date.now() / 1000 - t0) + 60));
       }
       const extra = (ne ? `&ne_id=${ne}` : "") + (org ? `&organization_id=${org}` : "") +
-        (oid ? `&oid=${oid}` : "") + (sid ? `&sid=${sid}` : "");
+        (oid ? `&oid=${oid}` : "") + (sid ? `&sid=${sid}` : "") +
+        (this.props.brokerId ? `&broker_id=${this.props.brokerId}` : "");
       const [lanes, groups] = await Promise.all([
         get(`/api/activity/lanes?range_s=${range}&buckets=${LANE_BUCKETS}&top=8${extra}`),
         get(`/api/activity/groups?range_s=${range}&kind=${kind}&limit=${PAGE}` +
@@ -118,10 +120,13 @@ export class Timeline extends Component {
       if (el && String(el.organization_id) !== String(value)) q.delete("ne");
     }
     const text = q.toString();
-    this.props.navigate(`#/timeline${text ? `?${text}` : ""}`);
+    this.props.navigate(`${this.base()}${text ? `?${text}` : ""}`);
   }
 
-  clear() { this.props.navigate("#/timeline"); }
+  /** Where this timeline lives: inside a broker (ADR #496), or the old address. */
+  base() { return this.props.base || "#/timeline"; }
+
+  clear() { this.props.navigate(this.base()); }
 
   render(_props, { status, lanes, groups, error, elements, orgs, traps, situation }) {
     if (status === "loading") return html`<${Loading} label="Reading alarm activity" />`;

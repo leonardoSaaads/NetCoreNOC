@@ -67,7 +67,9 @@ def project_graph(snapshot: dict[str, Any], scope: Scope) -> dict[str, Any]:
     """
     if scope.unrestricted:
         return snapshot
-    nodes = [node for node in snapshot.get("nodes", []) if scope.allows_ip(node.get("ip"))]
+    # By the element's id, never its address: two brokers may reuse one address (ADR #494), and
+    # an address would show one network's element on the other's map.
+    nodes = [node for node in snapshot.get("nodes", []) if scope.allows_ne(_as_int(node.get("id")))]
     visible_ids = {_as_int(node.get("id")) for node in nodes}
     edges = [
         edge

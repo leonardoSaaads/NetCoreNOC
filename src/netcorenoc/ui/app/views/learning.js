@@ -105,7 +105,10 @@ export class Learning extends Component {
     return "judge";
   }
 
-  go(tab) { if (this.props.navigate) this.props.navigate(`#/learning?tab=${tab}`); }
+  go(tab) {
+    const base = this.props.base || "#/learning";
+    if (this.props.navigate) this.props.navigate(`${base}${base.includes("?") ? "&" : "?"}tab=${tab}`);
+  }
 
   pick(id) {
     this.setState({ picked: id });
@@ -134,11 +137,11 @@ export class Learning extends Component {
       <section class="panel-block learn-diagram">
         <div class="learn-diagram-head">
           <h3><${Icon} name="sparkle" /> How your judgements teach the models</h3>
-          <${ModelHealth} line=${true} />
+          <${ModelHealth} line=${true} brokerId=${this.props.brokerId} />
         </div>
         <${LearningDiagram} n=${numbers} active=${picked} onPick=${(id) => this.pick(id)} />
         <p class="learn-about" role="status"><b>${picked[0].toUpperCase() + picked.slice(1)}</b> — ${about}
-          ${where === "promotion" ? html` <a href="#/promotion">Judge & promotion <${Icon} name="chevron" /></a>` : null}</p>
+          ${where === "promotion" ? html` <a href=${this.props.judgeHref || "#/promotion"}>Judge & promotion <${Icon} name="chevron" /></a>` : null}</p>
       </section>
       <div class="access-tabs" role="tablist" aria-label="Learning">
         <button type="button" role="tab" aria-selected=${tab === "judge"} class=${cx("access-tab", tab === "judge" && "on")}

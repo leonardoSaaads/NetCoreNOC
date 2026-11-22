@@ -26,6 +26,7 @@ from netcorenoc.crosscutting import auth, shaping
 def register(app: FastAPI, ctx: AppContext) -> None:
     """Register the element route on `app`."""
     store, security, scope_for = ctx.store, ctx.security, ctx.scope_for
+    broker_scope = ctx.broker_scope
     route = DeclaredRoutes(app)
 
     @route.get("/api/elements/{ne_id}")
@@ -53,6 +54,7 @@ def register(app: FastAPI, ctx: AppContext) -> None:
             "first_seen": ne["first_seen"],
             "last_seen": ne["last_seen"],
             "organization": organization,
+            "broker_id": ne["broker_id"],  # ADR #494: which network it is in
             "active_alarms": census["active"],
             "severity": census,
             "maintenance": markers.get(ne_id),
@@ -60,14 +62,17 @@ def register(app: FastAPI, ctx: AppContext) -> None:
         return shaping.shape(body, principal.role)  # coarsen the address and the name below editor
 
     @route.get("/api/inventory")
-    async def inventory(principal: auth.Principal = Depends(security)) -> dict[str, Any]:
+    async def inventory(
+        broker_id: int | None = None, principal: auth.Principal = Depends(security)
+    ) -> dict[str, Any]:
         """Every in-scope element with its state, and the totals (v0.23.0, #395).
 
         The Entities screen's one read: organization, vendor, active alarms by band, components
         learned beneath each element, live situations, last trap, planned work — in a fixed number
-        of grouped queries rather than one per element. Scoped in the WHERE clause.
+        of grouped queries rather than one per element. Scoped in the WHERE clause; `broker_id`
+        narrows it to one broker's network (ADR #496).
         """
-        scope = await scope_for(principal)
+        scope = await broker_scope(principal, broker_id)
         async with store.reading():
             body = await store.inventory(None if scope.unrestricted else scope.ne_ids)
         return shaping.shape(body, principal.role)  # coarsen addresses and names below editor

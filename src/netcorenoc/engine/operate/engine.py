@@ -41,20 +41,15 @@ from dataclasses import replace
 
 from netcorenoc.engine.correlate import features as pair_features
 from netcorenoc.engine.correlate import severity
-from netcorenoc.engine.correlate.correlate import (
-    CorrelationResult,
-    Correlator,
-    WindowAlarm,
-)
+from netcorenoc.engine.correlate.correlate import CorrelationResult, WindowAlarm
 from netcorenoc.engine.correlate.grouping import Placement
-from netcorenoc.engine.correlate.learn import STORM_ALARMS, STORM_DAMPING, Learner
+from netcorenoc.engine.correlate.learn import STORM_ALARMS, STORM_DAMPING
 from netcorenoc.engine.correlate.monitor import CorrelationMonitor
-from netcorenoc.engine.correlate.rootcause import Member, Precedence
+from netcorenoc.engine.correlate.rootcause import Member
 from netcorenoc.engine.correlate.scorer_contract import oid_root
 from netcorenoc.engine.correlate.varbind_profile import MAX_ENTITIES_PER_NE, VarbindProfiler
 from netcorenoc.engine.dataset import capture as capture_mod
 from netcorenoc.engine.dataset.capture import Capture, LabelContext, RetentionPolicy
-from netcorenoc.engine.evaluation.league_shadow import LeagueShadow
 from netcorenoc.engine.evaluation.shadow import Shadow
 from netcorenoc.engine.mw import index as mw_index
 from netcorenoc.engine.mw.ledger import StateLedger
@@ -62,8 +57,8 @@ from netcorenoc.engine.operate import membership, occurrence, proposals
 from netcorenoc.engine.operate.engine_base import EngineBase
 from netcorenoc.engine.operate.flap import FlapDetector
 from netcorenoc.engine.operate.gaps import GapMixin, GapTracker
+from netcorenoc.engine.operate.lanes import Lane, Lanes, LanesMixin
 from netcorenoc.engine.operate.maintenance import MaintenanceMixin
-from netcorenoc.engine.operate.scorer_lifecycle import ScorerLifecycleMixin
 from netcorenoc.ingest import known_oids
 from netcorenoc.ingest.events import Fingerprint, QuarantinedPacket, TrapEvent
 from netcorenoc.ingest.receiver import MAX_INSTANCE_CHARS, QueueItem
@@ -81,17 +76,16 @@ PRUNE_EVERY_TICKS = 12  # prune once a minute
 PROFILE_STALE_S = 7 * 86400.0  # profiler accumulators untouched this long are pruned (§6)
 
 
-class Engine(MaintenanceMixin, GapMixin, ScorerLifecycleMixin, EngineBase):
+class Engine(MaintenanceMixin, GapMixin, LanesMixin, EngineBase):
     """Consumes the queue in batches; one SQLite transaction per batch."""
 
     def __init__(self, store: Store, queue: asyncio.Queue[QueueItem]) -> None:
         self.store = store
         self.queue = queue
+        # ADR #495: per broker, its correlator, learned state and decider (`lanes.py`).
+        self.lanes = Lanes(store)
         self.flap = FlapDetector()
         self.flapping: set[Fingerprint] = set()
-        self.learner = Learner()
-        self.precedence = Precedence()
-        self.correlator = Correlator()
         self.profiler = VarbindProfiler()
         self.sit_of: dict[int, int] = {}  # alarm id -> open situation id
         self.members: dict[int, list[Member]] = {}  # open situation id -> members
@@ -116,15 +110,6 @@ class Engine(MaintenanceMixin, GapMixin, ScorerLifecycleMixin, EngineBase):
         # Learned severity (S8): the confirmed severity varbind OID per NE. A trap's value on
         # that OID is normalised to (severity, rank); an absent NE keeps severity unknown.
         self.ne_severity: dict[int, str] = {}
-        # Scoring configuration (v0.6.0). `scorer_config_id` is the provenance recorded on every
-        # situation this engine opens; None until the store has been read (fresh in-memory DBs in
-        # tests may have no pointer). Loaded at the documented reload point only — never per
-        # packet, never in receiver.datagram_received.
-        self.scorer_config_id: int | None = None
-        self.scorer_warnings: list[str] = []
-        # (config id, params hash) of the configuration currently instantiated. A reload that
-        # finds the same key is a no-op, which is what keeps a fail-safe degradation sticky.
-        self._loaded_key: tuple[object, ...] | None = None
         # Feedback-dataset capture (v0.8.0). Call sites only; the logic is `netcorenoc.capture`,
         # because this file's COHESION_EXEMPT entry covers the ingest reasoning, not code nearby.
         self.capture = Capture()
@@ -142,25 +127,20 @@ class Engine(MaintenanceMixin, GapMixin, ScorerLifecycleMixin, EngineBase):
         # clear-seen for what a window suppressed, flushed by the same loop.
         self.windows: mw_index.WindowIndex = mw_index.EMPTY
         self.ledger = StateLedger()
-        # v0.27.0: (bag, open situation) pairs an operator rejected (ADR #428); each league
-        # member's fast-path cost here, and the challengers' live shadow (ADR #423).
+        # v0.27.0: (bag, open situation) pairs an operator rejected (ADR #428).
         self.rejected_proposals: set[tuple[int, int]] = set()
-        self.latency_us: dict[str, float] = {}
-        self.league_shadow = LeagueShadow()
 
     def forget_situation(self, sid: int) -> None:
         """Drop in-memory membership after an operator manually closes a situation."""
         for member in self.members.pop(sid, []):
             self.sit_of.pop(member.alarm_id, None)
-        self.correlator.grouper.forget(sid)
+        self.lanes.forget(sid)
 
     async def start(self) -> None:
         """Reload learned state and open-situation membership after a restart."""
+        await self.lanes.restore(self.store)  # ADR #495: each broker's learned state
         await self.load_scorer_config()
         await self._capture_run(time.time())
-        await self.learner.load(self.store)
-        self.correlator.episodes.load(await self.store.load_episodes())
-        await self.precedence.load(self.store)
         for row in await self.store.load_varbind_profiles():
             self.profiler.load_row(
                 int(row["ne_id"]),
@@ -265,8 +245,10 @@ class Engine(MaintenanceMixin, GapMixin, ScorerLifecycleMixin, EngineBase):
             await self.store.quarantine_packet(item)
             return
         class_id = await self.store.class_id(item.trap_oid, item.ts)
-        device_id = await self.store.device_id(item.device, item.ts)
-        ne_id = await self.store.ne_id(item.device, item.ts)
+        broker_id = self.lanes.resolve(item)  # ADR #494: its port, its proxy, or its range
+        lane = self.lanes.of(broker_id)
+        device_id = await self.store.device_id(item.device, item.ts, broker_id)
+        ne_id = device_id  # the device is the element (ADR #452)
         varbinds = [(vb.oid, vb.value) for vb in item.varbinds]
         # Varbind profiling: in-memory, under the batch lock, on every trap (repeats are the
         # signal). No lock, no I/O, no effect on grouping — observe-only until S5 (invariant 2).
@@ -302,7 +284,7 @@ class Engine(MaintenanceMixin, GapMixin, ScorerLifecycleMixin, EngineBase):
         # the reboots, flaps and reconvergence of planned work teach affinities that are not the
         # network's. So it is collected and correlated, and it moves no learned state.
         teaches = not decision.under_window
-        if teaches and len(self.correlator.index) < STORM_ALARMS:
+        if teaches and len(lane.correlator.index) < STORM_ALARMS:
             # Storms teach confounders: random class interleavings would falsely
             # register raise/clear pairs, so alternation learning pauses too.
             self.learner.clears.observe(device_id, item.instance, class_id)
@@ -324,6 +306,7 @@ class Engine(MaintenanceMixin, GapMixin, ScorerLifecycleMixin, EngineBase):
             severity=placed.value,
             severity_rank=placed.rank,
             severity_source=placed.source,
+            broker_id=broker_id,
         )
         if not result.activated and not await occurrence.rearm(self, result, item, instance):
             return  # a repeat; `rearm` decides when it is a new occurrence instead (ADR #431)
@@ -346,10 +329,10 @@ class Engine(MaintenanceMixin, GapMixin, ScorerLifecycleMixin, EngineBase):
             pair_features.references([vb.value for vb in item.varbinds], item.device),
         )
         if teaches:  # ADR #372: maintenance traffic moves no learned state, not even its clock
-            self.learner.advance_to(item.ts)
-        outcome = self.correlator.process(
+            lane.learner.advance_to(item.ts)
+        outcome = lane.correlator.process(
             entry,
-            self.learner,
+            lane.learner,
             sit_of=self.sit_of,
             own=self.sit_of.get(entry.alarm_id),
             teaches=teaches,
@@ -357,16 +340,16 @@ class Engine(MaintenanceMixin, GapMixin, ScorerLifecycleMixin, EngineBase):
         recent = outcome.considered[-LEARN_CAP:]
         item_pair = (class_id, device_id)
         if teaches:
-            self.learner.observe_activation(item_pair)
-            self.learner.observe_pairs(
+            lane.learner.observe_activation(item_pair)
+            lane.learner.observe_pairs(
                 item_pair, [(c.class_id, c.device_id) for c in recent], outcome.storm
             )
             lead_weight = STORM_DAMPING if outcome.storm else 1.0
             for candidate in recent:
-                self.precedence.observe(
+                lane.precedence.observe(
                     (candidate.class_id, candidate.device_id), item_pair, lead_weight
                 )
-        merged = await self._assign_situation(entry, outcome)
+        merged = await self._assign_situation(entry, outcome, lane)
         # **Observability, not evidence** (v0.18.0, Part II). Counters over the decisions the
         # champion just made, in memory, read by `GET /api/correlation` and drawn by the console.
         # It writes nothing and reaches no promotion path. `observe` never raises.
@@ -380,7 +363,7 @@ class Engine(MaintenanceMixin, GapMixin, ScorerLifecycleMixin, EngineBase):
             entry,
             item,
             outcome,
-            self.learner,
+            lane.learner,
             ne_id=ne_id,
             count=result.count,
             severity=placed.value,
@@ -391,8 +374,8 @@ class Engine(MaintenanceMixin, GapMixin, ScorerLifecycleMixin, EngineBase):
         # Last on this path, after capture, so no decision follows it. `observe` never raises.
         self.shadow.observe(entry, outcome, self.sit_of.get(entry.alarm_id))
         # v0.27.0 (ADR #423): challengers on a bounded sample of these pairs; decides nothing.
-        self.league_shadow.observe(
-            entry.alarm_id, outcome, self.challengers, len(self.correlator.index)
+        lane.league_shadow.observe(
+            entry.alarm_id, outcome, lane.challengers, len(lane.correlator.index)
         )
 
     async def _seed_clear_pair(self, oid: str, class_id: int, ts: float) -> None:
@@ -480,7 +463,7 @@ class Engine(MaintenanceMixin, GapMixin, ScorerLifecycleMixin, EngineBase):
                 continue  # a clear with no matching raise is only alternation evidence
             # The situation is NOT resolved here (ADR #410): it stays live for `CLEAR_HOLD_S` so a
             # bounce rejoins it, and the maintenance sweep resolves it once the hold has passed.
-            self.correlator.remove(alarm_id)
+            self.lanes.remove(alarm_id)
 
     async def _handle_state_clear(
         self, device_id: int, class_id: int, event: TrapEvent, instance: str
@@ -490,7 +473,7 @@ class Engine(MaintenanceMixin, GapMixin, ScorerLifecycleMixin, EngineBase):
         cleared = await self.store.clear_alarm(device_id, class_id, instance, event.ts)
         if cleared is None:
             return  # a clear-state trap with no open alarm is only alternation evidence
-        self.correlator.remove(cleared)  # resolved by the sweep after `CLEAR_HOLD_S` (ADR #410)
+        self.lanes.remove(cleared)  # resolved by the sweep after `CLEAR_HOLD_S` (ADR #410)
 
     async def _close_situation(self, sid: int, ts: float) -> None:
         """Close a situation. **It teaches nothing** (ADR #406): its membership is the champion's
@@ -498,10 +481,12 @@ class Engine(MaintenanceMixin, GapMixin, ScorerLifecycleMixin, EngineBase):
         members = self.members.pop(sid, [])
         for member in members:
             self.sit_of.pop(member.alarm_id, None)
-        self.correlator.grouper.forget(sid)
+        self.lanes.forget(sid)
         await self.store.close_situation(sid, ts)
 
-    async def _assign_situation(self, entry: WindowAlarm, outcome: CorrelationResult) -> int:
+    async def _assign_situation(
+        self, entry: WindowAlarm, outcome: CorrelationResult, lane: Lane
+    ) -> int:
         """Execute the correlator's placement: join, open, and merge — the database half.
 
         **The decision is not made here** (ADR #405): `grouping.Grouper.place` made it, as a pure
@@ -517,7 +502,11 @@ class Engine(MaintenanceMixin, GapMixin, ScorerLifecycleMixin, EngineBase):
             # Provenance (v0.6.0): the situation records the scoring configuration that formed
             # it. Written here — engine side, under the batch lock — never on the datagram path.
             sid = await self.store.create_situation(
-                entry.ts, self.scorer_config_id, routed.act, decider=self.decider_ref
+                entry.ts,
+                lane.scorer_config_id,
+                routed.act,
+                decider=lane.decider_ref,
+                broker_id=lane.broker_id,
             )
             self.members[sid] = []
         if routed.propose is not None:
@@ -547,10 +536,10 @@ class Engine(MaintenanceMixin, GapMixin, ScorerLifecycleMixin, EngineBase):
             ]
         )
         executed_placement = Placement(sid, tuple(executed), placement.support)
-        self.correlator.commit(sid, replace(outcome, placement=executed_placement), self.sit_of)
+        lane.correlator.commit(sid, replace(outcome, placement=executed_placement), self.sit_of)
         await self.store.touch_situation(sid, entry.ts)
         members = self.members[sid]
-        root = self.precedence.pick_root(members, self.upkeep.earliest(sid, members))
+        root = lane.precedence.pick_root(members, self.upkeep.earliest(sid, members))
         if root is not None:
             await self.store.set_root(sid, root)
         return len(executed)
@@ -585,6 +574,7 @@ class Engine(MaintenanceMixin, GapMixin, ScorerLifecycleMixin, EngineBase):
         if not recorded.exists or not recorded.inserted:
             return recorded
         items, bag = await capture_mod.server_bag(self.members.get(sid), self.store, sid)
+        learner = self.lanes.of(await self.store.situation_broker(sid)).learner  # ADR #495
         # v0.9.1: `for_verdict` drops an exclusion that arrived on a `confirm`, which would be a
         # contradiction rather than evidence (DECISIONS #124).
         ctx = (label or capture_mod.LabelContext()).for_verdict(verdict)
@@ -595,10 +585,10 @@ class Engine(MaintenanceMixin, GapMixin, ScorerLifecycleMixin, EngineBase):
             # advance_epoch=False: an epoch is a *closed situation*, which is what learn.py has
             # said since v0.1.0. Operator feedback is an opinion about one grouping and must not
             # age the whole appliance's learned state (DECISIONS #69).
-            self.learner.learn_epoch(items, advance_epoch=False)
+            learner.learn_epoch(items, advance_epoch=False)
         else:
             # Only the pairs the operator asserted, when they asserted any (DECISIONS #125).
-            self.learner.penalize(items, ctx.marked_positions(bag))
+            learner.penalize(items, ctx.marked_positions(bag))
         return recorded
 
     async def maintenance(self, now: float, retention_days: float, tick: int = 0) -> None:
@@ -620,8 +610,7 @@ class Engine(MaintenanceMixin, GapMixin, ScorerLifecycleMixin, EngineBase):
                 await proposals.lapse(self.store, now)
                 await self._maintenance_windows(now)  # v0.21.0: advance, surface, rebuild the index
                 await self._promotion_sweep(now)
-                await self.learner.save(self.store, now)
-                await self.precedence.save(self.store, now)
+                await self.lanes.save(self.store, now)
                 await self._flush_profiler(now)
                 await self._record_ingest_gaps(now)
                 await self.store.purge_expired_sessions(now)  # expired auth sessions

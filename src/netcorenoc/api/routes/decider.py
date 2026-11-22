@@ -45,15 +45,28 @@ def register(app: FastAPI, ctx: AppContext) -> None:
 
     # -- the decider -------------------------------------------------------------------------
 
-    @route.get("/api/decider", dependencies=guarded)
-    async def get_decider() -> dict[str, Any]:
-        """Who decides links now: the league's champion, the order it was chosen from, the pin, and
-        every switch. `viewer+`, unscoped: it is about models and names no network element."""
+    async def _broker(broker_id: int) -> None:
         async with store.reading():
-            history = await store.decider_history(20)
-            pinned = await store.decider_pin()
-            decisions = await store.league_decisions(10)
-        return {**decider_payload(engine, pinned), "history": history, "decisions": decisions}
+            if await store.broker(broker_id) is None:
+                raise HTTPException(404, "no such broker")
+
+    @route.get("/api/decider", dependencies=guarded)
+    async def get_decider(broker_id: int = 1) -> dict[str, Any]:
+        """Who decides links now **in one broker** (ADR #495): its judge's champion, the order it
+        was chosen from, the pin, and every switch. `viewer+`, unscoped: it is about models and
+        names no network element."""
+        await _broker(broker_id)
+        async with store.reading():
+            history = await store.decider_history(20, broker_id)
+            pinned = await store.decider_pin(broker_id)
+            decisions = await store.league_decisions(10, broker_id)
+        lane = engine.lanes.of(broker_id)
+        return {
+            **decider_payload(lane, pinned),
+            "broker_id": broker_id,
+            "history": history,
+            "decisions": decisions,
+        }
 
     @route.post("/api/decider")
     async def set_decider(
@@ -68,12 +81,13 @@ def register(app: FastAPI, ctx: AppContext) -> None:
                 f"the {body.mode!r} mode is retired: the league's judge chooses among the models, "
                 "and an admin may pin one of them",
             )
-        members = engine.league_members
+        await _broker(body.broker_id)
+        members = engine.lanes.of(body.broker_id).league_members
         if body.pin is not None and (members is None or members.by_ref(body.pin) is None):
             raise HTTPException(409, f"{body.pin} is not a member of this appliance's league")
         now = time.time()
         async with write_txn():
-            await store.set_decider_pin(body.pin, principal.actor, now, body.reason)
+            await store.set_decider_pin(body.pin, principal.actor, now, body.reason, body.broker_id)
             await audit_row(
                 request,
                 principal,
@@ -81,7 +95,7 @@ def register(app: FastAPI, ctx: AppContext) -> None:
                 "ok",
                 object_type="decider",
                 object_id=body.pin or "judge",
-                details={"pin": body.pin, "reason": body.reason},
+                details={"pin": body.pin, "reason": body.reason, "broker_id": body.broker_id},
             )
         return {
             "pin": body.pin,
@@ -185,11 +199,12 @@ def register(app: FastAPI, ctx: AppContext) -> None:
     # -- the search --------------------------------------------------------------------------
 
     @route.get("/api/search", dependencies=guarded)
-    async def get_search() -> dict[str, Any]:
+    async def get_search(broker_id: int | None = None) -> dict[str, Any]:
         """Recent searches and every trial of the newest. `viewer+`, unscoped. ``blocked`` is why a
-        search cannot start on this build (no shipped model to adapt, #422), else ``None``."""
+        search cannot start on this build (no shipped model to adapt, #422), else ``None``.
+        `broker_id` keeps one broker's (ADR #495)."""
         async with store.reading():
-            runs = await store.search_runs(10)
+            runs = await store.search_runs(10, broker_id)
             trials = await store.search_trials(int(runs[0]["id"])) if runs else []
         return {
             "runs": runs,
@@ -214,6 +229,7 @@ def register(app: FastAPI, ctx: AppContext) -> None:
         blocked = search_blocked()
         if blocked is not None:
             raise HTTPException(409, blocked)
+        await _broker(body.broker_id)
         async with write_txn():
             runs = await store.search_runs(1)
             if runs and runs[0]["status"] == "running":
@@ -226,7 +242,7 @@ def register(app: FastAPI, ctx: AppContext) -> None:
                 "seconds": float(body.minutes * 60),
             }
             run_id = await store.open_search_run(
-                by=principal.actor, seed=body.seed, budget=budget, at=now
+                by=principal.actor, seed=body.seed, budget=budget, at=now, broker_id=body.broker_id
             )
             await audit_row(
                 request,
@@ -235,9 +251,9 @@ def register(app: FastAPI, ctx: AppContext) -> None:
                 "ok",
                 object_type="search_run",
                 object_id=str(run_id),
-                details=budget,
+                details={**budget, "broker_id": body.broker_id},
             )
-        return {"run_id": run_id, "status": "running"}
+        return {"run_id": run_id, "status": "running", "broker_id": body.broker_id}
 
     @route.post("/api/search/stop")
     async def stop_search(
@@ -265,42 +281,48 @@ def register(app: FastAPI, ctx: AppContext) -> None:
     # -- the judge ---------------------------------------------------------------------------
 
     @route.get("/api/judge", dependencies=guarded)
-    async def get_judge(brief: bool = False) -> dict[str, Any]:
+    async def get_judge(brief: bool = False, broker_id: int = 1) -> dict[str, Any]:
         """The Judge screen: every member's measurements (**generated**), the slow loop's paired
         comparisons on this site's labels (**site**), and the two loops' counters (**live**).
 
         ``brief`` (v0.29.0) is the Overview's form: who decides, each member's ROC and the live
         shadow — a few KiB and no read of the site's labels, against ~240 KiB for the full body.
+
+        **One broker's** (ADR #495): its judge ranks the league on that network's labels alone.
         """
+        await _broker(broker_id)
+        lane = engine.lanes.of(broker_id)
         if brief:
             async with store.reading():
-                pinned_ref = await store.decider_pin()
-            league_members = engine.league_members
+                pinned_ref = await store.decider_pin(broker_id)
+            league_members = lane.league_members
             return {
-                **decider_payload(engine, pinned_ref),
+                **decider_payload(lane, pinned_ref),
+                "broker_id": broker_id,
                 "models": []
                 if league_members is None
                 else [brief_block(m) for m in league_members.members],
-                "shadow": finite(engine.league_shadow.snapshot()),
+                "shadow": finite(lane.league_shadow.snapshot()),
             }
         async with store.reading():
-            runs = await store.search_runs(10)
+            runs = await store.search_runs(10, broker_id)
             trials = await store.search_trials(int(runs[0]["id"])) if runs else []
-            pairs = await site_labels.label_pairs(store)
+            pairs = await site_labels.label_pairs(store, broker_id)
             features = await store.pair_features([int(p["pair_id"]) for p in pairs])
-            pinned = await store.decider_pin()
-            decisions = await store.league_decisions(20)
+            pinned = await store.decider_pin(broker_id)
+            decisions = await store.league_decisions(20, broker_id)
             proposals = await store.proposal_stats()
         rows = site.rows_from(pairs, features)
         _train, test = site.split_by_time(rows)
-        members = engine.league_members
-        latency = engine.latency_us
+        members = lane.league_members
+        latency = lane.latency_us
         return {
-            **decider_payload(engine, pinned),
+            **decider_payload(lane, pinned),
+            "broker_id": broker_id,
             "models": []
             if members is None
             else [member_block(m, latency.get(m.ref)) for m in members.members],
-            "judgement": finite(engine.league_view),
+            "judgement": finite(lane.league_view),
             "decisions": decisions,
             "site": finite(
                 {
@@ -313,6 +335,6 @@ def register(app: FastAPI, ctx: AppContext) -> None:
                     - sum(1 for p in pairs if int(p["pair_id"]) in features),
                 }
             ),
-            "shadow": finite(engine.league_shadow.snapshot()),
+            "shadow": finite(lane.league_shadow.snapshot()),
             "live": {"dataset": "live", **engine.monitor.snapshot()},
         }

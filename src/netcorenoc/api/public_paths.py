@@ -229,6 +229,14 @@ UNAUTHENTICATED_PATHS: frozenset[str] = frozenset(
         "/app/views/parts/custdocs.js",
         "/app/views/parts/circuits.js",
         "/app/views/parts/circuitedit.js",
+        # ADR #494: the brokers, and the work area's heading.
+        "/app/brokers.js",
+        "/app/heading.js",
+        "/app/views/brokers.js",
+        "/app/views/parts/brokerhome.js",
+        "/app/views/parts/brokerlearn.js",
+        "/app/views/parts/brokerpick.js",
+        "/app/views/parts/brokerwizard.js",
         "/login-bg.svg",
         # Vendored third-party assets, pinned by CHECKSUMS.txt.
         "/vendor/htm-3.1.1.module.js",

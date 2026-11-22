@@ -100,7 +100,7 @@ const LOOPS = [
   ["eye", "Shadow", "every trap", "Every other model scores the same pairs."],
   ["shield", "Open is protected", "always", "A model never changes it; additions wait in Pending."],
   ["promotion", "Slow loop", "every 5 min", "The judge re-ranks on your labels; it switches only on a clear win (95 %)."],
-  ["settings", "Pin", "admins", () => html`Fix one model in <a href="#/settings?tab=correlation">Settings → Models</a>.`],
+  ["settings", "Pin", "admins", () => html`Fix one model in this broker's <b>Learning → Models</b>.`],
 ];
 
 function WhoDecides({ judge }) {

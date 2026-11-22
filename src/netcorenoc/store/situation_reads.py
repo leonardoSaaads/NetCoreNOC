@@ -240,7 +240,7 @@ class SituationReadsMixin(GovernanceMixin, SituationEventMixin):
         # 24 ms, the same rows.
         head = (
             f"SELECT s.id, s.status, {self._lifecycle_columns}"  # nosec B608 - see above
-            "s.created_at, s.updated_at, s.root_alarm_id, "
+            "s.created_at, s.updated_at, s.root_alarm_id, s.broker_id, "
             "(SELECT COUNT(*) FROM situation_alarm sa WHERE sa.situation_id=s.id) AS alarm_count "
             "FROM situation s "
         )

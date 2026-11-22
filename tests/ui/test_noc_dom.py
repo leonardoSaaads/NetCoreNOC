@@ -59,7 +59,8 @@ async def test_the_top_bar_switches_planes_and_the_sidebar_follows(store: Store)
     broker = _render(tables["admin"], "#/overview")
     assert ".plane-switch" in broker["dump"] and ".plane-broker.plane-on" in broker["dump"]
     assert "Vault access" not in broker["navItems"] and "Situations" in broker["navItems"]
-    assert broker["navGroups"] == ["Operations", "Evidence", "Administer"]
+    # ADR #494: Brokers joined; the Evidence screens (Learning, Judge) moved inside each broker.
+    assert broker["navGroups"] == ["Operations", "Brokers", "Administer"]
     noc = _render(tables["admin"], "#/secrets")
     assert ".plane-noc.plane-on" in noc["dump"]
     # ADR #468: Paperclip's company sidebar — the work, the agents one by one, the NOC itself;

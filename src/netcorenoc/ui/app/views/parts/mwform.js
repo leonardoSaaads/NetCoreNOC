@@ -28,6 +28,7 @@
 
 import { html, Component } from "../../dom.js";
 import { get, post } from "../../api.js";
+import { brokerList, withBroker } from "../../brokers.js";
 import { ApiError } from "../../api.js";
 import { TIMEZONE, plural } from "../../format.js";
 import { can } from "../../session.js";
@@ -66,6 +67,8 @@ export class WindowForm extends Component {
       preview: null,
       busy: false,
       error: null,
+      // ADR #496: the broker the window is for — fixed inside a broker, chosen here otherwise.
+      brokerId: props.brokerId ?? (props.initial ? props.initial.broker_id : null) ?? null,
       // v0.22.0 (item 19): an edit opens on what was scheduled.
       ...(props.initial ? draftFrom(props.initial) : {}),
     };
@@ -73,7 +76,10 @@ export class WindowForm extends Component {
 
   async componentDidMount() {
     try {
-      const [orgs, entities] = await Promise.all([get("/api/organizations"), get("/api/entities")]);
+      const [orgs, entities] = await Promise.all([
+        get("/api/organizations"),
+        get(withBroker("/api/entities", this.state.brokerId)),
+      ]);
       this.setState({
         organizations: orgs.organizations || [],
         organizationId: this.props.initial
@@ -139,6 +145,7 @@ export class WindowForm extends Component {
         ? await post(`/api/maintenance-windows/${wid}`, this.body())
         : await post("/api/maintenance-windows", {
           ...this.body(), confirm: Boolean(this.state.confirmNow && can("mw.confirm")),
+          ...(this.state.brokerId ? { broker_id: Number(this.state.brokerId) } : {}),
         });
       this.props.onSaved(created);
     } catch (e) {
@@ -218,6 +225,31 @@ export class WindowForm extends Component {
     </section>`;
   }
 
+  /** ADR #496: a window for one broker covers that network's hosts only. Chosen when scheduling
+   *  from the general list; fixed inside a broker, and once the window exists. */
+  async pickBroker(value) {
+    const brokerId = value ? Number(value) : null;
+    this.setState({ brokerId, targets: [], rules: [], preview: null });
+    try {
+      this.setState({ hosts: normaliseHosts(await get(withBroker("/api/entities", brokerId))) });
+    } catch (e) {
+      this.setState({ error: e.message });
+    }
+  }
+
+  brokerField() {
+    const brokers = brokerList() || [];
+    if (this.props.brokerId || this.props.initial || brokers.length < 2) return null;
+    return html`<label>Broker
+      <select data-role="mw-broker" onChange=${(e) => this.pickBroker(e.target.value)}>
+        <option value="" selected=${!this.state.brokerId}>Not tied to one broker</option>
+        ${brokers.map((b) => html`<option key=${b.id} value=${b.id}
+          selected=${String(b.id) === String(this.state.brokerId)}>${b.name}</option>`)}
+      </select>
+      <span class="hint">A window for a broker lists and covers that network's hosts only.</span>
+    </label>`;
+  }
+
   whatAndWhere() {
     const s = this.state;
     const q = s.hostQuery.trim().toLowerCase();
@@ -248,6 +280,7 @@ export class WindowForm extends Component {
             </select>
           </label>`
         : null}
+      ${this.brokerField()}
       <label
         >Hosts
         <input

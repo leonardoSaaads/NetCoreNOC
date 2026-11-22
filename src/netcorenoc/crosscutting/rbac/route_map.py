@@ -20,6 +20,7 @@ from netcorenoc.crosscutting.rbac.account_map import (
     ACCOUNT_ROUTE_PERMISSIONS,
     ACCOUNT_ROUTE_SCOPE,
 )
+from netcorenoc.crosscutting.rbac.broker_map import BROKER_ROUTE_PERMISSIONS, BROKER_ROUTE_SCOPE
 from netcorenoc.crosscutting.rbac.noc_map import NOC_ROUTE_PERMISSIONS, NOC_ROUTE_SCOPE
 from netcorenoc.crosscutting.rbac.tables import PERMISSIONS
 
@@ -121,6 +122,7 @@ ROUTE_PERMISSIONS: dict[tuple[str, str], str] = {
     # without this route D1 is a column nobody can set. Not `label.write` — a rename is an
     # operator describing a thing, and this is a statement about who owns it.
     ("POST", "/api/entities/{ne_id}/organization"): "organizations.write",
+    **BROKER_ROUTE_PERMISSIONS,  # the brokers (ADR #494), with their prose (`broker_map.py`)
     ("GET", "/api/timezones"): "timezones.read",
     # v0.22.0 (ADR #380): the host's readings over a window. The same capability as the current
     # reading, which `/api/stats` has served to every role since v0.16.5.
@@ -185,6 +187,9 @@ PUBLIC_ROUTES: frozenset[tuple[str, str]] = frozenset(
         ("GET", "/api/login/options"),
         ("POST", "/api/password-reset"),
         ("POST", "/api/password-reset/confirm"),
+        # ADR #494: a remote proxy's door. No person or account calls it: the proxy's token is its
+        # identity, compared in constant time in the handler, and names exactly one broker.
+        ("POST", "/api/brokers/ingest"),
     }
 )
 
@@ -315,6 +320,7 @@ ROUTE_SCOPE: dict[tuple[str, str], Literal["scoped", "unscoped", "admin_only"]] 
     ("GET", "/api/organizations"): "unscoped",
     ("POST", "/api/organizations"): "admin_only",
     ("POST", "/api/entities/{ne_id}/organization"): "admin_only",
+    **BROKER_ROUTE_SCOPE,  # the brokers' postures, each with its reason (`broker_map.py`)
     # A property of the host's `tzdata`. Public information about a public database, naming no
     # element and no principal.
     ("GET", "/api/timezones"): "unscoped",

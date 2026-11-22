@@ -14,9 +14,10 @@ Three rules govern the whole of it:
 - **Fail closed, never fail open.** An unreadable scope policy shows viewers and editors *nothing*,
   never everything.
 
-⚠ **Scoping is a presentation control and is NOT tenant isolation.** Correlation still learns
-across every NE, and a situation may still form across a boundary a principal cannot see — it is
-then redacted, not prevented. See `docs/architecture/DESIGN.md` (v0.7.0) and `SCOPE-0.7.md`.
+⚠ **Scoping is a presentation control and is NOT tenant isolation.** Correlation learns per
+broker (ADR #495); within one it learns across every NE, and a situation may still form across a
+boundary a principal cannot see — it is then redacted, not prevented. See
+`docs/architecture/DESIGN.md` (v0.7.0) and `SCOPE-0.7.md`.
 
 **The F35 invariant lives here, with the code that depends on it** (v0.7.4, DECISIONS #95): no
 input to :func:`visible_nes` may be writable by a scopable role. The comment blocks on
@@ -145,12 +146,14 @@ def parse_scope_policy(document: str) -> ScopePolicy:
     return ScopePolicy(roles, principals)
 
 
-def _matches(selector: str, ne_id: int, ip: str | None) -> bool:
-    """Does one selector name this NE? **Identity and address only** (v0.7.1, F35).
+def _matches(selector: str, ne_id: int, ip: str | None, broker_id: int | None = None) -> bool:
+    """Does one selector name this NE? **Identity, broker and address only** (v0.7.1, F35).
 
-    Four forms, tried in order of specificity: ``ne:<id>``, an exact address, a CIDR, and a glob
-    over the address (``10.0.*``). An unparseable selector matches nothing — a typo hides NEs
-    rather than revealing them.
+    Five forms, tried in order of specificity: ``ne:<id>``, ``broker:<id>`` (every element of one
+    monitored network, ADR #496), an exact address, a CIDR, and a glob over the address
+    (``10.0.*``). An unparseable selector matches nothing — a typo hides NEs rather than revealing
+    them. An address selector matches that address **in every broker**: two customers may reuse
+    one range, and ``broker:<id>`` is how a policy names one of them.
 
     v0.7.0 also matched the glob against the **operator label**, and the operator label is written
     by ``POST /api/labels``, an `editor` route. That made the scoped role an author of its own
@@ -158,7 +161,8 @@ def _matches(selector: str, ne_id: int, ip: str | None) -> bool:
     ["core-*"]}`` widened the editor's own visibility. **Authorization must never read data the
     constrained party can write** — so the label is not read here, and not merely guarded at the
     one write path that reaches it today (DECISIONS #66). Every value this function sees is
-    engine-written: `ne.id` and `ne.ip` come from the trap stream and no API route can set them.
+    engine- or admin-written: `ne.id` and `ne.ip` come from the trap stream and no API route can
+    set them; `ne.broker_id` is the routing's answer, moved only by `brokers.write` (admin).
 
     The cost is deliberate and stated: a label glob in an existing policy now matches by address or
     not at all. :func:`scope_policy_errors` warns on a selector matching zero NEs so an admin finds
@@ -166,6 +170,8 @@ def _matches(selector: str, ne_id: int, ip: str | None) -> bool:
     """
     if selector.startswith("ne:"):
         return selector[3:].strip() == str(ne_id)
+    if selector.startswith("broker:"):
+        return broker_id is not None and selector[7:].strip() == str(broker_id)
     if ip:
         try:
             address = ipaddress.ip_address(ip)
@@ -240,10 +246,24 @@ def visible_nes(
     for ne in nes:
         ne_id = int(ne["id"])
         ip = ne.get("ip")
-        if any(_matches(selector, ne_id, ip) for selector in selectors):
+        broker_id = ne.get("broker_id")
+        broker = None if broker_id is None else int(broker_id)
+        if any(_matches(selector, ne_id, ip, broker) for selector in selectors):
             ne_ids.add(ne_id)
             if ip:
                 ips.add(str(ip))
+    return Scope(unrestricted=False, ne_ids=frozenset(ne_ids), ips=frozenset(ips))
+
+
+def within(scope: Scope, nes: list[dict[str, Any]]) -> Scope:
+    """`scope` narrowed to these elements — one broker's, for its own screens (ADR #496).
+
+    A **view, never a grant**: every element kept is one `scope` already allows, so the result can
+    only hide. It is what makes a broker's map, Timeline and Entities show that network alone,
+    through the same predicate every read path already applies to a person's visibility.
+    """
+    ne_ids = {int(ne["id"]) for ne in nes if scope.allows_ne(int(ne["id"]))}
+    ips = {str(ne["ip"]) for ne in nes if int(ne["id"]) in ne_ids and ne.get("ip")}
     return Scope(unrestricted=False, ne_ids=frozenset(ne_ids), ips=frozenset(ips))
 
 
@@ -265,6 +285,8 @@ def _can_never_match(selector: str) -> bool:
     Reporting it at write time is how an admin upgrading from v0.7.0 finds out (see `MIGRATION.md`)
     rather than discovering it from behaviour.
     """
+    if selector.startswith("broker:"):
+        return not selector[7:].strip().isdigit()  # a broker is named by its id, as on its page
     if selector.startswith("ne:"):
         return False
     literal = "".join(c for c in selector if c not in _GLOB_CHARS)
@@ -287,7 +309,8 @@ def scope_policy_errors(policy: ScopePolicy) -> list[str]:
                     f"selector {selector!r} for {subject!r} can never match a network element. "
                     "Since v0.7.1 a selector resolves against NE id and address only — never the "
                     "operator label, which the role being scoped can write (F35) — so a label glob "
-                    "selects nothing. Use an address, a CIDR, or 'ne:<id>' (see MIGRATION.md)."
+                    "selects nothing. Use an address, a CIDR, 'ne:<id>' or 'broker:<id>' (see "
+                    "MIGRATION.md)."
                 )
     for role in policy.roles:
         if role not in ROLE_RANK:

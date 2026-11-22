@@ -17,6 +17,7 @@
 
 import { html, Component, cx } from "../dom.js";
 import { get } from "../api.js";
+import { withBroker } from "../brokers.js";
 import { Empty, Loading, Failed, DataTable, SeverityMix } from "../widgets.js";
 import { MaintenanceMark } from "./parts/mwmarker.js";
 import { ElementDetail } from "./parts/nedetail.js";
@@ -75,7 +76,9 @@ export class Entities extends Component {
   }
 
   async read() {
-    try { this.setState({ data: await get("/api/inventory"), error: null }); }
+    try {
+      this.setState({ data: await get(withBroker("/api/inventory", this.props.brokerId)), error: null });
+    }
     catch (error) { this.setState({ error }); }
   }
 

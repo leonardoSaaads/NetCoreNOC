@@ -37,6 +37,7 @@
 
 import { Component, html } from "../../dom.js";
 import { get } from "../../api.js";
+import { withBroker } from "../../brokers.js";
 import { SectionMark } from "../../widgets.js";
 import { count, plural } from "../../format.js";
 import { can } from "../../session.js";
@@ -97,7 +98,8 @@ export class PlannedWork extends Component {
 
   async read() {
     try {
-      const body = await get(`/api/maintenance-windows?status=${LIVE}&limit=200`);
+      const body = await get(withBroker(`/api/maintenance-windows?status=${LIVE}&limit=200`,
+        this.props.brokerId));
       this.setState({ windows: body.windows || [], total: body.total || 0, error: null });
     } catch (error) {
       this.setState({ error: error.message || String(error) });

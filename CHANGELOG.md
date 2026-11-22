@@ -31,9 +31,11 @@ on a lab like the owner's found (#474-#476), the owner's adjustments (#477), age
 case with nothing typed (#478), the console's identity after Paperclip (#479), the case opened
 on request (#480), each customer's credentials and email (#481), **two-factor sign-in for every
 person** (#482), a first-run Overview in pictures (#483), Learning (#484), the Judge in tabs
-(#485), the audit log by filters (#486) and a local Ollama that works (#487). The schema is
-PostgreSQL's baseline, **migration 0031**, which includes SQLite's 0030, **0032** to **0045**
-(schema 45). See
+(#485), the audit log by filters (#486), a local Ollama that works (#487), routines (#492) and
+**brokers** — one appliance, many networks, each correlating, mapping and learning on its own, its
+traps arriving on its own port, through a remote proxy or by range (#494-#498). The schema is
+PostgreSQL's baseline, **migration 0031**, which includes SQLite's 0030, **0032** to **0047**
+(schema 47). See
 [`MIGRATION.md`](MIGRATION.md): the SQLite file is **imported once**, before the first start; the
 appliance is three processes and a spool on disk, and a container needs two CPUs. No grouping
 decision changes (`make eval` is byte-identical).
@@ -43,6 +45,28 @@ imports the file. Backups are `pg_dump` archives — and **the secret key file**
 data directory), without which sealed values and every password are unreadable (#453) — and **the
 secrets key file** (`secrets.key`; the image keeps it on a volume of its own), without which every
 stored device credential is unreadable (#455).
+
+### Added — brokers: one appliance, many networks (#494-#498)
+
+- **A broker is one monitored network, owned by one customer** — a customer may have several
+  (Claro's North-East and its South). An element is **(broker, address)**, so two customers'
+  private ranges may both hold 10.0.0.1. Everything from before is the **Default broker**'s, which
+  also takes every trap no other broker claims (#494).
+- **Three ways a trap reaches its broker**, chosen when it is added: its **own UDP port** on this
+  server (the default; repeated addresses allowed), a **remote proxy** in its network —
+  `python -m netcorenoc proxy`, which keeps traps on its own disk while its link is down and
+  forwards numbered, deduplicated batches over HTTPS with a token shown once — or its **ranges** on
+  the standard port, the longest prefix winning (#494).
+- **Each broker learns alone**: its own correlation window and grouping (no situation spans two
+  brokers), its learned affinities, its judge ranking the league on its own labels, its decider —
+  model A in one network, model B in another — and its site training. The trap catalogue stays
+  shared (#495).
+- **Screens per network**: under *Brokers*, each broker's Network graph, Timeline, Entities,
+  Maintenance and Learning show that network alone; the Overview chooses *All brokers* or one;
+  Situations filters by broker; Maintenance stays general with a broker filter and windows for one
+  broker. A visibility policy may name brokers (`broker:<id>`) (#496, #497).
+- Found by a soak of five networks and a 3 000-router core with storms: a broker's page lacked its
+  counts, and an *All brokers* answer arriving late overwrote the chosen broker's chart (#498).
 
 ### Added — phase 2 begins: the NOC plane and its credential vault (#454-#458)
 

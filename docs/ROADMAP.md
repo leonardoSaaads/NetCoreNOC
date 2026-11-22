@@ -42,12 +42,11 @@ rest is at `3ecf237` ([`record.md`](record.md)).
 - **Answering INFORMs** (v2c and v3). An inform is quarantined as `not-a-trap-pdu` because a
   response is I/O on the datagram path; answering one needs a design that keeps that path free.
 - **Real per-organization isolation.** v0.21.0 gives every network element an **organization**, and
-  [`security.md`](security.md) says in capitals that it is **not tenant isolation** (#366):
-  correlation still learns across every element, a situation may still form across the boundary,
-  and no authorization decision reads the column. Making it real is three
-  separate pieces of work, each of which changes what the product *is*: correlation that does not
-  cross organizations, learned affinities held per organization, and RBAC bound to one. None is
-  scheduled, and the appliance says so rather than implying otherwise — `GET /api/organizations`
+  [`security.md`](security.md) says in capitals that it is **not tenant isolation** (#366). Two of
+  the three pieces it needed now exist per **broker** (ADRs #494-#496): correlation that does not
+  cross brokers, learned affinities and models held per broker, and visibility that may name
+  brokers. What is left is RBAC bound to a customer — a role that is a customer's by construction
+  rather than by a visibility policy — and the appliance says so rather than implying otherwise — `GET /api/organizations`
   returns `"isolation": false` in its own body.
 - **Export to ticketing systems** — phase 3 of the three-phase design ([`architecture.md`](architecture.md)).
 - **Automatic MIB enrichment** — readable names without any user obligation.

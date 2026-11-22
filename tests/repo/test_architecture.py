@@ -557,6 +557,13 @@ ROUTE_ORDER_BASELINE: list[tuple[str, str]] = [
     ("GET", "/app/views/parts/custdocs.js"),
     ("GET", "/app/views/parts/circuits.js"),
     ("GET", "/app/views/parts/circuitedit.js"),
+    ("GET", "/app/brokers.js"),
+    ("GET", "/app/heading.js"),
+    ("GET", "/app/views/brokers.js"),
+    ("GET", "/app/views/parts/brokerhome.js"),
+    ("GET", "/app/views/parts/brokerlearn.js"),
+    ("GET", "/app/views/parts/brokerpick.js"),
+    ("GET", "/app/views/parts/brokerwizard.js"),
     ("GET", "/vendor/preact-10.29.8.module.js"),
     ("GET", "/vendor/htm-3.1.1.module.js"),
     ("GET", "/style.css"),
@@ -769,6 +776,14 @@ ROUTE_ORDER_BASELINE: list[tuple[str, str]] = [
     ("GET", "/api/noc/customers/{customer_id}/mail"),
     ("POST", "/api/noc/customers/{customer_id}/mail"),
     ("POST", "/api/noc/customers/{customer_id}/mail/test"),
+    ("POST", "/api/brokers/ingest"),
+    ("GET", "/api/brokers"),
+    ("GET", "/api/brokers/{broker_id}"),
+    ("POST", "/api/brokers"),
+    ("POST", "/api/brokers/{broker_id}"),
+    ("POST", "/api/brokers/{broker_id}/token"),
+    ("DELETE", "/api/brokers/{broker_id}"),
+    ("POST", "/api/elements/{ne_id}/broker"),
     ("POST", "/api/mcp"),
 ]
 
@@ -1551,8 +1566,8 @@ def test_the_queue_put_on_the_hot_path_is_non_blocking() -> None:
 #: `engine/noc/` `commands`, `executor`, `playbook` and `runbook`, `store/noc_playbooks.py`,
 #: migration `0035_noc_automation.sql`, the `noc_exec` and `playbooks` routes, and the
 #: `views/playbooks` console module.
-SRC_TREE_DIGEST = "70f35f2507ddd5cdb6918240d9a38fd2297f870d0c8162a2f769f6cf4bf5b0d9"
-SRC_FILE_COUNT = 535
+SRC_TREE_DIGEST = "ac9eb7876cd751ca2fcfe1552dfff68f78f1e432116b82f2353667555c5d8d7d"
+SRC_FILE_COUNT = 554
 SRC_VERSION_FILE = "src/netcorenoc/__init__.py"
 
 

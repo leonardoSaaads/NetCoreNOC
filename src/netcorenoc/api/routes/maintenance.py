@@ -75,9 +75,13 @@ def register(app: FastAPI, ctx: AppContext) -> None:
         until: float | None = Query(default=None),
         limit: int = Query(default=DEFAULT_LIMIT, ge=1, le=MAX_WINDOW_LIMIT),
         offset: int = Query(default=0, ge=0),
+        broker_id: int | None = Query(default=None),
         principal: auth.Principal = Depends(security),
     ) -> dict[str, Any]:
         """The upcoming list (D7), and every other filtered view of it.
+
+        `broker_id` keeps one broker's planned work (ADR #496): the windows created for it and the
+        windows over its elements. The tab stays general; the filter is how a broker reads it.
 
         `limit` serves D7's 5 / 10 / 20 and is bounded by the store rather than trusted. The
         response carries `total` so the console can say *"showing 5 of 23"* honestly rather than
@@ -102,6 +106,7 @@ def register(app: FastAPI, ctx: AppContext) -> None:
             "since": since,
             "until": until,
             "scope_ne_ids": scope_ne_ids,
+            "broker_id": broker_id,
         }
         rows = await store.list_maintenance_windows(**filters, limit=limit, offset=offset)
         scope = await ctx.scope_for(principal)
@@ -159,7 +164,11 @@ def register(app: FastAPI, ctx: AppContext) -> None:
                 detail=f"organization_id {organization_id} does not exist; "
                 "GET /api/organizations lists them",
             )
-        targets = await access.permitted_targets(body.targets, principal)
+        if body.broker_id is not None and await store.broker(body.broker_id) is None:
+            raise HTTPException(
+                status_code=422, detail=f"broker_id {body.broker_id} does not exist"
+            )
+        targets = await access.permitted_targets(body.targets, principal, body.broker_id)
         needs = needs_confirmation(body.starts_at, body.ends_at)
         confirm_now = needs and body.confirm
         if confirm_now and (
@@ -188,6 +197,7 @@ def register(app: FastAPI, ctx: AppContext) -> None:
             needs_confirmation=needs,
             status="pending_confirmation" if needs else initial_status(body.starts_at, now),
             idempotency_key=body.idempotency_key,
+            broker_id=body.broker_id,
         )
         async with write_txn():
             window_id = await store.create_maintenance_window(draft, now)
@@ -284,7 +294,7 @@ def register(app: FastAPI, ctx: AppContext) -> None:
                 status_code=409,
                 detail=f"this window has {window['status']}; reload the card",
             )
-        targets = await access.permitted_targets(body.targets, principal)
+        targets = await access.permitted_targets(body.targets, principal, window["broker_id"])
         rules = [rule.as_row() for rule in body.rules if rule.ne_id in set(targets)]
         now = time.time()
         async with store.reading():

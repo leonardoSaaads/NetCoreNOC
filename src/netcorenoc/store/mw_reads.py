@@ -45,6 +45,7 @@ def _window_filters(
     since: float | None = None,
     until: float | None = None,
     scope_ne_ids: frozenset[int] | None = None,
+    broker_id: int | None = None,
 ) -> tuple[str, list[Any]]:
     """The WHERE clause the list and the count **both** run, and its bound arguments.
 
@@ -79,6 +80,13 @@ def _window_filters(
             "WHERE t.window_id = w.id AND t.ne_id = ?)"
         )
         args.append(ne_id)
+    if broker_id is not None:
+        # ADR #496: a broker's windows — those created for it, and those over its elements.
+        where.append(
+            "(w.broker_id = ? OR EXISTS (SELECT 1 FROM maintenance_window_target t "
+            "JOIN ne n ON n.id = t.ne_id WHERE t.window_id = w.id AND n.broker_id = ?))"
+        )
+        args.extend((broker_id, broker_id))
     if scope_ne_ids is not None and len(scope_ne_ids) <= MAX_SCOPE_PARAMS:
         # **A window naming nothing is visible to everybody**, which is why the first half of this
         # disjunction is here: an estate-wide window with no target rows belongs to no element and
@@ -104,6 +112,7 @@ class MaintenanceReadMixin(StoreBase):
         since: float | None = None,
         until: float | None = None,
         scope_ne_ids: frozenset[int] | None = None,
+        broker_id: int | None = None,
         limit: int = 20,
         offset: int = 0,
     ) -> list[dict[str, Any]]:
@@ -131,6 +140,7 @@ class MaintenanceReadMixin(StoreBase):
             since=since,
             until=until,
             scope_ne_ids=scope_ne_ids,
+            broker_id=broker_id,
         )
         cur = await self.conn.execute(
             "SELECT w.*, (SELECT COUNT(*) FROM maintenance_window_target t "  # nosec B608
@@ -151,6 +161,7 @@ class MaintenanceReadMixin(StoreBase):
         since: float | None = None,
         until: float | None = None,
         scope_ne_ids: frozenset[int] | None = None,
+        broker_id: int | None = None,
     ) -> int:
         """The total behind a page, so the console can say *"showing 5 of 23"* honestly.
 
@@ -167,6 +178,7 @@ class MaintenanceReadMixin(StoreBase):
             since=since,
             until=until,
             scope_ne_ids=scope_ne_ids,
+            broker_id=broker_id,
         )
         if scope_ne_ids is not None and len(scope_ne_ids) > MAX_SCOPE_PARAMS:
             return await self._count_windows_over_a_huge_scope(clause, args, scope_ne_ids)
@@ -384,4 +396,5 @@ def _row(row: Any) -> dict[str, Any]:
         "cancelled_at": row["cancelled_at"],
         "ended_at": row["ended_at"],
         "target_count": int(row["target_count"]),
+        "broker_id": None if row["broker_id"] is None else int(row["broker_id"]),
     }
