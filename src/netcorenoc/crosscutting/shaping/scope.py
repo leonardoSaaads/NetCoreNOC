@@ -63,11 +63,10 @@ class Scope:
     then runs its unmodified v0.6.0 query, so an appliance with no policy pays nothing for this
     feature.
 
-    Both ``ne_ids`` and ``ips`` are carried because the two things being filtered are keyed
-    differently: alarms and entities reference ``ne_id``, while the graph is a projection of the
-    ``device`` table joined to ``ne`` by address. Matching on address rather than assuming the two
-    tables' ids coincide keeps the filter correct through the open ``device_id`` → ``ne_id``
-    cutover.
+    Everything is filtered by ``ne_ids``: an element is (broker, address), so an address names an
+    element only within a broker (ADR #494), and the graph filters its nodes by element id too.
+    ``ips`` is kept for the one count keyed on a source address — the quarantine's, whose rows were
+    refused before any element existed.
     """
 
     unrestricted: bool
@@ -78,11 +77,6 @@ class Scope:
         if self.unrestricted:
             return True
         return ne_id is not None and ne_id in self.ne_ids
-
-    def allows_ip(self, ip: str | None) -> bool:
-        if self.unrestricted:
-            return True
-        return ip is not None and ip in self.ips
 
 
 UNRESTRICTED = Scope(unrestricted=True)

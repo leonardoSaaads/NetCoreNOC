@@ -257,7 +257,8 @@ class ReadModelsMixin(ClassRuleMixin):
         )
         nodes = [dict(r) for r in await cur.fetchall()]
         cur = await self.conn.execute(
-            "SELECT a_id, b_id, weight, n FROM edge WHERE kind='device' AND n>=? AND weight>0 "
+            # nosec B608 - two literals; the broker is a bound parameter, never part of the text
+            "SELECT a_id, b_id, weight, n FROM edge WHERE kind='device' AND n>=? AND weight>0 "  # nosec B608
             + ("AND broker_id=? " if broker_id is not None else "")
             + "ORDER BY a_id, b_id",
             (min_edge_n, *args),

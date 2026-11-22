@@ -37,7 +37,7 @@ from netcorenoc.crosscutting.settings import Settings
 from netcorenoc.engine.operate import routing
 
 #: Marks a proxy token in a configuration file or a leaked log line, as `ncn_` marks an API token.
-TOKEN_PREFIX = "ncp_"
+TOKEN_PREFIX = "ncp_"  # nosec B105 - a marker in front of a random token, not a credential
 #: A proxy that sent nothing for this long is reported silent: it forwards while traps flow and says
 #: it is alive every minute when they do not, keeping them on its own disk while its link is down.
 PROXY_SILENT_S = 180.0  # three of its heartbeats (`ingest/forwarder.HEARTBEAT_S`)

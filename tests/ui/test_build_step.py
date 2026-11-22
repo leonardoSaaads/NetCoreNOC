@@ -363,7 +363,7 @@ def test_the_ui_is_still_loaded_directly_by_the_browser() -> None:
 #: by a release that added three scorer kinds — which is the property this table exists to make
 #: visible at a glance rather than to be argued.
 UI_HASHES: dict[str, str] = {
-    "app.js": "a102a1a0a6ec17334f415dff2afde1f6db97b17c9d86968f212055b80e660ca2",
+    "app.js": "8870c9345ea82cd79ea6770f42f8966a06f285a0d42e6cce6e2b022a7e1c3f90",
     "app/api.js": "db042593c344a37f646c3ab5df2c1a8b2abbae18d06bf0b2ffce789406d9ed1a",
     "app/avatar.js": "259c4a7bc6d13140d8e7629a053d55d796e2accf54acac141935c82204ddced6",
     "app/brands.js": "18305d389a88d002f6e40b289078f03563cd9071c889af4572b3f489087348df",
@@ -691,7 +691,7 @@ UI_HASHES: dict[str, str] = {
 #: Byte sizes, recorded beside the hashes because a size is the figure a reader can check by eye.
 #: `app.js` went from **52 738 bytes in one file** to an entry point plus 36 modules.
 UI_SIZES: dict[str, int] = {
-    "app.js": 5_976,
+    "app.js": 5_594,
     "app/api.js": 5_405,
     "app/avatar.js": 7_309,
     "app/brands.js": 15_476,

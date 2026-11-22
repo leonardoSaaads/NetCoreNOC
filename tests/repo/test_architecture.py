@@ -917,8 +917,11 @@ async def test_the_api_route_order_is_unchanged_by_the_ui_rewrite(store: Store) 
     # concrete segment below `/api/audit`); ADR #487: +2 (Ollama's detect, a model's try) — 200.
     # ADR #489: +1 (`/api/situations/{sid}/related`, a concrete segment below a situation's id,
     # shadowing nothing) — 201. ADR #492: +1 (`POST …/playbooks/{playbook_id}/run`, a concrete
-    # segment below a routine's id, shadowing nothing) — 202.
-    assert len(live) == 202, (
+    # segment below a routine's id, shadowing nothing) — 202. ADR #494: +8 (the brokers: the list,
+    # one broker, its token, the proxy's door, an element's move), one able to shadow another and
+    # ordered against it: `POST /api/brokers/ingest` is registered before `POST …/{broker_id}`,
+    # which would otherwise take `ingest` as an id and refuse it (the baseline pins that) — 210.
+    assert len(live) == 210, (
         f"the /api surface is {len(live)} pairs; v0.16.0 adds exactly five, v0.16.2 exactly one, "
         f"v0.16.3 exactly one, v0.16.5 exactly one — `POST /api/alarms/clear` — v0.18.0 exactly "
         f"one, `GET /api/correlation`, and v0.21.0 exactly thirteen for maintenance windows, "
@@ -1566,7 +1569,7 @@ def test_the_queue_put_on_the_hot_path_is_non_blocking() -> None:
 #: `engine/noc/` `commands`, `executor`, `playbook` and `runbook`, `store/noc_playbooks.py`,
 #: migration `0035_noc_automation.sql`, the `noc_exec` and `playbooks` routes, and the
 #: `views/playbooks` console module.
-SRC_TREE_DIGEST = "ac9eb7876cd751ca2fcfe1552dfff68f78f1e432116b82f2353667555c5d8d7d"
+SRC_TREE_DIGEST = "8d2a89b77ad047cd4abe82575971494fc453e88b2c83824456e1527bd9766a94"
 SRC_FILE_COUNT = 554
 SRC_VERSION_FILE = "src/netcorenoc/__init__.py"
 
