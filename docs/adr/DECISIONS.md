@@ -7515,3 +7515,23 @@ From this release an entry is about six lines: decision, reason, release.*
   (below editor) sees "No case yet" instead of the panels.
 - **Reason**: the same first case ends the panels for everyone (ADR #491), so the screen never
   shows a set-up checklist and live counts together.
+
+## 503. Maintenance opens on a board of every broker's planned work (unreleased)
+
+- **Context**: the Maintenance tab holds every broker's windows (ADR #496) but showed one list of
+  the next 5, 10 or 20: nothing said how much planned work there is, where, or whether any of it
+  needs someone now. The owner asked for an overview, with more detail, that still lets a window be
+  made for one broker.
+- **Decision**: the screen opens on a **board** above the list: four tiles — what runs now and over
+  how many hosts, what starts in the next 24 hours (and the week), what waits for a confirmation
+  and when the first one lapses, what the last 7 days ended with (and how many expired
+  unconfirmed); **by broker**, one row per network with its own **Schedule**, which opens the form
+  fixed to that broker; and **the next seven days** as one bar per window with a line at now.
+  Inside a broker, the same board for that broker alone. The list below is D7's, unchanged.
+- **Decision**: the board reads the list route the rows read — every live window by status, and
+  what ended or expired since a week ago (on the hour) — so no route is added, a viewer sees a
+  redacted window's existence and timing as on the rows, and a failed read is a dash and a line,
+  never a screen that does not load (the list is read on its own).
+- **Reason**: the counts a lead acts on — something running, something to confirm before it
+  lapses, two windows on one network the same night — are seen before the list is read.
+

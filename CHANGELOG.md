@@ -47,6 +47,13 @@ data directory), without which sealed values and every password are unreadable (
 secrets key file** (`secrets.key`; the image keeps it on a volume of its own), without which every
 stored device credential is unreadable (#455).
 
+### Added — Maintenance opens on a board of every broker's planned work (#503)
+
+- **Broker → Maintenance**: *Running now* (and the hosts under maintenance), *Next 24 hours*, *To
+  confirm* (and when the first lapses), *Last 7 days*; a row per broker with its own **Schedule**,
+  which opens the form for that broker; and the next seven days as bars. Inside a broker, the same
+  board for that network. No new route: the board reads the list route the rows read (#503).
+
 ### Added — routines on each customer's page, and every version a routine had (#501, #502)
 
 - **Customers → Routines**, beside Instructions, Workbook, Additional docs, Circuits, Access and

@@ -479,6 +479,7 @@ ROUTE_ORDER_BASELINE: list[tuple[str, str]] = [
     ("GET", "/app/views/parts/oidtree.js"),
     ("GET", "/app/views/parts/importbox.js"),
     ("GET", "/app/views/parts/mwdetail.js"),
+    ("GET", "/app/views/parts/mwboard.js"),
     ("GET", "/app/stack.js"),
     ("GET", "/app/views/parts/sitsummary.js"),
     ("GET", "/app/views/parts/topassets.js"),
@@ -1580,8 +1581,8 @@ def test_the_queue_put_on_the_hot_path_is_non_blocking() -> None:
 #: `engine/noc/` `commands`, `executor`, `playbook` and `runbook`, `store/noc_playbooks.py`,
 #: migration `0035_noc_automation.sql`, the `noc_exec` and `playbooks` routes, and the
 #: `views/playbooks` console module.
-SRC_TREE_DIGEST = "d1185007724a0107a1dd371ef6ec1edbf8137b072eabb114557a650cd3e8eae4"
-SRC_FILE_COUNT = 563
+SRC_TREE_DIGEST = "b778c250cce6173d651fc672a95bd70923991e55afacaa0c3853671aad9de591"
+SRC_FILE_COUNT = 564
 SRC_VERSION_FILE = "src/netcorenoc/__init__.py"
 
 

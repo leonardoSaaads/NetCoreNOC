@@ -1,4 +1,11 @@
-/* Planned work: the upcoming list (D7) and the form that declares one (D8).
+/* Planned work: the board (ADR #503), the upcoming list (D7) and the form that declares one (D8).
+ *
+ * ## The board, then the list
+ *
+ * ADR #503: the general tab holds every broker's planned work, so it opens on the board — what is
+ * running and over how many hosts, what starts in a day and a week, what waits for a confirmation,
+ * each broker's share with its own *Schedule*, and the next seven days as bars
+ * (`parts/mwboard.js`). The list below it is D7's, unchanged.
  *
  * ## The list is the screen; the form is a thing you open
  *
@@ -29,6 +36,7 @@ import { can } from "../session.js";
 import { WindowForm } from "./parts/mwform.js";
 import { humanise } from "./parts/mwdraft.js";
 import { WindowDetail } from "./parts/mwdetail.js";
+import { MaintenanceBoard } from "./parts/mwboard.js";
 
 /* D7's three sizes. */
 const SIZES = [5, 10, 20];
@@ -61,12 +69,25 @@ export class Maintenance extends Loader {
     this.what = "planned maintenance";
     this.loadingLabel = "Reading planned maintenance";
     this.state = { ...this.state, limit: 5, creating: false, busy: null, open: null, editing: null,
-                   failed: null };
+                   failed: null, creatingFor: null };
   }
 
   async load() {
-    return get(withBroker(`/api/maintenance-windows?limit=${this.state.limit}`, this.broker()));
+    // ADR #503: the board reads every live window (a stable path), and what ended or expired in
+    // the last week (`since` on the hour); either may fail without costing the list below.
+    const broker = this.broker();
+    const since = Math.floor((Date.now() / 1000 - 7 * 86400) / 3600) * 3600;
+    const quiet = (path) => get(withBroker(path, broker)).catch(() => null);
+    const [list, live, recent] = await Promise.all([
+      get(withBroker(`/api/maintenance-windows?limit=${this.state.limit}`, broker)),
+      quiet("/api/maintenance-windows?status=pending_confirmation,scheduled,active&limit=200"),
+      quiet(`/api/maintenance-windows?status=ended,expired&since=${since}&limit=200`),
+    ]);
+    return { ...list, board: { live, recent } };
   }
+
+  /** ADR #503: *Schedule* on a broker's row opens the form for that broker. */
+  scheduleFor(brokerId) { this.setState({ creating: true, creatingFor: brokerId }); }
 
   /** ADR #496: inside a broker, its windows; on the general tab, the broker the filter names. */
   broker() {
@@ -149,18 +170,23 @@ export class Maintenance extends Loader {
       </div>`;
     }
     if (this.state.creating) {
+      const forBroker = this.state.creatingFor || this.broker();
+      const done = () => this.setState({ creating: false, creatingFor: null });
       return html`<div>
         <div class="mw-formhead">
-          <${SectionHeading} title="New maintenance window" />
-          <button type="button" data-role="mw-cancel-form"
-            onClick=${() => this.setState({ creating: false })}>Cancel</button>
+          <${SectionHeading} title=${forBroker && !this.props.brokerId
+            ? `New maintenance window — ${brokerName(forBroker)}` : "New maintenance window"} />
+          <button type="button" data-role="mw-cancel-form" onClick=${done}>Cancel</button>
         </div>
-        <${WindowForm} brokerId=${this.broker()}
-          onSaved=${() => this.setState({ creating: false }, () => this.reload())}
-        />
+        <${WindowForm} brokerId=${forBroker} onSaved=${() => { done(); this.reload(); }} />
       </div>`;
     }
+    const board = body.board || {};
     return html`<div>
+      <${MaintenanceBoard} live=${board.live} recent=${board.recent} now=${body.now}
+        brokers=${brokerList()} inBroker=${Boolean(this.props.brokerId || this.broker())}
+        onBroker=${(id) => this.filter(id)} onSchedule=${editable ? (id) => this.scheduleFor(id) : null} />
+      <${SectionHeading} title="Upcoming" icon="maintenance" />
       <div class="mw-head">
         ${editable
           ? html`<button

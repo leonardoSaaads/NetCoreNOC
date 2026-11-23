@@ -139,6 +139,7 @@ UNAUTHENTICATED_PATHS: frozenset[str] = frozenset(
         "/app/views/parts/oidtree.js",
         "/app/views/parts/importbox.js",
         "/app/views/parts/mwdetail.js",
+        "/app/views/parts/mwboard.js",
         "/app/stack.js",
         "/app/views/parts/sitsummary.js",
         "/app/views/parts/topassets.js",

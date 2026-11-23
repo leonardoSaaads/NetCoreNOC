@@ -735,7 +735,8 @@ async def test_f43_every_path_served_today_still_registers(store: Store) -> None
     # …/email/draft` (two /api pairs) and the editor (`parts/caseemail.js`).
     # Unreleased: 382 -> 384 and 213 -> 214 — an earlier version of a routine (ADR #501) and a
     # customer's Routines tab (`parts/custroutines.js`).
-    assert len(served) == 384, f"the served surface moved: {len(served)} method/path pairs"
+    # Unreleased: 384 -> 385 and 214 -> 214 — the maintenance board (`parts/mwboard.js`, ADR #503)
+    assert len(served) == 385, f"the served surface moved: {len(served)} method/path pairs"
     api_pairs = {(method, path) for method, path in served if path.startswith("/api")}
     # **v0.19.0: 53 -> 55.** `GET /api/models` and `POST /api/models/register`: what the
     # models are doing, and turning one of this appliance's own fits into an artefact.
@@ -948,7 +949,8 @@ async def test_f42_every_path_served_today_still_registers(store: Store) -> None
     # …/email/draft` (two /api pairs) and the editor (`parts/caseemail.js`).
     # Unreleased: 382 -> 384 and 213 -> 214 — an earlier version of a routine (ADR #501) and a
     # customer's Routines tab (`parts/custroutines.js`).
-    assert len(served) == 384, f"the served surface moved: {len(served)} method/path pairs"
+    # Unreleased: 384 -> 385 and 214 -> 214 — the maintenance board (`parts/mwboard.js`, ADR #503)
+    assert len(served) == 385, f"the served surface moved: {len(served)} method/path pairs"
     api_pairs = {(method, path) for method, path in served if path.startswith("/api")}
     # **v0.19.0: 53 -> 55.** `GET /api/models` and `POST /api/models/register`: what the
     # models are doing, and turning one of this appliance's own fits into an artefact.

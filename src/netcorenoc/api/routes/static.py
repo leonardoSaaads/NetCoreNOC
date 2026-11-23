@@ -178,6 +178,7 @@ _UI_MODULES = (
     "app/views/parts/oidtree.js",
     "app/views/parts/importbox.js",
     "app/views/parts/mwdetail.js",
+    "app/views/parts/mwboard.js",  # ADR #503
     "app/stack.js",
     "app/views/parts/sitsummary.js",
     "app/views/parts/topassets.js",

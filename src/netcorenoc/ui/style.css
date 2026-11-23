@@ -2202,6 +2202,48 @@ p.verdict {
 }
 /* The list-size control. `5 10 20` says nothing on its own, so the group is labelled and the
    buttons are spaced — `51020` was a number, not three choices. */
+/* ADR #503: Planned work at a glance — tiles, each broker's share, and the week as bars. */
+.mwb { display: grid; gap: var(--space-4); margin-bottom: var(--space-5); }
+.mwb-tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(13rem, 1fr)); gap: var(--space-3); }
+.mwb-tile {
+  display: grid; gap: 4px; padding: var(--space-3) var(--space-4); border: 1px solid var(--line);
+  border-radius: var(--radius-2); background: var(--bg-raised);
+}
+.mwb-tile-head { display: inline-flex; align-items: center; gap: 6px; font-size: var(--fs-sm); color: var(--fg-muted); }
+.mwb-num { font-size: var(--fs-xl); font-variant-numeric: tabular-nums; line-height: 1.1; }
+.mwb-note { font-size: var(--fs-xs); color: var(--fg-dim); }
+.mwb-tile-on { border-color: color-mix(in srgb, var(--accent) 55%, var(--line)); }
+.mwb-tile-on .mwb-num { color: var(--accent); }
+.mwb-tile-warn { border-color: color-mix(in srgb, var(--warn) 55%, var(--line)); }
+.mwb-tile-warn .mwb-num { color: var(--warn); }
+.mwb-tile-bad .mwb-note { color: var(--alarm); }
+.mwb-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: var(--space-3); align-items: start; }
+.mwb-grid-one { grid-template-columns: minmax(0, 1fr); }
+.mwb-brokers h3, .mwb-week h3 { margin-top: 0; }
+.mwb-on { color: var(--accent); font-weight: 600; }
+.mwb-warn { color: var(--warn); font-weight: 600; }
+.mwb-act { text-align: right; white-space: nowrap; }
+.mwb-act > button { min-height: 0; padding: 2px var(--space-2); font-size: var(--fs-sm); }
+.mwb-brokers thead th, .mwb-brokers th[scope="row"] { white-space: nowrap; }
+.mwb-brokers th[scope="row"] > .linkish { text-align: left; }
+.mwb-gantt { display: grid; gap: 6px; }
+.mwb-days, .mwb-gantt-row { display: grid; grid-template-columns: minmax(7rem, 12rem) minmax(0, 1fr); gap: var(--space-2); align-items: center; }
+.mwb-day-row { display: grid; grid-template-columns: repeat(7, 1fr); }
+.mwb-day { font-size: var(--fs-xs); color: var(--fg-dim); border-left: 1px solid var(--line); padding-left: 4px; }
+.mwb-gantt-label { display: grid; font-size: var(--fs-sm); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mwb-gantt-label small { font-size: var(--fs-xs); }
+.mwb-track {
+  position: relative; height: 18px; border-radius: var(--radius-1);
+  background: repeating-linear-gradient(90deg, var(--bg-sunken) 0 calc(100% / 7 - 1px), var(--line) calc(100% / 7 - 1px) calc(100% / 7));
+}
+.mwb-bar { position: absolute; top: 3px; bottom: 3px; min-width: 4px; border-radius: 3px; background: var(--m0); }
+.mwb-bar-active { background: var(--accent); }
+.mwb-bar-pending_confirmation { background: var(--warn); }
+.mwb-bar-scheduled { background: var(--m0); }
+.mwb-now { position: absolute; top: 0; bottom: 0; width: 2px; background: var(--alarm); z-index: 1; }
+@media (max-width: 900px) {
+  .mwb-grid { grid-template-columns: minmax(0, 1fr); }
+}
 .mw-sizes { display: flex; align-items: center; gap: var(--space-1); margin-left: auto; }
 .mw-sizes::before {
   content: "Show next"; margin-right: var(--space-2);
