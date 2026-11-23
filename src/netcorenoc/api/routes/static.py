@@ -230,6 +230,7 @@ _UI_MODULES = (
     "app/views/parts/caseform.js",
     "app/views/parts/caseacts.js",
     "app/views/parts/casefeed.js",
+    "app/views/parts/caseemail.js",  # ADR #500: email from the feed
     "app/views/parts/casedetail.js",
     "app/views/routines.js",  # ADR #492: formerly playbooks.js
     # ADR #468: the NOC's agents and its organization (Paperclip's), the sidebar's roster, and a

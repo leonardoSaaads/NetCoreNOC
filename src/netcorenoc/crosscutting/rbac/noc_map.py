@@ -59,6 +59,8 @@ NOC_ROUTE_PERMISSIONS: dict[tuple[str, str], str] = {
     ("GET", "/api/noc/cases/{sid}/feed"): "cases.read",
     ("POST", "/api/noc/cases/{sid}/feed"): "cases.post",
     ("POST", "/api/noc/cases/{sid}/customer-update"): "cases.work",
+    ("POST", "/api/noc/cases/{sid}/email"): "cases.work",  # ADR #500
+    ("GET", "/api/noc/cases/{sid}/email/draft"): "cases.work",
     ("GET", "/api/noc/people"): "cases.work",
     # -- the executor and playbooks (ADRs #462, #463) --
     # An act on a device is a use of a lease; the handler checks the lease as introspection does.
@@ -171,6 +173,8 @@ NOC_ROUTE_SCOPE: dict[tuple[str, str], Literal["scoped", "unscoped", "admin_only
     ("GET", "/api/noc/cases/{sid}/feed"): "scoped",
     ("POST", "/api/noc/cases/{sid}/feed"): "scoped",
     ("POST", "/api/noc/cases/{sid}/customer-update"): "scoped",
+    ("POST", "/api/noc/cases/{sid}/email"): "scoped",
+    ("GET", "/api/noc/cases/{sid}/email/draft"): "scoped",
     # The accounts a `specified` post may name: people, not elements; every scope reads the same.
     ("GET", "/api/noc/people"): "unscoped",
     # Acting on a device with a lease: decided by the lease, its agent grant and the credential's

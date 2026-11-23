@@ -731,11 +731,13 @@ async def test_f43_every_path_served_today_still_registers(store: Store) -> None
     # (eight /api pairs), and seven console modules (the brokers, their screens, the heading).
     # Unreleased: 377 -> 379 and 210 -> 211 — one person's customers (ADR #499): `POST
     # /api/scope/subject` (one /api pair) and its console module (`parts/custscope.js`).
-    assert len(served) == 379, f"the served surface moved: {len(served)} method/path pairs"
+    # Unreleased: 379 -> 382 and 211 -> 213 — a case's email (ADR #500): `POST …/email` and `GET
+    # …/email/draft` (two /api pairs) and the editor (`parts/caseemail.js`).
+    assert len(served) == 382, f"the served surface moved: {len(served)} method/path pairs"
     api_pairs = {(method, path) for method, path in served if path.startswith("/api")}
     # **v0.19.0: 53 -> 55.** `GET /api/models` and `POST /api/models/register`: what the
     # models are doing, and turning one of this appliance's own fits into an artefact.
-    assert len(api_pairs) == 211, (
+    assert len(api_pairs) == 213, (
         f"the /api surface moved: {len(api_pairs)} pairs. v0.16.0 adds exactly five — the "
         f"operator's five gestures — v0.16.2 adds exactly one, `POST …/promote` (DECISIONS #273), "
         f"v0.16.5 adds exactly one, `POST /api/alarms/clear` (DECISIONS #301), "
@@ -940,11 +942,13 @@ async def test_f42_every_path_served_today_still_registers(store: Store) -> None
     # (eight /api pairs), and seven console modules (the brokers, their screens, the heading).
     # Unreleased: 377 -> 379 and 210 -> 211 — one person's customers (ADR #499): `POST
     # /api/scope/subject` (one /api pair) and its console module (`parts/custscope.js`).
-    assert len(served) == 379, f"the served surface moved: {len(served)} method/path pairs"
+    # Unreleased: 379 -> 382 and 211 -> 213 — a case's email (ADR #500): `POST …/email` and `GET
+    # …/email/draft` (two /api pairs) and the editor (`parts/caseemail.js`).
+    assert len(served) == 382, f"the served surface moved: {len(served)} method/path pairs"
     api_pairs = {(method, path) for method, path in served if path.startswith("/api")}
     # **v0.19.0: 53 -> 55.** `GET /api/models` and `POST /api/models/register`: what the
     # models are doing, and turning one of this appliance's own fits into an artefact.
-    assert len(api_pairs) == 211, (
+    assert len(api_pairs) == 213, (
         f"the /api surface moved: {len(api_pairs)} pairs. v0.16.0 adds exactly five — the "
         f"operator's five gestures — v0.16.2 adds exactly one, `POST …/promote` (DECISIONS #273), "
         f"v0.16.5 adds exactly one, `POST /api/alarms/clear` (DECISIONS #301), "
@@ -1298,7 +1302,8 @@ def test_the_three_postures_are_all_populated() -> None:
     # ADR #489: 77 -> 78, the merge picker's related situations (scoped as the list it narrows).
     # ADR #496: 78 -> 80, the brokers a person can see (a collection, counted over their own
     # elements) and one broker (targeted: one none of whose elements they see is a 404).
-    assert len(SCOPED) == 80, SCOPED
+    # ADR #500: 80 -> 82, an email sent from one case and its editor's draft (targeted).
+    assert len(SCOPED) == 82, SCOPED
     assert len(rbac.ROUTE_SCOPE) == len(ADMIN_ONLY) + len(UNSCOPED) + len(SCOPED)
 
 
@@ -1321,6 +1326,8 @@ _BODIES: dict[tuple[str, str], dict[str, Any]] = {
     ("POST", "/api/noc/cases/{sid}/release"): {"note": ""},
     ("POST", "/api/noc/cases/{sid}/status"): {"status": "pending_customer"},
     ("POST", "/api/noc/cases/{sid}/resolve"): {"cause": "other", "solution": "guard"},
+    # ADR #500: an email to someone, in plain text.
+    ("POST", "/api/noc/cases/{sid}/email"): {"to": ["noc@example.com"], "text": "guard"},
     ("POST", "/api/noc/cases/{sid}/feed"): {"body": "guard", "visibility": "all"},
     # ADR #467: routing to the NOC team, and an escalation with its reason.
     ("POST", "/api/noc/cases/{sid}/assign"): {"agent_id": None},
@@ -1499,6 +1506,9 @@ SCOPED_TARGETED = [
     ("POST", "/api/noc/cases/{sid}/feed"),
     # ADR #478: sending the customer update names one case.
     ("POST", "/api/noc/cases/{sid}/customer-update"),
+    # ADR #500: an email written from one case, and what its editor opens with.
+    ("POST", "/api/noc/cases/{sid}/email"),
+    ("GET", "/api/noc/cases/{sid}/email/draft"),
     # ADR #480: Start working this names one situation, whose case it opens.
     ("POST", "/api/noc/cases/{sid}/open"),
     # ADR #467: routing and escalating one case — the same 404 for one the caller cannot see.

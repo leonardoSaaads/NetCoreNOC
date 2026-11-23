@@ -376,7 +376,7 @@ UI_HASHES: dict[str, str] = {
     "app/format.js": "270b0788ec61b5166ef4dc8589755b06caafe5ba87829bd419d115926521ac4c",
     "app/heading.js": "e4115d0da279413ab9c0855f549aeb1df6c94453e538afc05316b8aa8eaa89f5",
     "app/health.js": "0f1a629bac6126df079d88ededc8581d00cc43f2e9a6afecc293b51e3f73b090",
-    "app/icons.js": "efb9f86382133a9dfd498f4d9964c46af7c95085aca11f2edc4eaac78d5d98e4",
+    "app/icons.js": "290bf5d9e01deb13649f1f96d4b31fdd3121a8878a21d431622eb5bd21cff71c",
     "app/info.js": "15e06186daadead308f180d23feb479eccf2506d70bfadbda477ccc6f7d3c11f",
     "app/layout.js": "447b775510c160d906ed6c54831954734c1f8bd70e90079a1fc280d6a9bad577",
     "app/login.js": "4316945989de1e1526389182db7e54dfdbeed4eab85d5d00821290ffc519dabf",
@@ -473,8 +473,11 @@ UI_HASHES: dict[str, str] = {
     "app/views/parts/casedetail.js": (
         "e458f64402fa9306c58260045c5f168c6a47b3629ae99a014942a08c45ef08a7"
     ),
+    "app/views/parts/caseemail.js": (
+        "7f68f1cc56c652647aab1799fa9c3466a33003fd81a63dc072aa5950ec4bfbda"
+    ),
     "app/views/parts/casefeed.js": (
-        "cac9f9d3503ee2f8cba10b31992f8fe51867a469ef7207d4e09a9bc73bd651bb"
+        "39ca8cf13ebe066c8f8c1c7360fc42001dfc2a4b2eddb10b23fdba83978c84b6"
     ),
     "app/views/parts/caseform.js": (
         "a5bbaead197388d3ca7c8bbd28cf1d58c7613dd3ced7bea202c40afdb48ab9a4"
@@ -507,7 +510,7 @@ UI_HASHES: dict[str, str] = {
         "df0e7f19f834c13fc31289316898f814d87963a3f5b52b644c336b338ccccbfe"
     ),
     "app/views/parts/custmail.js": (
-        "91303b22a06b5bda94937c748f38ee52daaf8c9c4a54f6db5dbcb8e48f969c64"
+        "5614b3a66417474cfa66a71f5e474d5cc846a3fbf77cd3beaf5ed2c316a6944c"
     ),
     "app/views/parts/custscope.js": (
         "10e02d4577ceb725a96a92017f361017bf71064ed6a98eb90fd44c1ead29ec23"
@@ -675,7 +678,7 @@ UI_HASHES: dict[str, str] = {
     "favicon.svg": "67be772b54d99f4978143983b4d5313c8aab40e1498a1fa748680e00f7735bf2",
     "index.html": "d057123e5cfc1ab497db465df016c598e38b049fbde26ecc9ee868eb4899fad7",
     "login-bg.svg": "5f677f3371a2828c8d21668cd83381c105ccdc1780a66dc09fc6f6bc19d211d6",
-    "style.css": "bb502d089d20d24d43bcdaf1171dbe379720c9d8f6c06505ffdf6e12c8e5d64d",
+    "style.css": "5e6b369e3724110d96650f44fbe0f805515fe59ccff744768faec4c6f7b7ae2e",
     "vendor/CHECKSUMS.txt": "d0a7c4ec48719c3cb3c86f6da7e010b7be5e822cf62ed9f2aafdf39726405ad7",
     "vendor/htm-3.1.1.module.js": (
         "ab33dd3f38059b9be4d5f5350128eefb2356639c4e0bbe9d9e8b3ba75847e9e4"
@@ -707,7 +710,7 @@ UI_SIZES: dict[str, int] = {
     "app/format.js": 15_764,
     "app/heading.js": 1_603,
     "app/health.js": 7_617,
-    "app/icons.js": 13_583,
+    "app/icons.js": 13_900,
     "app/info.js": 2_407,
     "app/layout.js": 9_799,
     "app/login.js": 8_780,
@@ -766,7 +769,8 @@ UI_SIZES: dict[str, int] = {
     "app/views/parts/caseassign.js": 5_930,
     "app/views/parts/caseclock.js": 2_732,
     "app/views/parts/casedetail.js": 12_180,
-    "app/views/parts/casefeed.js": 6_893,
+    "app/views/parts/caseemail.js": 13_517,
+    "app/views/parts/casefeed.js": 9_416,
     "app/views/parts/caseform.js": 10_114,
     "app/views/parts/casemilestones.js": 5_153,
     "app/views/parts/circuitedit.js": 8_338,
@@ -777,7 +781,7 @@ UI_SIZES: dict[str, int] = {
     "app/views/parts/custbook.js": 6_421,
     "app/views/parts/custcontacts.js": 9_060,
     "app/views/parts/custdocs.js": 8_190,
-    "app/views/parts/custmail.js": 8_900,
+    "app/views/parts/custmail.js": 8_489,
     "app/views/parts/custscope.js": 4_458,
     "app/views/parts/decide.js": 5_370,
     "app/views/parts/decider.js": 10_170,
@@ -854,7 +858,7 @@ UI_SIZES: dict[str, int] = {
     "favicon.svg": 1_136,
     "index.html": 1_549,
     "login-bg.svg": 18_884,
-    "style.css": 323_021,
+    "style.css": 327_371,
     "vendor/CHECKSUMS.txt": 2_426,
     "vendor/htm-3.1.1.module.js": 1_207,
     "vendor/htm.LICENSE": 11_341,

@@ -251,11 +251,18 @@ def _context(config: MailConfig) -> ssl.SSLContext:
     return context
 
 
-def send(config: MailConfig, message: EmailMessage, *, password: str | None = None) -> None:
+def send(
+    config: MailConfig,
+    message: EmailMessage,
+    *,
+    password: str | None = None,
+    envelope: list[str] | None = None,
+) -> None:
     """Deliver one message. **Blocking**: call through `asyncio.to_thread`. Raises MailError.
 
     ``password`` is a customer's own SMTP password, opened from the vault for this send (ADR
-    #481); without it the appliance's (`effective_password`) logs in."""
+    #481); without it the appliance's (`effective_password`) logs in. ``envelope`` is every
+    recipient, blind copies included, when the headers do not name them all (ADR #500)."""
     if not config.host:
         raise MailError("no SMTP server is configured")
     try:
@@ -274,7 +281,7 @@ def send(config: MailConfig, message: EmailMessage, *, password: str | None = No
                 client.login(
                     config.username, config.effective_password if password is None else password
                 )
-            client.send_message(message)
+            client.send_message(message, to_addrs=envelope or None)
     except smtplib.SMTPAuthenticationError as exc:
         raise MailError(
             "the server refused the username or password. Gmail, Microsoft 365, Yahoo and iCloud "

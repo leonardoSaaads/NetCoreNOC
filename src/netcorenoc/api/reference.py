@@ -220,6 +220,8 @@ REFERENCE: dict[tuple[str, str], Entry] = {
     ("POST", "/api/noc/cases/{sid}/customer-update"): Entry(
         CASES, "Send the customer update to the customer"
     ),
+    ("POST", "/api/noc/cases/{sid}/email"): Entry(CASES, "Email the customer, or reply"),
+    ("GET", "/api/noc/cases/{sid}/email/draft"): Entry(CASES, "What a reply or an email starts as"),
     ("GET", "/api/noc/people"): Entry(CASES, "People a specified post may name"),
     ("POST", "/api/noc/exec"): Entry(AUTOMATION, "Act on a device with a lease (read only)"),
     ("POST", "/api/noc/secrets/{secret_id}/hostkey"): Entry(VAULT, "Forget a pinned host key"),

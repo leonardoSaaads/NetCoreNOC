@@ -190,6 +190,7 @@ def create_app(
     routes.cases.register(app, ctx)
     routes.noc_overview.register(app, ctx)  # ADR #470
     routes.case_feed.register(app, ctx)
+    routes.case_email.register(app, ctx)  # ADR #500: email from the case's feed
     routes.noc_exec.register(app, ctx)  # ADR #462: the executor
     routes.playbooks.register(app, ctx)  # ADR #463
     # ADRs #465-#467: the agents (`/me` before `/{agent_id}`, in the module), case routing.

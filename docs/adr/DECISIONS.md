@@ -7446,3 +7446,33 @@ From this release an entry is about six lines: decision, reason, release.*
 - **Not tenant isolation**: correlation still learns per broker; the policy decides what a person
   is shown, as it did (ADR #366).
 
+## 500. A case's email is written and answered on its feed (unreleased)
+
+- **Context**: the NOC emails a customer about a case — a technician must visit, which day suits
+  you? — the customer answers with two dates, and whoever picks the case up next answers that
+  message. A customer's Email tab held default recipients and emailed every customer update to
+  them; the owner asked for the recipients on each email instead, a reply that goes to the right
+  people without retyping them, and the agents able to do all of it through MCP.
+- **Decision**: the customer's **Email tab is the server side only** — which SMTP credential sends
+  and as whom, which IMAP mailbox replies are read from, a test to any address, and the log.
+- **Decision**: a case's feed has two modes, **Feed post** and **Send email**. An email has its own
+  To, Cc and Bcc, a subject that always keeps the case's tag, and a body written in an editor
+  (bold, italic, underline, size, lists, links). It leaves through the customer's SMTP credential
+  (else the appliance's server), threaded under the message it answers, and is kept whole
+  (`noc_case_mail`, migration 0048) and shown on the feed (`kind` ``email``) — sent or not. Blind
+  copies go on the envelope only and are shown to who works cases.
+- **Decision**: **Reply** and **Reply all** on an email of the feed ask the server for the draft:
+  the sender (or, for ours, the same To), everyone else on it but our own address, `Re:` once, and
+  the original quoted. A customer's email lands on the feed as theirs and, on a pending case, puts
+  it back in the queue (ADR #481, unchanged); the addresses the NOC has written to on a customer's
+  cases are now among those a reply may come from.
+- **Decision**: **sending the customer update no longer emails it**: posting the update and
+  emailing it are two steps (*Email the customer update* drafts it, to whom the case's last message
+  went), so nobody is emailed by a side effect.
+- **Decision (MCP)**: `noc_case_email_draft` and `noc_send_case_email` (with `reply_to` and
+  `reply_all`, `to` left empty) — and the agents' guide says when to use them.
+- **Reason (security)**: the editor sends a **document**, never HTML: `engine/noc/richtext.py`
+  validates it (a link is `http(s)` or `mailto`, a size one of three) and writes the email's HTML
+  with every text escaped, and the console draws the same document as elements, so the console
+  still has no `innerHTML` (ADR #175). A customer's email is shown as text, quotes cut, as before.
+

@@ -3964,6 +3964,56 @@ table.secrets-table td { vertical-align: middle; }
 .feed-event .feed-main { border-left-style: dashed; }
 .feed-head { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); font-size: var(--fs-sm); }
 .feed-body { margin: var(--space-1) 0 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+/* ADR #500: a case's email — the modes above the composer, the editor, and a message on the feed. */
+.feed-modes { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); }
+.feed-modes .seg-btn { display: inline-flex; align-items: center; gap: 6px; }
+.feed-modes .icon-svg { width: 15px; height: 15px; }
+.feed-email-update { margin-left: auto; font-size: var(--fs-sm); }
+.mail-compose { display: grid; gap: var(--space-2); padding: var(--space-3); border: 1px solid var(--accent); border-radius: var(--radius-2); background: var(--bg-sunken); }
+.mail-compose-head { display: flex; align-items: center; gap: var(--space-2); }
+.mail-compose-head b { display: inline-flex; align-items: center; gap: 6px; }
+.mail-compose-head .icon-svg { width: 16px; height: 16px; }
+.mail-field { display: grid; grid-template-columns: 4.5rem minmax(0, 1fr); align-items: center; gap: var(--space-2); }
+.mail-field > span { color: var(--fg-muted); font-size: var(--fs-sm); text-align: right; }
+.mail-field input { width: 100%; }
+.mail-copies { justify-self: start; margin-left: 5rem; font-size: var(--fs-sm); }
+.mail-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; padding: 4px; border: 1px solid var(--line); border-radius: var(--radius-1); background: var(--bg); }
+.mail-tool { min-width: 32px; min-height: 32px; padding: 0 8px; border: 1px solid transparent; border-radius: var(--radius-1); background: none; color: var(--fg); font: inherit; cursor: pointer; }
+.mail-tool:hover { border-color: var(--line); background: color-mix(in srgb, var(--accent) 8%, transparent); }
+.mail-tool .icon-svg { width: 15px; height: 15px; }
+.mail-size { min-height: 32px; }
+.mail-link { display: inline-flex; gap: 4px; align-items: center; }
+.mail-link input { width: 14rem; }
+.mail-editor {
+  min-height: 9rem; max-height: 26rem; overflow-y: auto; padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--line); border-radius: var(--radius-1); background: var(--bg); color: var(--fg);
+  line-height: 1.5; outline: none;
+}
+.mail-editor:focus { border-color: var(--accent); box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 25%, transparent); }
+.mail-editor blockquote, .rt blockquote { margin: var(--space-2) 0 0; padding-left: var(--space-2); border-left: 2px solid var(--line); color: var(--fg-muted); white-space: pre-wrap; }
+.mail-compose-foot { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: var(--space-2); }
+.mail-compose-foot .hint { margin-right: auto; }
+.mail-card { margin-top: var(--space-1); padding: var(--space-2) var(--space-3); border: 1px solid var(--line); border-left: 3px solid var(--accent); border-radius: var(--radius-1); background: var(--bg); display: grid; gap: 4px; }
+.mail-card.mail-in { border-left-color: var(--quiet); }
+.mail-card-head { display: flex; align-items: center; gap: var(--space-2); font-size: var(--fs-sm); color: var(--fg-muted); }
+.mail-dir { display: inline-flex; align-items: center; gap: 6px; font-weight: 600; }
+.mail-dir .icon-svg { width: 14px; height: 14px; }
+.mail-card-who { display: flex; flex-wrap: wrap; gap: 2px var(--space-3); font-size: var(--fs-sm); overflow-wrap: anywhere; }
+.mail-card-subject { margin: 0; }
+.mail-card-actions { display: flex; gap: var(--space-2); margin-top: var(--space-1); }
+.mail-card-actions button { display: inline-flex; align-items: center; gap: 6px; }
+.mail-card-actions .icon-svg { width: 14px; height: 14px; }
+.rt p { margin: 0 0 var(--space-2); white-space: pre-wrap; overflow-wrap: anywhere; }
+.rt ul, .rt ol { margin: 0 0 var(--space-2); padding-left: 1.4rem; }
+.rt-small { font-size: 0.85em; }
+.rt-large { font-size: 1.25em; }
+.rt-huge { font-size: 1.6em; }
+@media (max-width: 760px) {
+  .mail-field { grid-template-columns: 1fr; }
+  .mail-field > span { text-align: left; }
+  .mail-copies { margin-left: 0; }
+  .feed-email-update { margin-left: 0; }
+}
 .feed-badge { font-size: var(--fs-xs); padding: 0 var(--space-1); border-radius: var(--radius-1); border: 1px solid var(--line-strong); }
 .feed-badge-internal { color: var(--accent); border-color: var(--accent); }
 .feed-badge-specified { color: var(--warn); border-color: var(--warn); }
@@ -4668,6 +4718,11 @@ td.ckt-acts .linkish + .linkish { margin-left: var(--space-3); }
 .cm-cred-fixed { margin: 6px 0 0; font-size: var(--fs-sm); }
 .cm-toggles { display: grid; gap: 6px; margin: var(--space-2) 0 var(--space-3); }
 .cm-actions { display: flex; align-items: center; flex-wrap: wrap; gap: var(--space-2); }
+.cm-side { display: grid; gap: var(--space-2); margin: 0; padding: var(--space-3); border: 1px solid var(--line); border-radius: var(--radius-1); min-width: 0; }
+.cm-side legend { display: inline-flex; align-items: center; gap: 6px; padding: 0 4px; font-weight: 600; }
+.cm-side legend .icon-svg { width: 15px; height: 15px; }
+.cm-test { display: inline-flex; gap: var(--space-1); align-items: center; }
+.cm-test input { width: 15rem; }
 .cm-actions .icon-svg { width: 14px; height: 14px; }
 .cm-poll { margin: var(--space-3) 0 0; font-size: var(--fs-xs); }
 .cm-log h3 { margin: 0 0 var(--space-2); }

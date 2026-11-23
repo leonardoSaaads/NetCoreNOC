@@ -1,13 +1,10 @@
-/* NOC → a customer → Email: whom the customer update goes to, the mailbox replies come back to,
- * and every message sent or read (ADR #481).
+/* NOC → a customer → Email: the server side of the customer's email (ADRs #481, #500).
  *
- * A case's customer update, once sent, is emailed to the customer's recipients with the case's tag
- * in the subject; the customer's reply, read from its mailbox every minute, lands on the case's
- * feed and — when the case was waiting on the customer — puts it back in the queue for whichever
- * agent is free. This tab is where that is set up and watched: the recipients and the sender (the
- * customer's book, kept by who works cases), the SMTP and IMAP credentials (stored under Access,
- * chosen here by a custodian), a test message, and the log — sent, failed, posted, unmatched or
- * refused, each with why.
+ * Whom a message goes to is chosen per email, on each case's feed (Send email, Reply, Reply all).
+ * This tab is the integration: which SMTP credential sends and as whom, which IMAP mailbox the
+ * replies are read from (every minute, onto the case's feed — a waiting case goes back to the
+ * queue), a test message to any address, and the log — sent, failed, on the case, unmatched or
+ * refused, each with why. The credentials are stored under Access and chosen here by a custodian.
  */
 
 import { html, Component, cx } from "../../dom.js";
@@ -27,7 +24,8 @@ function credentialLabel(c) {
 export class CustomerMail extends Component {
   constructor(props) {
     super(props);
-    this.state = { data: null, form: null, error: null, busy: false, saved: false, test: null };
+    this.state = { data: null, form: null, error: null, busy: false, saved: false, test: null,
+      testTo: "" };
   }
 
   componentDidMount() { this.load(); }
@@ -43,9 +41,9 @@ export class CustomerMail extends Component {
 
   formOf(d) {
     return {
-      recipients: d.recipients, cc: d.cc, sender: d.sender, sender_name: d.sender_name,
+      sender: d.sender, sender_name: d.sender_name,
       smtp_secret_id: d.smtp ? d.smtp.id : null, imap_secret_id: d.imap ? d.imap.id : null,
-      send_updates: d.send_updates, read_replies: d.read_replies,
+      read_replies: d.read_replies,
     };
   }
 
@@ -66,7 +64,8 @@ export class CustomerMail extends Component {
   async sendTest() {
     this.setState({ test: { busy: true } });
     try {
-      const answer = await post(`/api/noc/customers/${this.props.c.id}/mail/test`, {});
+      const answer = await post(`/api/noc/customers/${this.props.c.id}/mail/test`,
+        { to: this.state.testTo.trim() });
       this.setState({ test: answer });
     } catch (error) {
       this.setState({ test: { ok: false, detail: error.message } });
@@ -92,45 +91,46 @@ export class CustomerMail extends Component {
     const edit = data.may_edit;
     return html`<section class="cust-mail" aria-label=${`${c.name}'s email`}>
       <form class="panel-block cm-form" onSubmit=${(e) => this.save(e)}>
-        <h3><${Icon} name="mail" /> Customer updates by email</h3>
-        <p class="hint">A sent customer update is emailed here, its subject tagged with the case — a reply lands on the case's feed and puts a waiting case back in the queue.</p>
+        <h3><${Icon} name="mail" /> Mail server</h3>
+        <p class="hint">Emails about this customer's cases are written on each case's feed — <b>Send email</b>,${" "}
+          <b>Reply</b>, <b>Reply all</b> — and leave through the server below. Replies are read back onto the case.</p>
         <div class="cm-grid">
-          <div class="pe-field"><label for="cm-to">Recipients</label>
-            <input id="cm-to" value=${form.recipients} disabled=${!edit} placeholder="noc@customer.example, oncall@customer.example"
-              onInput=${(e) => this.set("recipients", e.currentTarget.value)} /></div>
-          <div class="pe-field"><label for="cm-cc">Copy (optional)</label>
-            <input id="cm-cc" value=${form.cc} disabled=${!edit}
-              onInput=${(e) => this.set("cc", e.currentTarget.value)} /></div>
-          <div class="pe-field"><label for="cm-from">Sender address</label>
-            <input id="cm-from" value=${form.sender} disabled=${!edit} placeholder="the SMTP account's address"
-              onInput=${(e) => this.set("sender", e.currentTarget.value)} /></div>
-          <div class="pe-field"><label for="cm-name">Sender name (optional)</label>
-            <input id="cm-name" value=${form.sender_name} disabled=${!edit} placeholder="NOC — Your company"
-              onInput=${(e) => this.set("sender_name", e.currentTarget.value)} /></div>
-          <div class="pe-field"><label for="cm-smtp">Send through (SMTP)</label>${this.select("smtp", "smtp_secret_id", data.smtp)}</div>
-          <div class="pe-field"><label for="cm-imap">Read replies from (IMAP)</label>${this.select("imap", "imap_secret_id", data.imap)}</div>
+          <fieldset class="cm-side">
+            <legend><${Icon} name="send" /> Outgoing (SMTP)</legend>
+            <div class="pe-field"><label for="cm-smtp">Send through</label>${this.select("smtp", "smtp_secret_id", data.smtp)}</div>
+            <div class="pe-field"><label for="cm-from">Sender address</label>
+              <input id="cm-from" value=${form.sender} disabled=${!edit} placeholder="the SMTP account's address"
+                onInput=${(e) => this.set("sender", e.currentTarget.value)} /></div>
+            <div class="pe-field"><label for="cm-name">Sender name (optional)</label>
+              <input id="cm-name" value=${form.sender_name} disabled=${!edit} placeholder="NOC — Your company"
+                onInput=${(e) => this.set("sender_name", e.currentTarget.value)} /></div>
+          </fieldset>
+          <fieldset class="cm-side">
+            <legend><${Icon} name="inbox" /> Incoming (IMAP)</legend>
+            <div class="pe-field"><label for="cm-imap">Read replies from</label>${this.select("imap", "imap_secret_id", data.imap)}</div>
+            <label class="check"><input type="checkbox" checked=${form.read_replies} disabled=${!edit}
+              onChange=${(e) => this.set("read_replies", e.currentTarget.checked)} /> Read the replies and put them on the case</label>
+            <p class="muted cm-poll">${data.imap
+              ? html`Read every ${Math.round(data.look_every_s)} s · last read ${data.polled_at
+                ? html`<span title=${timeTitle(data.polled_at)}>${relative(data.polled_at)}</span>` : "not yet"}${data.poll_error
+                ? html` · <span class="err">${data.poll_error}</span>` : ""}`
+              : "Replies are not read until an IMAP credential is chosen."}</p>
+          </fieldset>
         </div>
         ${data.custodian && !data.choices.length ? html`<p class="hint">Store the customer's SMTP and IMAP
           credentials under <a href=${`#/customers/${c.id}/access`}>Access</a> to choose them here.</p>` : null}
-        <div class="cm-toggles">
-          <label class="check"><input type="checkbox" checked=${form.send_updates} disabled=${!edit}
-            onChange=${(e) => this.set("send_updates", e.currentTarget.checked)} /> Email each customer update it is sent</label>
-          <label class="check"><input type="checkbox" checked=${form.read_replies} disabled=${!edit}
-            onChange=${(e) => this.set("read_replies", e.currentTarget.checked)} /> Read the replies and put them on the case</label>
-        </div>
         ${edit ? html`<div class="cm-actions">
           <button type="submit" class="primary" disabled=${busy}>${busy ? "Saving…" : "Save"}</button>
-          <button type="button" disabled=${!data.recipients || (test && test.busy)} onClick=${() => this.sendTest()}>
-            <${Icon} name="send" /> Send a test message</button>
+          <span class="cm-test">
+            <input type="email" value=${this.state.testTo} placeholder="send a test to…" aria-label="Test address"
+              onInput=${(e) => this.setState({ testTo: e.currentTarget.value })} />
+            <button type="button" disabled=${!this.state.testTo.trim() || (test && test.busy)} onClick=${() => this.sendTest()}>
+              <${Icon} name="send" /> Send a test</button>
+          </span>
           ${saved ? html`<span class="ok-note" role="status">Saved.</span>` : null}
           ${test && !test.busy ? html`<span class=${test.ok ? "ok-note" : "err"} role="status">${test.ok ? "Test " : "Not sent: "}${test.detail}</span>` : null}
         </div>` : null}
         ${error ? html`<p class="err" role="alert">${error}</p>` : null}
-        <p class="muted cm-poll">${data.imap
-          ? html`Replies are read every ${Math.round(data.look_every_s)} s · last read ${data.polled_at
-            ? html`<span title=${timeTitle(data.polled_at)}>${relative(data.polled_at)}</span>` : "not yet"}${data.poll_error
-            ? html` · <span class="err">${data.poll_error}</span>` : ""}`
-          : "Replies are not read until an IMAP credential is chosen."}</p>
       </form>
       <section class="panel-block cm-log" aria-labelledby="cm-log-h">
         <h3 id="cm-log-h">Messages</h3>

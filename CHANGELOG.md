@@ -33,9 +33,10 @@ on request (#480), each customer's credentials and email (#481), **two-factor si
 person** (#482), a first-run Overview in pictures (#483), Learning (#484), the Judge in tabs
 (#485), the audit log by filters (#486), a local Ollama that works (#487), routines (#492) and
 **brokers** — one appliance, many networks, each correlating, mapping and learning on its own, its
-traps arriving on its own port, through a remote proxy or by range (#494-#498). The schema is
-PostgreSQL's baseline, **migration 0031**, which includes SQLite's 0030, **0032** to **0047**
-(schema 47). See
+traps arriving on its own port, through a remote proxy or by range (#494-#498), a person limited to
+customers (#499) and email written and answered on the case's feed (#500). The schema is
+PostgreSQL's baseline, **migration 0031**, which includes SQLite's 0030, **0032** to **0048**
+(schema 48). See
 [`MIGRATION.md`](MIGRATION.md): the SQLite file is **imported once**, before the first start; the
 appliance is three processes and a spool on disk, and a container needs two CPUs. No grouping
 decision changes (`make eval` is byte-identical).
@@ -45,6 +46,34 @@ imports the file. Backups are `pg_dump` archives — and **the secret key file**
 data directory), without which sealed values and every password are unreadable (#453) — and **the
 secrets key file** (`secrets.key`; the image keeps it on a volume of its own), without which every
 stored device credential is unreadable (#455).
+
+### Added — email written and answered from the case's feed (#500)
+
+- **Cases → Feed → Send email**, beside *Feed post*: a small editor with To, Cc and Bcc (the
+  addresses this case's emails went to are suggested), a subject that keeps the case's tag
+  `[NetCoreNOC #…]`, and a body with paragraphs, lists, quotes, bold, italic, underline, links and
+  a size from small to huge. The body is a document, never HTML: the server renders it, so nothing
+  typed can reach the customer's mail client as markup. *Customer update* fills the editor with the saved
+  update and whom the case's last message went to.
+- **Every message is on the feed** — the NOC's and the customer's — with its From, To, Cc, subject
+  and body; Bcc is shown to who works cases only. Each one has **Reply** and **Reply all**: the
+  recipients and the `Re:` subject are worked out, the original is quoted, and the reply is
+  threaded (`In-Reply-To`, `References`) so the customer's mail client keeps one conversation.
+- **A customer's reply** lands on the case (an `email` post by the customer) and puts a pending case
+  back in the queue with its clocks running, for whichever agent is free.
+- **MCP**: `noc_send_case_email` (to, cc, bcc, subject, `text` or a document, `reply_to`,
+  `reply_all`) and `noc_case_email_draft` (a reply's recipients and quote, or the customer update
+  to send); the agents' guide says when to email and to answer the customer's last message with
+  Reply all (#500).
+
+### Changed
+
+- **Customers → Email** is the mail server alone: which SMTP and IMAP credentials, and the sender.
+  Recipients and copies are chosen on each email; *Send customer update* posts the update on the
+  feed and emails no one (#500).
+- Migration **0048** (schema 48): `noc_case_mail` keeps each message whole — sender's name, Cc,
+  Bcc, the message it answers, its chain, its text and the editor's document — and a feed post may
+  be of kind `email` (#500).
 
 ### Added — a person limited to customers (#499)
 

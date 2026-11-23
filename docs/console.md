@@ -116,7 +116,9 @@ A situation the Broker opens becomes a case in the NOC queue (ADR #459). A case 
   executive summary**; an empty one reads the case's. The update's clock (30 min) stops the first
   time it is complete. Setting the priority by hand makes it yours: the Broker no longer raises it.
   **Send customer update** (ADR #478) posts the saved, complete update to everyone who may read the
-  case, the customer included; email is not connected yet.
+  case, the customer included. Emailing it is a step of its own (ADR #500): *Send email* on the
+  feed, or *Customer update* in the email editor, which fills in the update and whom the case's
+  last message went to.
 * **Set pending…** names who the NOC waits on (customer, carrier or fiber provider, scheduled
   maintenance, dispatch, device access, connectivity, vendor, site access, field technician, RCA)
   and when it looks again. It needs the complete customer update. When the next update comes, or a
@@ -130,6 +132,15 @@ A situation the Broker opens becomes a case in the NOC queue (ADR #459). A case 
   agent's glyph, the appliance's, a person's initial. Each post says who reads it — **Internal**
   (the NOC), **Specified** (the people you name) or **All with access** (the customer too). A viewer
   posts to *All* only, sees networks rather than addresses, and no names.
+* **Send email** (ADR #500), beside *Feed post* above the composer, opens a small editor: **To**,
+  **Cc** and **Bcc** (the addresses this case's emails went to are suggested), a subject that keeps
+  the case's tag `[NetCoreNOC #…]`, and a body with paragraphs, lists, quotes, bold, italic,
+  underline, links and a size. It leaves through the customer's mail server (Customers → Email)
+  and appears on the feed as an email, sent or not, with why. **Every email on the feed — ours and
+  the customer's — has Reply and Reply all**: the recipients and `Re:` are worked out, the original
+  is quoted, and the reply is threaded so the customer's mail client keeps one conversation. A
+  customer's reply lands on the feed as theirs and puts a pending case back in the queue, its clocks
+  running. Bcc is shown to who works cases only.
 * **Automated** means a playbook is checking the case (ADR #463): each of its steps, and the
   device's answer, appears in the feed as an internal event under the playbook's name. Taking the
   case stops it — the person wins.
@@ -157,7 +168,7 @@ sidebar:
 | **Circuits** | Every circuit, searched by any word of its fields, attributes, path or notes — a port, an ODF position, a site, a provider's reference. One circuit draws its **path** from the A end to the Z end, site by site, each hop's segment and coordinates (shelf, slot, port, mode, ODF Tx/Rx); then the NOC's notes on it and everything else the customer's sheet said. *Import a sheet* takes the customer's own spreadsheet — pasted from Excel with its header rows of sites and segments, or an Excel/CSV/TSV document already in its Additional docs — shows what it found, and stores it only when asked; a circuit of the same name is replaced, its notes kept |
 
 | **Access** | The credentials that reach the customer's equipment — SSH (password or key), SNMP v1/v2c or v3, **Telnet over TLS** (or plain Telnet, for equipment with nothing else), an API, SFTP — and its mail server (SMTP, IMAP), each with its status light, what it grants and whether agents may use it (ADR #481). Stored here with the customer already chosen; opened one at a time behind a step-up, as in the vault. Only a custodian sees them |
-| **Email** | Whom a sent customer update is emailed to (recipients, copies, sender), the SMTP credential it goes through (or the appliance's server, Settings → Email) and the IMAP credential the customer's replies are read from, every minute. A reply lands on the case's feed as the customer's and puts a waiting case back in the queue; *Send a test message*; and the log of every message sent or read — *Sent*, *Not sent*, *On the case*, *No case*, *Refused* — with why. Choosing a credential is a custodian's act |
+| **Email** | The mail server alone (ADR #500): the SMTP credential this customer's emails leave through (or the appliance's server, Settings → Email), the sender they go out as, and the IMAP credential replies are read from, every minute. Recipients and copies are chosen on each email, on the case's feed. A reply lands on the case's feed as the customer's and puts a waiting case back in the queue; *Send a test message*; and the log of every message sent or read — *Sent*, *Not sent*, *On the case*, *No case*, *Refused* — with why. Choosing a credential is a custodian's act |
 
 A case names the customers whose equipment it touches: *Its customers* on the case record opens each
 one's book — and an agent reaches the devices with that customer's own credentials.

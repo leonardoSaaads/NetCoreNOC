@@ -10,7 +10,11 @@ it back to the NOC queue** in the same transaction — the customer has answered
 have to wait for the next update to read it.
 
 **Sending the customer update** (ADR #478) is `cases.work`: the saved update, complete, posted to
-everyone who may read the case — the customer included — and an event saying who sent it.
+everyone who may read the case — the customer included — and an event saying who sent it. Emailing
+it is a step of its own since ADR #500 (`case_email.py`): Send email, or Reply all on the thread.
+
+An email on the feed (`kind` ``email``) carries its message — from, to, copies, subject and body,
+and its blind copies for who works cases — so a reader sees what was sent and Reply finds it.
 """
 
 from __future__ import annotations
@@ -24,8 +28,9 @@ from netcorenoc.api.case_view import actor_of, post_view, reader_of
 from netcorenoc.api.context import AppContext
 from netcorenoc.api.declare import DeclaredRoutes
 from netcorenoc.api.models_cases import PostIn, SendUpdateIn
+from netcorenoc.api.routes.case_email import mail_view
 from netcorenoc.crosscutting import auth, shaping
-from netcorenoc.engine.noc import case_ops, feed, mail_loop
+from netcorenoc.engine.noc import case_ops, feed
 from netcorenoc.engine.noc.cases import CaseError
 
 NO_SUCH = "no such case"
@@ -61,8 +66,17 @@ def register(app: FastAPI, ctx: AppContext) -> None:
             rows = await store.noc_posts(sid, limit=SCAN, before=before)
         shown = [r for r in rows if feed.visible(r, reader)]
         page = shown[: min(max(limit, 1), 200)]
+        emails = [int(r["id"]) for r in page if r["kind"] == "email"]
+        async with store.reading():
+            mails = await store.noc_mails_for_posts(emails)
+        posts = []
+        for row in page:
+            view = post_view(row, reader)
+            if int(row["id"]) in mails:  # ADR #500: the message the post shows
+                view["mail"] = mail_view(mails[int(row["id"])], works=reader.works)
+            posts.append(view)
         return {
-            "posts": [post_view(r, reader) for r in page],
+            "posts": posts,
             "more": len(shown) > len(page) or len(rows) == SCAN,
             # Naming readers needs the people list, which is the NOC's (`/api/noc/people`).
             "can_post": sorted(feed.VISIBILITIES) if reader.works else ["all"],
@@ -130,9 +144,10 @@ def register(app: FastAPI, ctx: AppContext) -> None:
         principal: auth.Principal = Depends(security),
     ) -> dict[str, Any]:
         """Send the saved customer update to the customer: a post everyone who may read the case
-        reads, and an email to each of its customers whose mailbox is set up (``email`` says
-        where it went). Refused while the update is incomplete; then set the case pending on whom
-        it waits — a reply by email puts it back in the queue."""
+        reads. Refused while the update is incomplete. To email it, draft it with
+        `noc_case_email_draft` (``update``) and send it with `noc_send_case_email` — a reply to the
+        case's newest message keeps the customer's thread — then set the case pending on whom it
+        waits: a reply by email puts it back in the queue."""
         await visible_case(sid, await scope_for(principal))
         actor = actor_of(principal)
         async with write_txn():
@@ -157,10 +172,7 @@ def register(app: FastAPI, ctx: AppContext) -> None:
                 object_id=str(sid),
                 details={"post": post_id, "version": case["version"]},
             )
-        # ADR #481: and by email, to each of the case's customers whose mailbox is set up —
-        # outside the transaction, since a mail server is a network round trip.
-        emailed = await mail_loop.send_update(store, case, time.time())
-        return {"id": post_id, "sent": True, "email": emailed}
+        return {"id": post_id, "sent": True}
 
     @route.get("/api/noc/people", operation_id="noc_list_people")
     async def people(principal: auth.Principal = Depends(security)) -> dict[str, Any]:

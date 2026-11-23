@@ -80,6 +80,20 @@ Two rules that have held since v0.1.0 and are not going to change:
 
 *(This table has no rows for v0.17.0 or v0.18.0: neither release wrote one, and inventing upgrade notes for a release somebody else built would be describing an upgrade nobody tested.)*
 
+## Unreleased — email written and answered on the case's feed (#500)
+
+Migration **0048** applies at start and is additive: each message keeps its Cc, Bcc, the message it
+answers, its text and the editor's document, and a feed post may be an email.
+
+**What you will notice**: Customers → Email is the mail server alone — its recipients and copies
+are gone, since each email now names its own on the case's feed (*Send email*, *Reply*, *Reply
+all*). **Send customer update no longer emails anyone**: post it, then email it from the feed (the
+editor's *Customer update* fills it in). An agent does the same through `noc_case_email_draft` and
+`noc_send_case_email`.
+
+**What to do**: nothing. Whom a customer's updates used to go to is not carried over: the first
+email on a case names them, and every reply after it is addressed for you.
+
 ## Unreleased — brokers: one appliance, many networks (#494-#498)
 
 Migration **0047** applies at start and is additive. **Everything you have becomes the Default

@@ -5,6 +5,9 @@
  * (taken, updated, set pending, back in the queue) is in the same stream, drawn quieter. What a
  * reader is shown is the server's choice; the composer offers what the server says this reader
  * may post (`can_post`).
+ *
+ * ADR #500: **Feed post** or **Send email** — an email is written here, To/Cc/Bcc and all, sent
+ * from the customer's mailbox, and shown on the feed with Reply and Reply all (`caseemail.js`).
  */
 
 import { html, Component, cx } from "../../dom.js";
@@ -14,6 +17,7 @@ import { relative, timeTitle } from "../../format.js";
 import { Icon } from "../../icons.js";
 import { roster } from "../../roster.js";
 import { AgentGlyph } from "./nocui.js";
+import { EmailComposer, EmailCard, draftFor } from "./caseemail.js";
 
 const SHORT = { internal: "Internal", specified: "Specified", all: "All with access" };
 
@@ -46,7 +50,7 @@ export class CaseFeed extends Component {
   constructor(props) {
     super(props);
     this.state = { feed: null, error: null, body: "", visibility: "internal", readers: [],
-      people: null, busy: false, note: null, events: true };
+      people: null, busy: false, note: null, events: true, mode: "post", draft: null };
   }
 
   componentDidMount() { this.read(); }
@@ -91,9 +95,46 @@ export class CaseFeed extends Component {
     }
   }
 
+  /** ADR #500: open the email editor on the server's draft — new, a reply, or the update. */
+  async write(options = {}) {
+    this.setState({ note: null });
+    try {
+      const draft = await draftFor(this.props.id, options);
+      if (!draft.available) { this.setState({ note: draft.reason, mode: "post" }); return; }
+      this.setState({ mode: "email", draft: { ...draft, key: Date.now() } });
+      globalThis.document.querySelector(".case-feed")?.scrollIntoView?.({ block: "start" });
+    } catch (error) {
+      this.setState({ note: error.detail || error.message });
+    }
+  }
+
+  sent(result) {
+    this.setState({ mode: "post", draft: null, note: result.outcome === "sent"
+      ? `Email sent to ${result.to.join(", ")}.` : `The email was not sent: ${result.detail}` });
+    this.read();
+  }
+
+  modes() {
+    const st = this.state;
+    if (!can("cases.work")) return null;
+    return html`<div class="feed-modes seg" role="tablist" aria-label="Write">
+      <button type="button" role="tab" aria-selected=${st.mode === "post"} class=${cx("seg-btn", st.mode === "post" && "on")}
+        onClick=${() => this.setState({ mode: "post" })}><${Icon} name="chat" /> Feed post</button>
+      <button type="button" role="tab" aria-selected=${st.mode === "email"} class=${cx("seg-btn", st.mode === "email" && "on")}
+        data-role="mode-email" onClick=${() => this.write()}><${Icon} name="mail" /> Send email</button>
+      <button type="button" class="linkish feed-email-update" data-role="email-update"
+        onClick=${() => this.write({ update: true })}>Email the customer update</button>
+    </div>`;
+  }
+
   composer(feed) {
     const st = this.state;
     const id = `feed-${this.props.id}`;
+    if (st.mode === "email" && st.draft) {
+      return html`<${EmailComposer} key=${st.draft.key} sid=${this.props.id} draft=${st.draft}
+        suggest=${st.draft.suggest || []} from=${st.draft.from}
+        onSent=${(r) => this.sent(r)} onCancel=${() => this.setState({ mode: "post", draft: null })} />`;
+    }
     return html`<form class="feed-compose" onSubmit=${(e) => this.submit(e)}>
       <label for=${`${id}-body`} class="visually-hidden">Post</label>
       <textarea id=${`${id}-body`} rows="3" maxlength="8000" placeholder="Share an update…"
@@ -123,9 +164,11 @@ export class CaseFeed extends Component {
   render(_props, st) {
     if (st.error) return html`<p class="err" role="alert">${st.error}</p>`;
     if (!st.feed) return html`<p class="muted">Reading the feed…</p>`;
-    const posts = st.feed.posts.filter((p) => st.events || p.kind === "post");
+    const posts = st.feed.posts.filter((p) => st.events || p.kind !== "event");
     return html`<section class="case-feed" aria-label="Feed">
+      ${this.modes()}
       ${can("cases.post") ? this.composer(st.feed) : null}
+      ${st.mode === "email" && st.note ? html`<p class="hint" role="status">${st.note}</p>` : null}
       <label class="check-row feed-events"><input type="checkbox" checked=${st.events}
         onChange=${(e) => this.setState({ events: e.currentTarget.checked })} /> Show the case's history</label>
       <ol class="feed-list">${posts.map((p) => html`<li key=${p.id}
@@ -138,7 +181,9 @@ export class CaseFeed extends Component {
               ${SHORT[p.visibility]}</span>` : null}
             <span class="muted" title=${timeTitle(p.created_at)}>${relative(p.created_at)}</span>
           </div>
-          <p class="feed-body"><${Body} post=${p} /></p>
+          ${p.mail ? html`<${EmailCard} mail=${p.mail} canReply=${can("cases.work")}
+              onReply=${(mid, all) => this.write({ replyTo: mid, all })} />`
+            : html`<p class="feed-body"><${Body} post=${p} /></p>`}
         </div>
       </li>`)}</ol>
       ${st.feed.more ? html`<p class="muted">Older posts are not shown.</p>` : null}

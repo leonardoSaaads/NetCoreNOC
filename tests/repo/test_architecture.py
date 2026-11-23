@@ -524,6 +524,7 @@ ROUTE_ORDER_BASELINE: list[tuple[str, str]] = [
     ("GET", "/app/views/parts/caseform.js"),
     ("GET", "/app/views/parts/caseacts.js"),
     ("GET", "/app/views/parts/casefeed.js"),
+    ("GET", "/app/views/parts/caseemail.js"),
     ("GET", "/app/views/parts/casedetail.js"),
     ("GET", "/app/views/routines.js"),
     ("GET", "/app/roster.js"),
@@ -733,6 +734,8 @@ ROUTE_ORDER_BASELINE: list[tuple[str, str]] = [
     ("POST", "/api/noc/cases/{sid}/feed"),
     ("POST", "/api/noc/cases/{sid}/customer-update"),
     ("GET", "/api/noc/people"),
+    ("POST", "/api/noc/cases/{sid}/email"),
+    ("GET", "/api/noc/cases/{sid}/email/draft"),
     ("POST", "/api/noc/exec"),
     ("POST", "/api/noc/secrets/{secret_id}/hostkey"),
     ("GET", "/api/noc/playbooks"),
@@ -924,7 +927,9 @@ async def test_the_api_route_order_is_unchanged_by_the_ui_rewrite(store: Store) 
     # ordered against it: `POST /api/brokers/ingest` is registered before `POST …/{broker_id}`,
     # which would otherwise take `ingest` as an id and refuse it (the baseline pins that) — 210.
     # ADR #499: +1 (`POST /api/scope/subject`, one person's customers, a concrete segment) — 211.
-    assert len(live) == 211, (
+    # ADR #500: +2 (`POST /api/noc/cases/{sid}/email`, `GET …/email/draft`: concrete segments
+    # below a case's id) — 213.
+    assert len(live) == 213, (
         f"the /api surface is {len(live)} pairs; v0.16.0 adds exactly five, v0.16.2 exactly one, "
         f"v0.16.3 exactly one, v0.16.5 exactly one — `POST /api/alarms/clear` — v0.18.0 exactly "
         f"one, `GET /api/correlation`, and v0.21.0 exactly thirteen for maintenance windows, "
@@ -1572,8 +1577,8 @@ def test_the_queue_put_on_the_hot_path_is_non_blocking() -> None:
 #: `engine/noc/` `commands`, `executor`, `playbook` and `runbook`, `store/noc_playbooks.py`,
 #: migration `0035_noc_automation.sql`, the `noc_exec` and `playbooks` routes, and the
 #: `views/playbooks` console module.
-SRC_TREE_DIGEST = "7a3e44b145079d109aae01824b8c1608321fb63af3bbee1698c3f345ea3d011c"
-SRC_FILE_COUNT = 556
+SRC_TREE_DIGEST = "9048255b3af0bd680bc87e4224bb1f4a506c5c07ea6119767d7c53d27fc364af"
+SRC_FILE_COUNT = 560
 SRC_VERSION_FILE = "src/netcorenoc/__init__.py"
 
 

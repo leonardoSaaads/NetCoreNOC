@@ -191,6 +191,7 @@ UNAUTHENTICATED_PATHS: frozenset[str] = frozenset(
         "/app/views/parts/caseform.js",
         "/app/views/parts/caseacts.js",
         "/app/views/parts/casefeed.js",
+        "/app/views/parts/caseemail.js",
         "/app/views/parts/casedetail.js",
         "/app/views/routines.js",
         # ADR #468: the agents, the organization, the roster, a case's milestones and assignment.

@@ -1,12 +1,13 @@
-"""NOC → a customer's Email: who the customer update goes to, the mailbox replies come back to, and
-every message sent or read (ADR #481).
+"""NOC → a customer's Email: the server side of its email — which SMTP credential sends and as whom,
+which IMAP mailbox replies are read from — and every message sent or read (ADRs #481, #500). Whom a
+message goes to is chosen per email, on the case's feed (`case_email.py`).
 
 * ``GET …/mail`` — the settings, the credentials they name (by name, host and port: never a
   field), the customer's mail credentials a custodian may choose from, and the newest messages.
-* ``POST …/mail`` — change the settings. The recipients and the sender are the customer's book,
+* ``POST …/mail`` — change the settings. The sender is the customer's book,
   kept by who works cases; **which credential** sends and reads is a custodian's choice, so a
   change to either asks the caller to be one — the same gate as the vault.
-* ``POST …/mail/test`` — send a short test message to the recipients, through the credential set.
+* ``POST …/mail/test`` — send a short test message to an address, through the credential set.
 
 The mailbox password never crosses this module: the credential is opened inside the appliance by
 `engine/noc/mail_loop.py` when a message is sent or read.
@@ -45,6 +46,13 @@ class CustomerMailIn(BaseModel):
     send_updates: bool = True
     read_replies: bool = True
     version: int = Field(default=0, ge=0)
+
+
+class MailTestIn(BaseModel):
+    """Where a test message goes (ADR #500: recipients are chosen per email, on the case)."""
+
+    model_config = ConfigDict(extra="forbid")
+    to: str = Field(default="", max_length=254)
 
 
 def _listed(text: str, what: str) -> str:
@@ -189,18 +197,24 @@ def register(app: FastAPI, ctx: AppContext) -> None:
 
     @route.post("/api/noc/customers/{customer_id}/mail/test")
     async def test_mail(
-        customer_id: int, request: Request, principal: auth.Principal = Depends(security)
+        customer_id: int,
+        request: Request,
+        body: MailTestIn | None = None,
+        principal: auth.Principal = Depends(security),
     ) -> dict[str, Any]:
-        """Send a short test message to the recipients through the credential set (or the
-        appliance's server). Says what the server answered."""
+        """Send a short test message to ``to`` (else the old recipients) through the credential
+        set (or the appliance's server). Says what the server answered."""
         row = await visible_customer(ctx, principal, customer_id)
         (await editor_of(ctx, request, principal)).require_work()
         async with store.reading():
             cfg = await store.noc_customer_mail(customer_id)
             fallback = mail.from_document(await store.get_meta(mail.META_KEY))
-        to = custmail.addresses(str(cfg["recipients"])) if cfg else []
+        typed = (body.to.strip() if body else "") or (str(cfg["recipients"]) if cfg else "")
+        to = custmail.addresses(_listed(typed, "to")) if typed else []
         if not cfg or not to:
-            raise HTTPException(status_code=400, detail="recipients: add at least one first")
+            raise HTTPException(
+                status_code=400, detail="to: an address to send the test to (and save first)"
+            )
         opened = await mail_loop.open_credential(store, cfg["smtp_secret_id"], "smtp")
         if opened is not None:
             secret, fields = opened
@@ -222,8 +236,8 @@ def register(app: FastAPI, ctx: AppContext) -> None:
         message["Date"] = formatdate(localtime=False)
         message["Message-ID"] = make_msgid(domain=sender.rsplit("@", 1)[-1])
         message.set_content(
-            "This is a test from the NOC. Customer updates for your cases will come from this "
-            "address; replying to them adds your answer to the case.\n"
+            "This is a test from the NOC. Emails about your cases will come from this address; "
+            "replying to them adds your answer to the case.\n"
         )
         try:
             await asyncio.to_thread(mail.send, config, message, password=password)

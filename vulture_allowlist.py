@@ -408,3 +408,5 @@ list_brokers  # unused function (netcorenoc/api/routes/brokers.py)
 read_broker  # unused function (netcorenoc/api/routes/brokers.py)
 rotate_token  # unused function (netcorenoc/api/routes/brokers.py)
 set_subject_scope  # unused function (netcorenoc/api/routes/governance.py) — ADR #499
+send_email  # unused function (netcorenoc/api/routes/case_email.py) — ADR #500
+email_draft  # unused function (netcorenoc/api/routes/case_email.py)
