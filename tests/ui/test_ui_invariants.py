@@ -4672,3 +4672,22 @@ async def test_a_situation_opens_as_its_sequence_of_events_first_step_marked(
     assert sum(".seq-first" in row for row in rows) == 1, rows
     # The situation is named in the filter chips, so the narrowing is on screen and removable.
     assert f"Situation #{sid}" in dump
+
+
+def test_no_component_method_shadows_a_preact_instance_field() -> None:
+    """A Component's own method named ``base`` is replaced by the DOM node Preact assigns to
+    ``this.base`` after the first render, so the next call throws. That is how a broker's Network
+    graph stopped opening an element's panel on a click, and its Timeline stopped filtering:
+    ``TypeError: this.base is not a function`` (both screens' ``base()``, ADR #496). The fields
+    Preact writes on an instance are not names a component may define."""
+    import netcorenoc
+
+    ui = Path(netcorenoc.__file__).resolve().parent / "ui" / "app"
+    reserved = ("base", "props", "state", "context")
+    shape = re.compile(rf"^\s+(?:async\s+)?({'|'.join(reserved)})\s*\([^)]*\)\s*\{{", re.MULTILINE)
+    found = [
+        f"{path.relative_to(ui)}: {match.group(1)}()"
+        for path in sorted(ui.rglob("*.js"))
+        for match in shape.finditer(path.read_text(encoding="utf-8"))
+    ]
+    assert not found, f"a component method shadows a field Preact sets on the instance: {found}"

@@ -120,13 +120,13 @@ export class Timeline extends Component {
       if (el && String(el.organization_id) !== String(value)) q.delete("ne");
     }
     const text = q.toString();
-    this.props.navigate(`${this.base()}${text ? `?${text}` : ""}`);
+    this.props.navigate(`${this.home()}${text ? `?${text}` : ""}`);
   }
 
   /** Where this timeline lives: inside a broker (ADR #496), or the old address. */
-  base() { return this.props.base || "#/timeline"; }
+  home() { return this.props.base || "#/timeline"; }
 
-  clear() { this.props.navigate(this.base()); }
+  clear() { this.props.navigate(this.home()); }
 
   render(_props, { status, lanes, groups, error, elements, orgs, traps, situation }) {
     if (status === "loading") return html`<${Loading} label="Reading alarm activity" />`;
