@@ -7408,7 +7408,9 @@ From this release an entry is about six lines: decision, reason, release.*
   once. The compose file gives the container 75 s (`stop_grace_period`): Docker's default 10 s cut
   the drain and the final maintenance pass, which take about 15 s under a storm.
 - **Decision** (F158): a cancelled `executemany` on the writer runs to its end before the writer is
-  used again (`store/db.py`); the caller's cancellation still stands.
+  used again (`store/db.py`); the caller's cancellation still stands. Requests still in flight at a stop are
+  cancelled by uvicorn after 3 s (`HTTP_STOP_S`), inside the 5 s the stop gives the server, so its
+  shutdown finishes; a proxy's cancelled batch is sent again.
 - **Reason**: in the soak, a `SIGTERM` after an hour of storms closed the HTTP port within seconds
   but the process never exited; it held the schema's lock for 55 minutes and the restart was
   refused. Reproduced, the writer was mid-`executemany` (the varbind profiles' flush) and waiting

@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import inspect
 import time
 from pathlib import Path
 from typing import Any
@@ -336,6 +337,7 @@ async def test_a_stop_lets_the_http_server_shut_down(
     traceback. The server is now told to exit and given the time to: its shutdown runs."""
     from netcorenoc import runner
     from netcorenoc.api import QuietServer
+    from netcorenoc.api.models import HTTP_STOP_S
     from netcorenoc.crosscutting.settings import Settings
 
     shut: list[bool] = []
@@ -372,3 +374,6 @@ async def test_a_stop_lets_the_http_server_shut_down(
     with contextlib.suppress(asyncio.CancelledError):
         await task
     assert shut == [True], "uvicorn was cancelled mid-serve: its shutdown never ran"
+    # F158: a request still in flight is cancelled by uvicorn before the stop stops waiting for it.
+    stop_window = inspect.signature(QuietServer.stop).parameters["within_s"].default
+    assert servers[0].config.timeout_graceful_shutdown == HTTP_STOP_S < stop_window

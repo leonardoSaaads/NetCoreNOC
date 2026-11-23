@@ -2774,7 +2774,10 @@ this into a sentence in a build report instead of a failed gate.
   (`store/db.py::_to_the_end`); the caller is still cancelled. And the stop is bounded by the
   process whatever the cause (`main._stopper`): a 60 s watchdog writes every thread's stack to
   stderr and exits 1; a second signal does it at once. The compose file allows 75 s before Docker
-  kills the container.
+  kills the container. The validation run (40 minutes, the same load) stopped in 16 s, and showed
+  one more thing: a request still waiting at the stop kept uvicorn's shutdown past its 5 s window,
+  so it was destroyed pending at exit (an `ERROR` line). uvicorn now cancels such a request after
+  3 s (`api/models.py::HTTP_STOP_S`); the proxy sends that batch again.
 - **What now catches it**: `tests/store/test_store_concurrency.py::test_a_batch_cancelled_mid_flight_finishes_and_the_writer_stays_usable`
   (fails in 30 s without the repair, where the appliance hung) and
   `tests/ops/test_main.py::test_a_stop_is_bounded_and_a_second_signal_ends_it_at_once`.
