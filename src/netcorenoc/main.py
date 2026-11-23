@@ -19,9 +19,12 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import faulthandler
 import logging
+import os
 import signal
 import sys
+from collections.abc import Callable
 
 from netcorenoc import __version__
 from netcorenoc.crosscutting.logsetup import configure_logging
@@ -124,13 +127,39 @@ def main(argv: list[str] | None = None) -> None:
         raise SystemExit(2) from None
 
 
+#: ADR #498: how long a stop may take. Each of the runner's steps is bounded (§A.5) and the whole
+#: stop takes about 15 s under a storm; past this the process writes every thread's stack to stderr
+#: and exits, so a stop that hangs can never hold the schema's lock (the soak's held it an hour).
+STOP_LIMIT_S = 60.0
+
+
+def _stopper(task: asyncio.Task[None]) -> Callable[[], None]:
+    """The first SIGINT or SIGTERM starts the graceful stop under a watchdog; a second one ends
+    the process at once. Either way, a stop that did not finish leaves its stacks in the log."""
+    asked = False
+
+    def stop() -> None:
+        nonlocal asked
+        if asked:
+            faulthandler.dump_traceback(all_threads=True)
+            os._exit(1)
+        asked = True
+        logging.getLogger("netcorenoc").info("stopping (at most %.0f s)", STOP_LIMIT_S)
+        # A C thread, so it fires even when the event loop or a lock is what is stuck.
+        faulthandler.dump_traceback_later(STOP_LIMIT_S, exit=True)
+        task.cancel()
+
+    return stop
+
+
 def _main() -> None:
     settings = Settings.from_env()
     configure_logging(settings.log_json)
     loop_main = asyncio.new_event_loop()
     task = loop_main.create_task(run(settings))
+    stop = _stopper(task)
     for sig in (signal.SIGINT, signal.SIGTERM):
-        loop_main.add_signal_handler(sig, task.cancel)
+        loop_main.add_signal_handler(sig, stop)
     with contextlib.suppress(asyncio.CancelledError):
         loop_main.run_until_complete(task)
 

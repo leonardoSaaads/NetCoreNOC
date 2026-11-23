@@ -245,6 +245,9 @@ services:
     image: netcorenoc:local
     container_name: netcorenoc
     restart: unless-stopped
+    # ADR #498: a stop drains what is queued and flushes learned state (about 15 s under a storm)
+    # and is cut at 60 s by the process itself; Docker's default 10 s would kill it mid-drain.
+    stop_grace_period: 75s
     depends_on:
       postgres:
         condition: service_healthy

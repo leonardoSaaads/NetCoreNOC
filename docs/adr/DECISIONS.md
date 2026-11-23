@@ -7401,3 +7401,13 @@ From this release an entry is about six lines: decision, reason, release.*
   open (the stream then follows that broker).
 - **Reason**: found in a browser against the soak's appliance; each is the kind of disagreement
   between two numbers on one screen that makes an operator stop trusting both.
+- **Decision** (F158): a stop is bounded by the process itself. The first `SIGTERM`/`SIGINT` arms a
+  60 s watchdog (`faulthandler.dump_traceback_later`, a C thread that fires even when the event
+  loop or a lock is what is stuck) and starts the graceful stop; past the limit every thread's stack
+  goes to stderr and the process exits 1, releasing the schema's lock. A second signal does both at
+  once. The compose file gives the container 75 s (`stop_grace_period`): Docker's default 10 s cut
+  the drain and the final maintenance pass, which take about 15 s under a storm.
+- **Reason**: in the soak, a `SIGTERM` after an hour of storms closed the HTTP port within seconds
+  but the process never exited; it held the schema's lock for 55 minutes and the restart was
+  refused. The runner's steps are each bounded (§A.5), so one of them was not; the watchdog keeps
+  the promise whichever it is, and its dump names it the next time.

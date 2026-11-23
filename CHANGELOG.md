@@ -67,6 +67,9 @@ stored device credential is unreadable (#455).
   broker. A visibility policy may name brokers (`broker:<id>`) (#496, #497).
 - Found by a soak of five networks and a 3 000-router core with storms: a broker's page lacked its
   counts, and an *All brokers* answer arriving late overwrote the chosen broker's chart (#498).
+- **A stop is bounded** (F158): after an hour of storms a `SIGTERM` never finished and the process
+  kept the schema's lock. A stop now has 60 s, then every thread's stack is logged and the process
+  exits; a second signal ends it at once. The compose file gives the container 75 s to stop (#498).
 
 ### Added — phase 2 begins: the NOC plane and its credential vault (#454-#458)
 

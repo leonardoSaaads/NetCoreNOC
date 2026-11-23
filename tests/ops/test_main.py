@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import faulthandler
 import os
 
 import pytest
@@ -181,3 +182,37 @@ async def test_engine_demotes_flapping_fingerprint(store: Store) -> None:
     cur = await store.conn.execute("SELECT is_flapping FROM alarm")
     row = await cur.fetchone()
     assert row is not None and row["is_flapping"] == 1
+
+
+async def test_a_stop_is_bounded_and_a_second_signal_ends_it_at_once(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """ADR #498: the soak's stop under a storm never finished and held the schema's lock for an
+    hour. The first signal cancels the run under a watchdog that dumps every stack and exits; a
+    second one does both at once."""
+    import netcorenoc.main as entry
+
+    armed: list[float] = []
+    dumped: list[bool] = []
+    monkeypatch.setattr(
+        faulthandler,
+        "dump_traceback_later",
+        lambda s, **kw: armed.append(s) if kw.get("exit") else None,
+    )
+    monkeypatch.setattr(
+        faulthandler, "dump_traceback", lambda all_threads: dumped.append(all_threads)
+    )
+
+    def gone(code: int) -> None:
+        raise SystemExit(code)
+
+    monkeypatch.setattr(os, "_exit", gone)
+    task = asyncio.get_running_loop().create_task(asyncio.sleep(3600))
+    stop = entry._stopper(task)
+    stop()
+    await asyncio.sleep(0)
+    assert task.cancelled()
+    assert armed == [entry.STOP_LIMIT_S] and not dumped
+    with pytest.raises(SystemExit) as ended:
+        stop()
+    assert ended.value.code == 1 and dumped == [True]
