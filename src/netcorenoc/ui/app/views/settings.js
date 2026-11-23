@@ -71,7 +71,7 @@ export function Settings(props) {
         aria-selected=${tab[0] === key} class=${cx("access-tab", tab[0] === key && "on")}
         onClick=${() => props.navigate(`#/settings?tab=${key}`)}><${Icon} name=${icon} /> ${label}</button>`)}
     </div>
-    ${separated ? html`<p class="hint">Which model decides, and site training, are each broker's own:
+    ${separated ? html`<p class="hint">Which model decides, and site training, are each broker's own:${" "}
       <a href="#/brokers">Brokers</a> → a broker → Learning.</p>` : null}
     <${Body} key=${tab[0]} />
   </div>`;
