@@ -7535,3 +7535,30 @@ From this release an entry is about six lines: decision, reason, release.*
 - **Reason**: the counts a lead acts on — something running, something to confirm before it
   lapses, two windows on one network the same night — are seen before the list is read.
 
+## 505. What a Gemini agent found in the lab: busy providers, keys, the live list (unreleased)
+
+- **Context**: the owner asked for the NOC to be worked by an agent of another make, supervised in
+  a real browser, on the free tier of Google AI Studio (`gemini-flash-lite-latest`). The lab's
+  owner connected the key, hired the agent and opened a case from the Broker as a person would.
+- **Finding → decision (resilience)**: halfway through its first case the provider answered
+  **HTTP 503 "high demand"** and the run ended with the case taken and nothing written to the
+  customer. A chat turn the provider refuses because it is busy — 429 and 5xx — is now asked
+  again after 2, 6 and 15 seconds (the provider's own `Retry-After` wins, capped at 30 s); a
+  refusal of the request itself (4xx) is raised at once, as before. The refusal Gemini sends as a
+  list of one error now reads as its sentence, not as a Python structure.
+- **Finding → decision (keys)**: AI Studio's newer keys begin with `AQ.`; the form said a working
+  key "does not" look like Google's. A provider's key hint may name alternatives ("AIza or AQ.").
+  And with one key for the chosen provider, the hiring form now chooses it instead of asking.
+- **Finding → decision (the live list)**: on an appliance that resolves a lot, the header counted
+  49 new situations and the New tab said the network was quiet: the stream carried the 50 latest
+  situations of every state, and the resolved ones had pushed the older new ones out. It now
+  carries the 50 latest of **each** live state (new, pending, open) and the 50 latest of all; and
+  a link to a situation outside that window shows its card from the detail it opened (F97).
+- **Finding → decision (the email editor)**: a bulleted list typed in the feed's editor reached
+  the customer as one paragraph, its items run together: Chromium makes a list inside the line's
+  `<div>`, and the editor's reader flattened every `<div>`. A block container is now walked, so a
+  list stays a list (the DOM harness learned `nodeName` and `nodeValue` to test it).
+- **Finding → decision (threading)**: the agent's Reply all named the first message twice in
+  `References` — the customer's client named it in both `References` and `In-Reply-To`, and both
+  were kept. A reply's chain is read oldest first, each message once, its parent last.
+- **Reason**: each was met by doing the owner's work in the owner's way; each is a test now.

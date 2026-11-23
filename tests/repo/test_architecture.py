@@ -1581,7 +1581,7 @@ def test_the_queue_put_on_the_hot_path_is_non_blocking() -> None:
 #: `engine/noc/` `commands`, `executor`, `playbook` and `runbook`, `store/noc_playbooks.py`,
 #: migration `0035_noc_automation.sql`, the `noc_exec` and `playbooks` routes, and the
 #: `views/playbooks` console module.
-SRC_TREE_DIGEST = "b778c250cce6173d651fc672a95bd70923991e55afacaa0c3853671aad9de591"
+SRC_TREE_DIGEST = "4cc08d9edd4aa84a7a5e9ac27a99ce970f315164d0f0e454509520495b920997"
 SRC_FILE_COUNT = 564
 SRC_VERSION_FILE = "src/netcorenoc/__init__.py"
 

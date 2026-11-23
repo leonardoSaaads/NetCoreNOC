@@ -164,7 +164,7 @@ def compose(
     message["Date"] = formatdate(localtime=False)
     message["Message-ID"] = make_msgid(domain=sender.rsplit("@", 1)[-1])
     message["X-NetCoreNOC-Case"] = str(sid)
-    chain = [r for r in refs if r][-20:]
+    chain = list(dict.fromkeys(r for r in refs if r))[-20:]
     if in_reply_to:
         message["In-Reply-To"] = in_reply_to
         chain = [*chain, in_reply_to] if in_reply_to not in chain else chain
@@ -210,8 +210,15 @@ def parse(raw: bytes) -> Reply:
     message = message_from_bytes(raw, policy=policy.default)
     found = _REF.findall(str(message.get("Message-ID", "") or ""))
     message_id = found[0] if found else f"<{hashlib.sha256(raw).hexdigest()}@netcorenoc.invalid>"
-    refs = _REF.findall(
-        f"{message.get('In-Reply-To', '') or ''} {message.get('References', '') or ''}"
+    # The chain oldest first, each once (ADR #505: the lab's reply listed its parent twice, as
+    # `References` names it and `In-Reply-To` repeats it); the parent last, as a reply reads it.
+    refs = list(
+        dict.fromkeys(
+            [
+                *_REF.findall(str(message.get("References", "") or "")),
+                *_REF.findall(str(message.get("In-Reply-To", "") or "")),
+            ]
+        )
     )
     auto = str(message.get("Auto-Submitted", "no") or "no").strip().lower() != "no"
     auto = auto or bool(message.get("X-Autoreply") or message.get("X-Autorespond"))

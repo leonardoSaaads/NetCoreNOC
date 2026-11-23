@@ -233,10 +233,19 @@ export class Situations extends Component {
     // nothing to work and nothing to judge, and a page of "(no members) · 0 alarms" rows buried the
     // ones that are. Its own address still opens it, and its history says where its alarms went.
     const held = (s) => pinned.has(s.id) && store.isExpanded(s.id);
-    const rows = (query
+    const listed = (query
       ? results || []
       : (live.situations || []).filter((s) => !status || s.status === status || held(s)))
       .filter((s) => (s.alarm_count ?? 1) > 0 || held(s));
+    // F97, again: a link to a situation the live list does not carry — older than its window —
+    // still shows its card, from the detail the link opened, rather than an empty tab.
+    const ids = new Set(listed.map((s) => s.id));
+    const linked = query ? [] : [...pinned]
+      .filter((sid) => !ids.has(sid) && store.isExpanded(sid))
+      .map((sid) => store.heldDetail(sid))
+      .filter((d) => d && !d.__error && d.id != null)
+      .map((d) => ({ ...d, alarm_count: (d.alarms || []).length }));
+    const rows = [...linked, ...listed];
 
     return html`<div class="situations">
       <${Counts} stats=${live.stats} status=${status} onPick=${(v) => this.pickTab(v)} />

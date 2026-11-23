@@ -285,3 +285,60 @@ async def test_a_key_is_never_followed_to_another_place() -> None:
     anthropic = llm_http.headers_for(providers.PROVIDERS["anthropic"], "sk-ant-1")
     assert anthropic == {"x-api-key": "sk-ant-1", "anthropic-version": "2023-06-01"}
     assert llm_http.headers_for(providers.PROVIDERS["ollama"], "") == {}
+
+
+async def test_a_busy_provider_is_asked_again_and_a_wrong_request_is_not(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """ADR #505: the lab's Gemini answered 503 "high demand" mid-case and the run ended there. A
+    turn the provider refuses because it is busy (429, 5xx) is tried again after a pause — its own
+    `Retry-After` when it sends one, capped — and a refusal of the request itself is not."""
+    waits: list[float] = []
+
+    async def no_wait(seconds: float) -> None:
+        waits.append(seconds)
+
+    monkeypatch.setattr(llm_http, "_sleep", no_wait)
+    answers: list[Any] = [
+        ProviderCallError("HTTP 503: high demand", status=503),
+        ProviderCallError("HTTP 429: slow down", status=429, retry_after=120.0),
+        {"choices": [{"message": {"content": "ok"}}]},
+    ]
+
+    def call(*_args: Any) -> dict[str, Any]:
+        answer = answers.pop(0)
+        if isinstance(answer, Exception):
+            raise answer
+        return answer
+
+    monkeypatch.setattr(llm_http, "_call", call)
+    google = providers.PROVIDERS["google"]
+    got = await llm_http.chat(
+        google, "https://generativelanguage.googleapis.com/v1beta/openai", "k", {}
+    )
+    assert got["choices"][0]["message"]["content"] == "ok"
+    assert waits == [llm_http.RETRY_DELAYS_S[0], llm_http.RETRY_AFTER_CAP_S], waits
+
+    waits.clear()
+    answers[:] = [ProviderCallError("HTTP 400: bad tool schema", status=400)]
+    with pytest.raises(ProviderCallError, match="HTTP 400"):
+        await llm_http.chat(
+            google, "https://generativelanguage.googleapis.com/v1beta/openai", "k", {}
+        )
+    assert waits == [], "a wrong request is not asked again"
+
+    answers[:] = [ProviderCallError("HTTP 503: still busy", status=503)] * 4
+    with pytest.raises(ProviderCallError, match="still busy"):
+        await llm_http.chat(
+            google, "https://generativelanguage.googleapis.com/v1beta/openai", "k", {}
+        )
+    assert waits == list(llm_http.RETRY_DELAYS_S), "three pauses, then the refusal as it came"
+
+
+def test_a_refusal_shaped_as_a_list_reads_as_its_message() -> None:
+    """The lab's Gemini refused with `[{"error": {...}}]`, and the agent's page showed Python's
+    repr of it. The provider's own sentence is what an operator needs."""
+    raw = json.dumps(
+        [{"error": {"code": 503, "message": "This model is busy.", "status": "UNAVAILABLE"}}]
+    )
+    assert llm_http._message(raw.encode()) == "This model is busy."

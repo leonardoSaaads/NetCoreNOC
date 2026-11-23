@@ -581,3 +581,30 @@ def test_reply_all_goes_to_everyone_on_it_but_us() -> None:
     case = 7  # a case number, spelled through a name: the docs guard reads `#` and digits
     nested = custmail.reply_subject(case, f"RE: Fw: [NetCoreNOC #{case}] Visit")
     assert nested == f"Re: [NetCoreNOC #{case}] Visit", "Re: once, the tag kept"
+
+
+def test_a_reply_chain_names_each_message_once_and_its_parent_last() -> None:
+    """ADR #505: the lab's reply to a customer listed the first message twice in `References` —
+    the customer's client named it in both `References` and `In-Reply-To`, and each was added."""
+    raw = (
+        b"From: campo@claro.lab\r\nTo: noc@claro.lab\r\nSubject: Re: Visit\r\n"
+        b"Message-ID: <b@claro.lab>\r\nIn-Reply-To: <a@claro.lab>\r\n"
+        b"References: <a@claro.lab>\r\n\r\nThe 10th or the 15th.\r\n"
+    )
+    reply = custmail.parse(raw)
+    assert reply.refs == ("<a@claro.lab>",), reply.refs
+    sent = custmail.compose(
+        42,
+        sender="noc@claro.lab",
+        sender_name="NOC",
+        to=["campo@claro.lab"],
+        cc=[],
+        bcc=[],
+        subject="Re: Visit",
+        text="The 10th.",
+        html_body="<p>The 10th.</p>",
+        in_reply_to=reply.message_id,
+        refs=(*reply.refs, *reply.refs),
+    )
+    assert sent["References"] == "<a@claro.lab> <b@claro.lab>"
+    assert sent["In-Reply-To"] == "<b@claro.lab>"

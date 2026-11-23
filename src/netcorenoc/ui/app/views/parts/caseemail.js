@@ -54,6 +54,11 @@ function merged(runs) {
   return out.filter((r) => r.t);
 }
 
+/** Blocks a line of the editor may hold: Chromium puts a list made on a line INSIDE that line's
+ * `<div>`, so a block container is walked, not flattened (the lab's list arrived as one
+ * paragraph, its items run together). */
+const BLOCKS = new Set(["UL", "OL", "BLOCKQUOTE", "DIV", "P"]);
+
 /** The editor's content as the document the server takes. */
 export function readDoc(root) {
   const doc = [];
@@ -63,26 +68,30 @@ export function readDoc(root) {
     if (runs.some((r) => r.t.trim())) doc.push({ p: runs });
     loose = [];
   };
-  for (const node of root.childNodes) {
-    const tag = node.nodeType === 1 ? node.nodeName : "";
-    if (tag === "UL" || tag === "OL") {
-      flush();
-      const items = [...node.children].filter((li) => li.nodeName === "LI").map((li) => {
-        const runs = []; runsOf(li, {}, runs); return merged(runs);
-      }).filter((runs) => runs.length);
-      if (items.length) doc.push({ [tag.toLowerCase()]: items });
-    } else if (tag === "BLOCKQUOTE") {
-      flush();
-      const runs = []; runsOf(node, {}, runs);
-      const text = merged(runs);
-      if (text.length) doc.push({ quote: [{ t: text.map((r) => r.t).join("") }] });
-    } else if (tag === "DIV" || tag === "P") {
-      flush();
-      const runs = []; runsOf(node, {}, runs); loose = runs; flush();
-    } else {
-      runsOf(node, {}, loose);
+  const walk = (nodes) => {
+    for (const node of nodes) {
+      const tag = node.nodeType === 1 ? node.nodeName : "";
+      if (tag === "UL" || tag === "OL") {
+        flush();
+        const items = [...node.children].filter((li) => li.nodeName === "LI").map((li) => {
+          const runs = []; runsOf(li, {}, runs); return merged(runs);
+        }).filter((runs) => runs.length);
+        if (items.length) doc.push({ [tag.toLowerCase()]: items });
+      } else if (tag === "BLOCKQUOTE") {
+        flush();
+        const runs = []; runsOf(node, {}, runs);
+        const text = merged(runs);
+        if (text.length) doc.push({ quote: [{ t: text.map((r) => r.t).join("") }] });
+      } else if (tag === "DIV" || tag === "P") {
+        flush();
+        if ([...node.children].some((c) => BLOCKS.has(c.nodeName))) { walk(node.childNodes); flush(); continue; }
+        const runs = []; runsOf(node, {}, runs); loose = runs; flush();
+      } else {
+        runsOf(node, {}, loose);
+      }
     }
-  }
+  };
+  walk(root.childNodes);
   flush();
   return doc;
 }

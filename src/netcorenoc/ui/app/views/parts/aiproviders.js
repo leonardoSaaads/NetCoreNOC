@@ -45,7 +45,8 @@ function KeyField({ p, provider, st, set }) {
     <${PasswordInput} id=${`${p}-key`} label=${provider.key_label} value=${st.key}
       autocomplete="new-password" onInput=${(key) => set({ key })} />
     ${provider.key_hint ? html`<p class="hint">${provider.label} keys begin with
-      ${" "}<code>${provider.key_hint}</code>${st.key && !st.key.startsWith(provider.key_hint)
+      ${" "}${provider.key_hint.split(" or ").map((h, i) => html`${i ? " or " : ""}<code>${h}</code>`)}${st.key
+        && !provider.key_hint.split(" or ").some((h) => st.key.startsWith(h))
         ? html` — <span class="warn-text">this one does not; check it is the right key.</span>` : null}</p>` : null}
   </div>`;
 }

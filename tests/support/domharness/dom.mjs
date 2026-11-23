@@ -282,6 +282,9 @@ class Text extends DomNode {
   }
   get data() { return this._data; }
   set data(v) { this._data = String(v); }
+  // As a browser reports them (ADR #505: the email editor reads `nodeName` and `nodeValue`).
+  get nodeName() { return "#text"; }
+  get nodeValue() { return this._data; }
 }
 
 class DocumentFragment extends DomNode {
@@ -292,6 +295,9 @@ class DocumentFragment extends DomNode {
 }
 
 class Element extends DomNode {
+  /** Upper case for HTML, as a browser reports it; `tagName` here stays lower case. */
+  get nodeName() { return this.tagName.toUpperCase(); }
+
   constructor(ownerDocument, tagName, namespaceURI = XHTML_NS) {
     super(ownerDocument);
     this.nodeType = ELEMENT_NODE;

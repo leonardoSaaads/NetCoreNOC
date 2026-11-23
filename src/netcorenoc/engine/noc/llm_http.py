@@ -46,8 +46,32 @@ MAX_BODY = 4 * 1024 * 1024
 ANTHROPIC_VERSION = "2023-06-01"
 
 
+#: Statuses a provider answers when it is busy rather than when the request is wrong: a chat turn
+#: is tried again after a pause (ADR #505). The lab met it: Gemini's free tier answered 503
+#: "high demand" in the middle of a case, and the run ended with the case half worked.
+TRANSIENT = frozenset({429, 500, 502, 503, 504})
+#: The pauses before each retry, in seconds; a `Retry-After` the provider sends wins, up to the cap.
+RETRY_DELAYS_S = (2.0, 6.0, 15.0)
+RETRY_AFTER_CAP_S = 30.0
+
+
 class ProviderCallError(RuntimeError):
-    """A provider that did not answer as asked: unreachable, refused, or not JSON."""
+    """A provider that did not answer as asked: unreachable, refused, or not JSON. `status` is the
+    HTTP status when there was one, and `retry_after` the provider's own `Retry-After`."""
+
+    def __init__(
+        self, message: str, *, status: int | None = None, retry_after: float | None = None
+    ):
+        super().__init__(message)
+        self.status = status
+        self.retry_after = retry_after
+
+
+def _retry_after(value: str | None) -> float | None:
+    try:
+        return max(0.0, float(value)) if value else None
+    except ValueError:
+        return None  # an HTTP date is not worth parsing for a pause capped at half a minute
 
 
 class _NoRedirect(urllib.request.HTTPRedirectHandler):
@@ -73,6 +97,9 @@ def _message(raw: bytes) -> str:
         body = json.loads(raw.decode("utf-8", "replace"))
     except ValueError:
         return raw.decode("utf-8", "replace")[:200]
+    # Gemini's OpenAI-compatible API answers a refusal as a list of one error object.
+    if isinstance(body, list) and body and isinstance(body[0], dict):
+        body = body[0]
     error = body.get("error") if isinstance(body, dict) else None
     if isinstance(error, dict):
         return str(error.get("message") or error.get("type") or "")[:300]
@@ -94,7 +121,11 @@ def _call(url: str, headers: dict[str, str], payload: Any, timeout: float) -> di
         with _OPENER.open(request, timeout=timeout) as answer:  # nosec B310
             raw = answer.read(MAX_BODY + 1)
     except urllib.error.HTTPError as exc:
-        raise ProviderCallError(f"HTTP {exc.code}: {_message(exc.read(64 * 1024))}") from None
+        raise ProviderCallError(
+            f"HTTP {exc.code}: {_message(exc.read(64 * 1024))}",
+            status=exc.code,
+            retry_after=_retry_after(exc.headers.get("Retry-After") if exc.headers else None),
+        ) from None
     except (urllib.error.URLError, OSError) as exc:
         reason = getattr(exc, "reason", exc)
         raise ProviderCallError(f"unreachable: {reason}") from None
@@ -170,7 +201,7 @@ async def chat(
     its native `POST /api/chat`, which takes a context window (ADR #487, `ollama_chat.py`)."""
     if provider.ollama:
         root = base[: -len(provider.base_path)] if base.endswith(provider.base_path) else base
-        answer = await asyncio.to_thread(
+        answer = await _patiently(
             _call,
             f"{root}/api/chat",
             headers_for(provider, key),
@@ -178,9 +209,27 @@ async def chat(
             timeout,
         )
         return ollama_chat.from_native(answer)
-    return await asyncio.to_thread(
+    return await _patiently(
         _call, f"{base}/chat/completions", headers_for(provider, key), payload, timeout
     )
+
+
+async def _patiently(call: Any, *args: Any) -> dict[str, Any]:
+    """`call` in a worker thread, tried again after a pause while the provider says it is busy
+    (`TRANSIENT`); any other refusal, and the last busy one, is raised as it came."""
+    for pause in (*RETRY_DELAYS_S, None):
+        try:
+            return await asyncio.to_thread(call, *args)
+        except ProviderCallError as exc:
+            if pause is None or exc.status not in TRANSIENT:
+                raise
+            wait = min(exc.retry_after, RETRY_AFTER_CAP_S) if exc.retry_after is not None else pause
+            await _sleep(wait)
+    raise AssertionError("unreachable")  # pragma: no cover - the loop returns or raises
+
+
+#: The pause, by name, so a test can take the waiting out of a retry.
+_sleep = asyncio.sleep
 
 
 async def ollama_probe(

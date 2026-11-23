@@ -404,6 +404,23 @@ const scenarios = {
     return { out, proof: proofOf(env) };
   },
 
+  /** ADR #505: the email editor's content, built as Chromium builds it, read by `readDoc`.
+   * `tree` is nested arrays — `[tag, ...children]`, a string a text node. */
+  async editorDoc(params) {
+    const env = await boot(params);
+    const found = [...env.modules.entries()].find(([file]) => file.endsWith("caseemail.js"));
+    if (!found) throw new Error("caseemail.js was not in the evaluated module graph");
+    const doc = env.document;
+    const build = (spec) => {
+      if (typeof spec === "string") return doc.createTextNode(spec);
+      const [tag, ...kids] = spec;
+      const el = doc.createElement(tag);
+      for (const kid of kids) el.append(build(kid));
+      return el;
+    };
+    return { doc: found[1].namespace.readDoc(build(params.tree)), proof: proofOf(env) };
+  },
+
   /** Boot, optionally navigate, and dump the DOM. The gate documents quote `dump`. */
   async render(params) {
     const env = await boot(params);

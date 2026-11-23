@@ -47,6 +47,20 @@ data directory), without which sealed values and every password are unreadable (
 secrets key file** (`secrets.key`; the image keeps it on a volume of its own), without which every
 stored device credential is unreadable (#455).
 
+### Fixed — what a Gemini agent found in the lab (#505)
+
+- A busy AI provider (429, 5xx — Gemini's free tier answered 503 "high demand" mid-case) is asked
+  again after 2, 6 and 15 s, its own `Retry-After` first; a wrong request is not. A refusal sent as
+  a list reads as its sentence (#505).
+- Google AI Studio keys beginning `AQ.` are no longer called wrong; hiring an agent chooses the
+  provider's only key itself (#505).
+- Situations: the New tab no longer says the network is quiet while the header counts new ones —
+  the live list carries every live state, however much was resolved since; a link to an older
+  situation shows its card (#505).
+- The email editor sends a bulleted or numbered list as a list (Chromium nests it in the line's
+  `<div>`) (#505).
+- A reply's `References` names each earlier message once, its parent last (#505).
+
 ### Added — Maintenance opens on a board of every broker's planned work (#503)
 
 - **Broker → Maintenance**: *Running now* (and the hosts under maintenance), *Next 24 hours*, *To

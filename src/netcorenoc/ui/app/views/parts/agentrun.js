@@ -55,8 +55,13 @@ export class RunSettings extends Component {
     this.setState({ keys: [] });
     try {
       const vault = await get("/api/noc/secrets");
-      this.setState({ keys: vault.secrets.filter((s) => s.agent_access
-        && (s.kind.startsWith("ai_") || s.kind === "api_token")) });
+      const keys = vault.secrets.filter((s) => s.agent_access
+        && (s.kind.startsWith("ai_") || s.kind === "api_token"));
+      this.setState({ keys });
+      // The lab found it: one key for this provider, and the form still asked to choose it.
+      const pid = providerFor(this.props.st);
+      const mine = keys.filter((k) => k.kind === `ai_${pid}` || (pid === "anthropic" && k.kind === "api_token"));
+      if (mine.length === 1 && !this.props.st.secret_id) this.props.onChange({ secret_id: String(mine[0].id) });
     } catch {
       this.setState({ keys: [] });
     }
