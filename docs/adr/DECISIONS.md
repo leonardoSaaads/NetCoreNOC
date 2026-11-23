@@ -7407,7 +7407,11 @@ From this release an entry is about six lines: decision, reason, release.*
   goes to stderr and the process exits 1, releasing the schema's lock. A second signal does both at
   once. The compose file gives the container 75 s (`stop_grace_period`): Docker's default 10 s cut
   the drain and the final maintenance pass, which take about 15 s under a storm.
+- **Decision** (F158): a cancelled `executemany` on the writer runs to its end before the writer is
+  used again (`store/db.py`); the caller's cancellation still stands.
 - **Reason**: in the soak, a `SIGTERM` after an hour of storms closed the HTTP port within seconds
   but the process never exited; it held the schema's lock for 55 minutes and the restart was
-  refused. The runner's steps are each bounded (§A.5), so one of them was not; the watchdog keeps
-  the promise whichever it is, and its dump names it the next time.
+  refused. Reproduced, the writer was mid-`executemany` (the varbind profiles' flush) and waiting
+  on the client: asyncpg cancelled mid-pipeline stops sending, and every later statement waited.
+  The runner's steps are each bounded (§A.5) only if the writer answers; the watchdog keeps the
+  promise for whatever else may not, and its dump names it.
