@@ -407,3 +407,4 @@ _numbered  # ProxyBatchIn: a batch numbers exactly first..last
 list_brokers  # unused function (netcorenoc/api/routes/brokers.py)
 read_broker  # unused function (netcorenoc/api/routes/brokers.py)
 rotate_token  # unused function (netcorenoc/api/routes/brokers.py)
+set_subject_scope  # unused function (netcorenoc/api/routes/governance.py) — ADR #499
