@@ -309,6 +309,7 @@ async def test_a_busy_provider_is_asked_again_and_a_wrong_request_is_not(
         answer = answers.pop(0)
         if isinstance(answer, Exception):
             raise answer
+        assert isinstance(answer, dict)
         return answer
 
     monkeypatch.setattr(llm_http, "_call", call)
