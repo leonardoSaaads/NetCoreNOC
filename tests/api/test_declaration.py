@@ -733,11 +733,13 @@ async def test_f43_every_path_served_today_still_registers(store: Store) -> None
     # /api/scope/subject` (one /api pair) and its console module (`parts/custscope.js`).
     # Unreleased: 379 -> 382 and 211 -> 213 — a case's email (ADR #500): `POST …/email` and `GET
     # …/email/draft` (two /api pairs) and the editor (`parts/caseemail.js`).
-    assert len(served) == 382, f"the served surface moved: {len(served)} method/path pairs"
+    # Unreleased: 382 -> 384 and 213 -> 214 — an earlier version of a routine (ADR #501) and a
+    # customer's Routines tab (`parts/custroutines.js`).
+    assert len(served) == 384, f"the served surface moved: {len(served)} method/path pairs"
     api_pairs = {(method, path) for method, path in served if path.startswith("/api")}
     # **v0.19.0: 53 -> 55.** `GET /api/models` and `POST /api/models/register`: what the
     # models are doing, and turning one of this appliance's own fits into an artefact.
-    assert len(api_pairs) == 213, (
+    assert len(api_pairs) == 214, (
         f"the /api surface moved: {len(api_pairs)} pairs. v0.16.0 adds exactly five — the "
         f"operator's five gestures — v0.16.2 adds exactly one, `POST …/promote` (DECISIONS #273), "
         f"v0.16.5 adds exactly one, `POST /api/alarms/clear` (DECISIONS #301), "
@@ -944,11 +946,13 @@ async def test_f42_every_path_served_today_still_registers(store: Store) -> None
     # /api/scope/subject` (one /api pair) and its console module (`parts/custscope.js`).
     # Unreleased: 379 -> 382 and 211 -> 213 — a case's email (ADR #500): `POST …/email` and `GET
     # …/email/draft` (two /api pairs) and the editor (`parts/caseemail.js`).
-    assert len(served) == 382, f"the served surface moved: {len(served)} method/path pairs"
+    # Unreleased: 382 -> 384 and 213 -> 214 — an earlier version of a routine (ADR #501) and a
+    # customer's Routines tab (`parts/custroutines.js`).
+    assert len(served) == 384, f"the served surface moved: {len(served)} method/path pairs"
     api_pairs = {(method, path) for method, path in served if path.startswith("/api")}
     # **v0.19.0: 53 -> 55.** `GET /api/models` and `POST /api/models/register`: what the
     # models are doing, and turning one of this appliance's own fits into an artefact.
-    assert len(api_pairs) == 213, (
+    assert len(api_pairs) == 214, (
         f"the /api surface moved: {len(api_pairs)} pairs. v0.16.0 adds exactly five — the "
         f"operator's five gestures — v0.16.2 adds exactly one, `POST …/promote` (DECISIONS #273), "
         f"v0.16.5 adds exactly one, `POST /api/alarms/clear` (DECISIONS #301), "
@@ -1052,7 +1056,9 @@ def test_every_unscoped_declaration_carries_a_written_justification() -> None:
     # ADR #487: 63 -> 65 — finding a local Ollama and trying a model: custody, not scope.
     # ADR #492: 65 -> 66 — running a routine on a case: the case is named in the body, so the route
     # checks it against the caller's scope itself (an out-of-scope case is a 404 like an unknown).
-    assert len(entries) == 66, entries
+    # ADR #501: 66 -> 67 — an earlier version of a routine: a tree names no element, and the
+    # version is read under its own tier and customer as the routine is.
+    assert len(entries) == 67, entries
     unjustified = [lines[i].strip() for i in entries if not lines[i - 1].strip().startswith("#")]
     assert not unjustified, (
         "every `unscoped` route must be preceded by a comment saying why it is not scoped:\n  "
@@ -1259,7 +1265,8 @@ def test_the_three_postures_are_all_populated() -> None:
     # ADR #482: 61 -> 63, the two named at the justification test above.
     # ADR #487: 63 -> 65, the two named there too.
     # ADR #492: 65 -> 66, running a routine on a case, named there too.
-    assert len(UNSCOPED) == 66, UNSCOPED
+    # ADR #501: 66 -> 67, an earlier version of a routine, named there too.
+    assert len(UNSCOPED) == 67, UNSCOPED
     # v0.16.0: 12 -> 17. Every one of the five gestures names a network element and every one
     # is below `admin`, so every one is `scoped` — the write perimeter F34 established,
     # widened by exactly the routes this release adds.

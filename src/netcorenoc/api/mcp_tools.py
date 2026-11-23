@@ -171,6 +171,13 @@ TOOLS: tuple[Tool, ...] = (
     # ADR #492: routines (formerly playbooks) — a customer's troubleshooting, run in one call.
     _t("noc_list_playbooks", "GET", "/api/noc/playbooks", "List routines", **_READ),
     _t("noc_get_playbook", "GET", "/api/noc/playbooks/{playbook_id}", "Get a routine", **_READ),
+    _t(
+        "noc_get_playbook_version",
+        "GET",
+        "/api/noc/playbooks/{playbook_id}/versions/{version}",
+        "Get an earlier version of a routine",
+        **_READ,
+    ),
     _t("noc_create_playbook", "POST", "/api/noc/playbooks", "Write a routine"),
     _t(
         "noc_update_playbook",

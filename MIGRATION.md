@@ -80,6 +80,13 @@ Two rules that have held since v0.1.0 and are not going to change:
 
 *(This table has no rows for v0.17.0 or v0.18.0: neither release wrote one, and inventing upgrade notes for a release somebody else built would be describing an upgrade nobody tested.)*
 
+## Unreleased — routines keep their versions; Routines on each customer (#501, #502)
+
+Migration **0049** applies at start and is additive: each routine's current tree becomes its first
+kept version. Nothing to do. **What you will notice**: a customer's page has a **Routines** tab; a
+routine shows *How it improved*; an edit asks what changed and why. The NOC's Overview shows only
+its set-up panels until the first case, and only the overview after it.
+
 ## Unreleased — email written and answered on the case's feed (#500)
 
 Migration **0048** applies at start and is additive: each message keeps its Cc, Bcc, the message it

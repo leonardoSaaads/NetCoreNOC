@@ -31,12 +31,12 @@ from netcorenoc.api.context import AppContext
 from netcorenoc.api.declare import DeclaredRoutes
 from netcorenoc.api.models_cases import PlaybookEnabledIn, PlaybookIn, RoutineRunIn
 from netcorenoc.api.noc_gate import is_lead, require_lead
+from netcorenoc.api.routine_access import NO_SUCH, RoutineAccess, routine_view
 from netcorenoc.crosscutting import auth
 from netcorenoc.engine.noc import cases, executor, playbook, runbook
 from netcorenoc.engine.noc.case_ops import Actor
 from netcorenoc.engine.noc.playbook import PlaybookError
 
-NO_SUCH = "no such routine"
 #: ADR #492: the cases a routine is running on because somebody asked — one at a time per case,
 #: and at most :data:`MAX_ON_DEMAND` at once, so a burst of asks never becomes a burst of sessions
 #: on the customers' devices (each run is bounded by `runbook.ON_DEMAND_S`).
@@ -48,50 +48,14 @@ NOT_AUTHOR = (
 )
 
 
-def _view(row: dict[str, Any], *, runs: list[dict[str, Any]] | None = None) -> dict[str, Any]:
-    document = json.loads(row["document"])
-    out = {
-        "id": row["id"],
-        "name": row["name"],
-        "description": document.get("description", ""),
-        "match": document["match"],
-        "timeout_s": document.get("timeout_s", 300),
-        "steps": len(document["steps"]),
-        # What a reader counts (ADR #492): the checks a routine runs, not the ends it may reach.
-        "checks": sum(1 for step in document["steps"].values() if "do" in step),
-        "version": row["version"],
-        "enabled": row["enabled"],
-        "customer_id": row.get("organization_id"),
-        "customer": row.get("customer"),
-        "tier": row.get("tier", 1),
-        "source_case": row["source_case"],
-        "created_at": row["created_at"],
-        "created_by": row["created_by"],
-        "updated_at": row["updated_at"],
-        "runs": row.get("runs"),
-        "last_run_at": row.get("last_run_at"),
-    }
-    if runs is not None:
-        out["document"] = document
-        out["recent_runs"] = [
-            {
-                **{
-                    k: r[k]
-                    for k in ("id", "version", "situation_id", "started_at", "ended_at", "outcome")
-                },
-                "started_by": r.get("started_by"),
-                "trace": json.loads(r["trace"]),
-            }
-            for r in runs
-        ]
-    return out
-
-
 def register(app: FastAPI, ctx: AppContext) -> None:
     """Register the playbook routes on `app`."""
     store, security = ctx.store, ctx.security
     audit_row, write_txn = ctx.perimeter.audit_row, ctx.write_txn
     route = DeclaredRoutes(app)
+    access = RoutineAccess(ctx)
+    ceiling, visible, case_facts = access.ceiling, access.visible, access.case_facts
+    reaches, readable = RoutineAccess.reaches, RoutineAccess.readable
 
     async def require_author(request: Request, principal: auth.Principal) -> None:
         if not await is_lead(ctx, request, principal):
@@ -102,18 +66,6 @@ def register(app: FastAPI, ctx: AppContext) -> None:
             return playbook.validate(document)
         except PlaybookError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
-
-    async def ceiling(principal: auth.Principal) -> tuple[int, dict[str, Any] | None]:
-        """The highest tier the caller may see, and the agent it is (ADR #492): a hired agent its
-        own tier, any other token holding the agent grant the least one, a person who passed the
-        lead gate every tier."""
-        if not principal.is_token:
-            return 4, None
-        agent = None
-        if principal.token_id is not None:
-            async with store.reading():
-                agent = await store.noc_agent_by_token(principal.token_id)
-        return (int(agent["tier"]), agent) if agent else (1, None)
 
     async def owner_or_400(body: PlaybookIn, principal: auth.Principal) -> None:
         """The customer must be one, and an agent writes only at or below its own tier."""
@@ -131,31 +83,6 @@ def register(app: FastAPI, ctx: AppContext) -> None:
                 status_code=403,
                 detail=f"a tier-{top} agent writes routines of tier {top} or below",
             )
-
-    def reaches(row: dict[str, Any], scope: Any) -> bool:
-        """ADR #499: a customer's routine for those who serve it; a shared one for everyone."""
-        return row["organization_id"] is None or scope.allows_org(row["organization_id"])
-
-    async def visible(playbook_id: int, principal: auth.Principal) -> dict[str, Any]:
-        top, _agent = await ceiling(principal)
-        scope = await ctx.scope_for(principal)
-        async with store.reading():
-            row = await store.noc_playbook(playbook_id)
-        if row is None or int(row["tier"]) > top or not reaches(row, scope):
-            raise HTTPException(status_code=404, detail=NO_SUCH)
-        return row
-
-    async def case_facts(sid: int, principal: auth.Principal) -> dict[str, Any]:
-        """The case's facts, or the 404 an unknown or out-of-scope case answers alike."""
-        scope = await ctx.scope_for(principal)
-        if not await ctx.perimeter.situation_in_scope(sid, scope):
-            raise HTTPException(status_code=404, detail="no such case")
-        async with store.reading():
-            case = await store.noc_case(sid)
-            facts = await store.noc_situation_facts(sid) if case else {}
-        if case is None:
-            raise HTTPException(status_code=404, detail="no such case")
-        return {"case": case, **facts}
 
     @route.get("/api/noc/playbooks", operation_id="noc_list_playbooks")
     async def list_playbooks(
@@ -183,7 +110,7 @@ def register(app: FastAPI, ctx: AppContext) -> None:
         if facts is not None:
             rows = [r for r in rows if r["enabled"] and runbook.applies(r, facts)]
         return {
-            "playbooks": [_view(r) for r in rows],
+            "playbooks": [routine_view(r) for r in rows],
             # ADR #492: whom a routine may be for, and the tiers it may have.
             "customers": [{"id": c["id"], "name": c["name"]} for c in customers],
             "tiers": [t for t in (1, 2, 3, 4) if t <= top],
@@ -209,15 +136,17 @@ def register(app: FastAPI, ctx: AppContext) -> None:
         async with write_txn():
             if body.source_case is not None and await store.noc_case(body.source_case) is None:
                 raise HTTPException(status_code=400, detail="source_case: no such case")
+            now = time.time()
             playbook_id = await store.noc_create_playbook(
                 document["name"].strip(),
                 text,
                 body.source_case,
-                time.time(),
+                now,
                 principal.actor,
                 organization_id=body.customer_id,
                 tier=body.tier,
             )
+            await store.noc_playbook_keep_version(playbook_id, now, principal.actor, body.note)
             await audit_row(
                 request,
                 principal,
@@ -232,24 +161,63 @@ def register(app: FastAPI, ctx: AppContext) -> None:
                 },
             )
             row = await store.noc_playbook(playbook_id)
+            versions = await store.noc_playbook_versions(playbook_id)
         assert row is not None
-        return _view(row, runs=[])
+        return routine_view(row, runs=[], versions=versions)
 
     @route.get("/api/noc/playbooks/{playbook_id}", operation_id="noc_get_playbook")
     async def get_playbook(
         playbook_id: int, request: Request, principal: auth.Principal = Depends(security)
     ) -> dict[str, Any]:
-        """One routine, its whole tree, and its last twenty runs with their traces."""
+        """One routine, its whole tree, its last twenty runs with their traces, and (ADR #501)
+        its versions — newest first, each with who wrote it, why (`note`) and how its runs ended
+        (`outcomes`): how the routine has improved, and whether the last change helped."""
         await require_lead(ctx, request, principal)
         row = await visible(playbook_id, principal)
         scope = await ctx.scope_for(principal)
+        top, _agent = await ceiling(principal)
         async with store.reading():
             runs = await store.noc_runs(playbook_id=playbook_id)
+            versions = await store.noc_playbook_versions(playbook_id)
         if not scope.unrestricted:  # a shared routine's runs on another customer's cases
             runs = [
                 r for r in runs if await ctx.perimeter.situation_in_scope(r["situation_id"], scope)
             ]
-        return _view(row, runs=runs)
+        return routine_view(
+            row, runs=runs, versions=[v for v in versions if readable(v, top, scope)]
+        )
+
+    @route.get(
+        "/api/noc/playbooks/{playbook_id}/versions/{version}",
+        operation_id="noc_get_playbook_version",
+    )
+    async def get_playbook_version(
+        playbook_id: int,
+        version: int,
+        request: Request,
+        principal: auth.Principal = Depends(security),
+    ) -> dict[str, Any]:
+        """One earlier version of a routine, whole (ADR #501): its tree as it was, who wrote it and
+        why. A version above the caller's tier, or for a customer they do not serve, is a 404 —
+        as is one the routine never had."""
+        await require_lead(ctx, request, principal)
+        await visible(playbook_id, principal)
+        scope = await ctx.scope_for(principal)
+        top, _agent = await ceiling(principal)
+        async with store.reading():
+            found = await store.noc_playbook_version(playbook_id, version)
+        if found is None or not readable(found, top, scope):
+            raise HTTPException(status_code=404, detail="no such version")
+        return {
+            "version": found["version"],
+            "name": found["name"],
+            "tier": found["tier"],
+            "customer_id": found["organization_id"],
+            "written_at": found["written_at"],
+            "written_by": found["written_by"],
+            "note": found["note"],
+            "document": json.loads(found["document"]),
+        }
 
     @route.post("/api/noc/playbooks/{playbook_id}", operation_id="noc_update_playbook")
     async def update_playbook(
@@ -258,7 +226,9 @@ def register(app: FastAPI, ctx: AppContext) -> None:
         request: Request,
         principal: auth.Principal = Depends(security),
     ) -> dict[str, Any]:
-        """Replace a playbook's tree: a new version, validated as a new one is."""
+        """Replace a routine's tree — the whole tree — as a new version, validated as a new one
+        is. Say in `note` what changed and why, naming the case that taught it: every version is
+        kept with its note and how its runs end (ADR #501)."""
         await require_author(request, principal)
         document = checked(body.document)
         await owner_or_400(body, principal)
@@ -266,15 +236,19 @@ def register(app: FastAPI, ctx: AppContext) -> None:
         async with write_txn():
             if await store.noc_playbook(playbook_id) is None:
                 raise HTTPException(status_code=404, detail=NO_SUCH)
+            now = time.time()
             await store.noc_update_playbook(
                 playbook_id,
                 document["name"].strip(),
                 playbook.canonical(document),
-                time.time(),
+                now,
                 principal.actor,
                 organization_id=body.customer_id,
                 tier=body.tier,
             )
+            await store.noc_playbook_keep_version(playbook_id, now, principal.actor, body.note)
+            row = await store.noc_playbook(playbook_id)
+            assert row is not None
             await audit_row(
                 request,
                 principal,
@@ -282,10 +256,10 @@ def register(app: FastAPI, ctx: AppContext) -> None:
                 "ok",
                 object_type="noc_playbook",
                 object_id=str(playbook_id),
+                details={"version": row["version"], "note": body.note},
             )
-            row = await store.noc_playbook(playbook_id)
-        assert row is not None
-        return _view(row, runs=[])
+            versions = await store.noc_playbook_versions(playbook_id)
+        return routine_view(row, runs=[], versions=versions)
 
     @route.post("/api/noc/playbooks/{playbook_id}/enabled", operation_id="noc_enable_playbook")
     async def enable_playbook(
@@ -313,7 +287,7 @@ def register(app: FastAPI, ctx: AppContext) -> None:
             )
             row = await store.noc_playbook(playbook_id)
         assert row is not None
-        return _view(row)
+        return routine_view(row)
 
     @route.post("/api/noc/playbooks/{playbook_id}/run", operation_id="noc_run_playbook")
     async def run_playbook(

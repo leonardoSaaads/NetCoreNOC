@@ -7476,3 +7476,42 @@ From this release an entry is about six lines: decision, reason, release.*
   with every text escaped, and the console draws the same document as elements, so the console
   still has no `innerHTML` (ADR #175). A customer's email is shown as text, quotes cut, as before.
 
+
+## 501. Routines on each customer's page, and every version a routine had (unreleased)
+
+- **Context**: routines (ADR #492) are each customer's troubleshooting — the checks an agent runs
+  in one call (`noc_run_playbook`) instead of leasing a credential and typing commands. The owner
+  asked for them beside the customer's book (Instructions, Workbook, Additional docs, Circuits,
+  Access, Email), and for trees "the models improve over time". An edit overwrote the tree: only a
+  counter said it had changed, so nobody could tell what an agent changed, why, or whether the
+  change helped.
+- **Decision**: a customer's page gains **Routines**: its own routines and the shared ones that
+  also run on its cases, each opened as its tree, its runs and its versions; a lead writes a new
+  one for that customer from there. The screen is a lead's, as Routines is (ADR #470).
+- **Decision**: **every version is kept whole** (`noc_playbook_version`, migration 0049) with who
+  wrote it, when, and a one-line `note` — what changed and why ("ping before SSH: case 41 was a
+  dead path"). A routine's page lists its versions with how each one's runs ended (runs already
+  record the version they ran), and opens an earlier one's tree; *Start an edit from it* is how a
+  version is restored — as a new version, so the history only grows.
+- **Decision (MCP)**: `noc_update_playbook` takes `note`; `noc_get_playbook` returns the versions
+  and how each fared; `noc_get_playbook_version` reads an earlier tree. The agents' guide: a routine
+  that ran on your case and missed — wrong advice, or a check it lacked found the cause — is
+  improved with the whole tree and a note naming the case.
+- **Reason (security)**: an earlier version is read under the same rules as the routine itself, and
+  under its own: a version above the caller's tier, or for a customer the caller does not serve, is
+  the 404 of one that does not exist — a routine moved from Claro to every customer does not show
+  Claro's old tree to Vivo. Versions are append-only, like the runs they explain.
+
+## 502. The NOC's Overview is its set-up pictures until the first case (unreleased)
+
+- **Context**: the Broker's Overview is three pictures of what to do until its first trap, and the
+  overview itself from then on (ADR #483). The NOC's showed its three set-up panels (ADR #490)
+  above an overview of empty tiles, and the panels left as soon as every step was done — so a NOC
+  set up but without a case showed zeros, and one with a case but not set up showed both. The owner
+  asked for the Broker's behaviour.
+- **Decision**: until the first case reaches the NOC, the three panels are the whole screen, set
+  up or not; set up, they say so ("Ready — waiting for the first case") and the third step is the
+  one to do. From the first case, the overview alone. A reader who is not shown people and agents
+  (below editor) sees "No case yet" instead of the panels.
+- **Reason**: the same first case ends the panels for everyone (ADR #491), so the screen never
+  shows a set-up checklist and live counts together.

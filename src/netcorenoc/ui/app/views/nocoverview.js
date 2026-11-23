@@ -19,7 +19,7 @@
 
 import { html, cx } from "../dom.js";
 import { get } from "../api.js";
-import { Loader, SectionMark } from "../widgets.js";
+import { Loader, SectionMark, Empty } from "../widgets.js";
 import { age, count, plural } from "../format.js";
 import { Icon } from "../icons.js";
 import { Avatar } from "../avatar.js";
@@ -227,10 +227,15 @@ export class NocOverview extends Loader {
   componentWillUnmount() { clearInterval(this.timer); }
 
   view(d) {
+    // ADR #502: as the Broker's Overview before its first trap — until the first case reaches the
+    // NOC the three set-up pictures are the screen (ADR #490); from it, the overview alone.
+    if (!d.setup.first_case) {
+      return d.named ? html`<div class="nov"><${NocStart} s=${d.setup} /></div>`
+        : html`<${Empty} title="No case yet" will="The NOC's cases, their clocks and who holds them
+          appear here once the first one opens — from Start working this on a situation in the Broker." />`;
+    }
     const live = STATES.reduce((n, [s]) => n + d.states[s].total, 0);
     return html`<div class="nov">
-      ${/* ADR #490: three pictures of what to set up, in place of a checklist card. */ null}
-      ${d.named ? html`<${NocStart} s=${d.setup} />` : null}
       ${d.scoped ? html`<p class="warnbox">Your view is scoped: these are the cases on the network
         elements you can see.</p>` : null}
       <div class="nov-states">${STATES.map(([id, label, hint, icon]) => html`<${StateTile} key=${id}

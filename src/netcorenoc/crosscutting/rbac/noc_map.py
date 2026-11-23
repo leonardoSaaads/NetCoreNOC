@@ -69,6 +69,8 @@ NOC_ROUTE_PERMISSIONS: dict[tuple[str, str], str] = {
     ("GET", "/api/noc/playbooks"): "playbooks.read",
     ("POST", "/api/noc/playbooks"): "playbooks.write",
     ("GET", "/api/noc/playbooks/{playbook_id}"): "playbooks.read",
+    # ADR #501: one earlier version of a routine.
+    ("GET", "/api/noc/playbooks/{playbook_id}/versions/{version}"): "playbooks.read",
     ("POST", "/api/noc/playbooks/{playbook_id}"): "playbooks.write",
     ("POST", "/api/noc/playbooks/{playbook_id}/enabled"): "playbooks.write",
     # ADR #492: running a routine on a case reads the device the way the automation does.
@@ -190,6 +192,8 @@ NOC_ROUTE_SCOPE: dict[tuple[str, str], Literal["scoped", "unscoped", "admin_only
     ("POST", "/api/noc/playbooks"): "unscoped",
     # One playbook and its runs: the runs name cases, each a number the reader may not open.
     ("GET", "/api/noc/playbooks/{playbook_id}"): "unscoped",
+    # ADR #501: an earlier version, under its own tier and customer as well as the routine's.
+    ("GET", "/api/noc/playbooks/{playbook_id}/versions/{version}"): "unscoped",
     # Replacing one: the same gate as writing it.
     ("POST", "/api/noc/playbooks/{playbook_id}"): "unscoped",
     # Switching one off is a kill switch; on, the same gate as writing it.

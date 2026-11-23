@@ -256,6 +256,7 @@ _UI_MODULES = (
     "app/views/parts/credlist.js",
     "app/views/parts/custaccess.js",
     "app/views/parts/custmail.js",
+    "app/views/parts/custroutines.js",  # ADR #501
     "app/views/parts/agentrun.js",
     # ADR #477: what a local Ollama has, and moving an agent in the chart.
     "app/views/parts/ollamamodels.js",

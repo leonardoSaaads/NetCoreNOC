@@ -74,9 +74,9 @@ function Check({ done, children }) {
 }
 
 export function NocStart({ s }) {
-  // ADR #491: the panels are what to do after the deploy — gone once every step is done, or once
-  // the first case reaches the NOC, whichever comes first.
-  if (!s || s.ready || s.first_case) return null;
+  // ADR #491, #502: the panels are what to do after the deploy, and the whole of the overview
+  // until the first case reaches the NOC — set up or not, as the Broker's before its first trap.
+  if (!s || s.first_case) return null;
   const agents = s.ai_provider && s.agent && s.entry;
   const customer = s.customer && s.device_access;
   const steps = [
@@ -96,7 +96,8 @@ export function NocStart({ s }) {
   const now = steps.findIndex((step) => !step.done);
   return html`<section class="first-run noc-start" aria-labelledby="ns-title">
     <header class="fr-head">
-      <p class="fr-eyebrow"><span class="fr-live" aria-hidden="true"></span> Setting up the NOC</p>
+      <p class="fr-eyebrow"><span class="fr-live" aria-hidden="true"></span> ${s.ready
+        ? "Ready — waiting for the first case" : "Setting up the NOC"}</p>
       <h2 id="ns-title">Get the NOC working, in three steps</h2>
     </header>
     <ol class="fr-steps">

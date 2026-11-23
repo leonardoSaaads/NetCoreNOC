@@ -228,6 +228,9 @@ REFERENCE: dict[tuple[str, str], Entry] = {
     ("GET", "/api/noc/playbooks"): Entry(AUTOMATION, "Routines: customer, tier, match, runs"),
     ("POST", "/api/noc/playbooks"): Entry(AUTOMATION, "Store a routine (read-only steps)"),
     ("GET", "/api/noc/playbooks/{playbook_id}"): Entry(AUTOMATION, "One routine, tree and runs"),
+    ("GET", "/api/noc/playbooks/{playbook_id}/versions/{version}"): Entry(
+        AUTOMATION, "An earlier version of a routine"
+    ),
     ("POST", "/api/noc/playbooks/{playbook_id}"): Entry(AUTOMATION, "Replace a routine's tree"),
     ("POST", "/api/noc/playbooks/{playbook_id}/enabled"): Entry(AUTOMATION, "Switch it on or off"),
     ("POST", "/api/noc/playbooks/{playbook_id}/run"): Entry(

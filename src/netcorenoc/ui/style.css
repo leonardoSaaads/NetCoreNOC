@@ -4187,6 +4187,20 @@ a.nov-fact:hover { background: var(--bg-hover); }
 .rt-detail-acts { margin-left: auto; display: inline-flex; align-items: center; gap: var(--space-2); }
 .rt-meta { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); margin: 4px 0 0; font-size: var(--fs-sm); }
 .rt-desc, .rt-when { margin: 0; font-size: var(--fs-sm); }
+/* ADR #501: how a routine improved — each version, its note, and how its runs ended. */
+.rt-versions { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--space-2); }
+.rt-version { display: flex; gap: var(--space-3); align-items: flex-start; padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--line); border-radius: var(--radius-2); }
+.rt-version.is-now { border-color: var(--accent); }
+.rt-version-n { flex: none; min-width: 2.5rem; font-weight: 700; font-variant-numeric: tabular-nums; color: var(--fg-muted); }
+.rt-version-body { flex: 1; min-width: 0; display: grid; gap: 4px; justify-items: start; }
+.rt-version-body p { margin: 0; font-size: var(--fs-sm); overflow-wrap: anywhere; }
+.rt-version-tree { justify-self: stretch; display: grid; gap: var(--space-2); justify-items: start; }
+.rt-version-tree .pb-tree { justify-self: stretch; }
+.rt-note { margin-top: var(--space-2); }
+.cust-routines { display: grid; gap: var(--space-4); }
+.cust-routines-head { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-3); }
+.cust-routines-head p { flex: 1 1 22rem; margin: 0; }
 .rt-glyph {
   display: inline-grid; place-items: center; width: 36px; height: 36px; border-radius: 9px; flex: none;
   color: var(--m2); background: color-mix(in srgb, var(--m2) 18%, transparent);

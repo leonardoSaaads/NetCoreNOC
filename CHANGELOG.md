@@ -34,9 +34,9 @@ person** (#482), a first-run Overview in pictures (#483), Learning (#484), the J
 (#485), the audit log by filters (#486), a local Ollama that works (#487), routines (#492) and
 **brokers** — one appliance, many networks, each correlating, mapping and learning on its own, its
 traps arriving on its own port, through a remote proxy or by range (#494-#498), a person limited to
-customers (#499) and email written and answered on the case's feed (#500). The schema is
-PostgreSQL's baseline, **migration 0031**, which includes SQLite's 0030, **0032** to **0048**
-(schema 48). See
+customers (#499), email written and answered on the case's feed (#500) and routines that keep
+their versions, on each customer's page (#501). The schema is PostgreSQL's baseline, **migration
+0031**, which includes SQLite's 0030, **0032** to **0049** (schema 49). See
 [`MIGRATION.md`](MIGRATION.md): the SQLite file is **imported once**, before the first start; the
 appliance is three processes and a spool on disk, and a container needs two CPUs. No grouping
 decision changes (`make eval` is byte-identical).
@@ -46,6 +46,21 @@ imports the file. Backups are `pg_dump` archives — and **the secret key file**
 data directory), without which sealed values and every password are unreadable (#453) — and **the
 secrets key file** (`secrets.key`; the image keeps it on a volume of its own), without which every
 stored device credential is unreadable (#455).
+
+### Added — routines on each customer's page, and every version a routine had (#501, #502)
+
+- **Customers → Routines**, beside Instructions, Workbook, Additional docs, Circuits, Access and
+  Email: the customer's routines and the shared ones that also run on its cases, opened as their
+  tree and runs, and **New routine for …** with the customer already chosen (#501).
+- **A routine keeps every version** (migration **0049**): who wrote it, when, a one-line note on
+  what changed and why, and how that version's runs ended — *How it improved* on the routine. An
+  earlier version opens as its tree, and *Start an edit from* it restores it as a new version.
+- **MCP**: `noc_update_playbook` takes a `note`, `noc_get_playbook` returns the versions and how
+  each fared, `noc_get_playbook_version` reads an earlier tree; the agents' guide says to improve a
+  routine that missed on their case, naming the case. An earlier version is read under its own
+  tier and customer (#501).
+- **The NOC's Overview** is its three set-up panels until the first case reaches the NOC — set up
+  or not — and the overview alone from then on, as the Broker's is before its first trap (#502).
 
 ### Added — email written and answered from the case's feed (#500)
 

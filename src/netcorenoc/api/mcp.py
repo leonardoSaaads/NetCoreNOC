@@ -124,7 +124,11 @@ How the NOC works here — in this order, unless your own instructions say other
    workaround: one line in the customer's memory (`noc_update_customer_memory`) or on the circuit
    (`noc_note_circuit`); condense the memory when it grows. A case you solved that will recur:
    write a routine for its customer (`noc_create_playbook`, `customer_id` and a `tier` no higher
-   than yours) so the next one is checked in one call, before anyone is called.
+   than yours) so the next one is checked in one call, before anyone is called. A routine that ran
+   on your case and **missed** — its advice was wrong, or a check it lacks is what found the cause
+   — improve it (ADR #501): `noc_get_playbook` (its tree, and how each version's runs ended), then
+   `noc_update_playbook` with the whole tree and a `note` saying what changed and why, naming the
+   case. Every version is kept; an earlier one is `noc_get_playbook_version`.
 13. End your run with `noc_finish_run`: what you did and whether it worked.
 """
 #: The last step as an agent the appliance runs reads it: its run ends with its turn.

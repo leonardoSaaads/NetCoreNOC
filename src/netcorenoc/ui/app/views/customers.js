@@ -36,6 +36,7 @@ import { CustomerDocs } from "./parts/custdocs.js";
 import { Circuits } from "./parts/circuits.js";
 import { CustomerAccess } from "./parts/custaccess.js";
 import { CustomerMail } from "./parts/custmail.js";
+import { CustomerRoutines } from "./parts/custroutines.js";
 
 export class Customers extends Loader {
   constructor(props) {
@@ -235,6 +236,8 @@ class CustomerRecord extends Component {
         navigate=${navigate} onChanged=${() => this.changed()} />` : null}
       ${shown === "access" ? html`<${CustomerAccess} c=${c} />` : null}
       ${shown === "email" ? html`<${CustomerMail} c=${c} />` : null}
+      ${shown === "routines" ? html`<${CustomerRoutines} c=${c} routineId=${Number(sub) || null}
+        navigate=${navigate} />` : null}
     </article>`;
   }
 }

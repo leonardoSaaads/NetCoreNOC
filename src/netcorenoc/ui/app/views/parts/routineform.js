@@ -117,9 +117,12 @@ export class RoutineForm extends Component {
   constructor(props) {
     super(props);
     const r = props.routine;
-    const form = r ? fromRoutine(r) : { ...BLANK };
+    // ADR #501: a new routine from a customer's page is that customer's to begin with.
+    const blank = { ...BLANK, customer: props.customerId ? String(props.customerId) : "" };
+    const form = r ? fromRoutine(r) : blank;
     this.state = { st: form || { ...BLANK, name: r.name, customer: r.customer_id == null ? "" : String(r.customer_id), tier: r.tier },
-      json: form ? null : JSON.stringify(r.document, null, 2), busy: false, error: null };
+      json: form ? null : JSON.stringify(r.document, null, 2), busy: false, error: null,
+      note: r && r.restoring ? `Back to v${r.restoring}` : "" };
   }
 
   set(patch) { this.setState({ st: { ...this.state.st, ...patch }, error: null }); }
@@ -132,7 +135,8 @@ export class RoutineForm extends Component {
     let document;
     try { document = json != null ? JSON.parse(json) : compile(st); }
     catch { this.setState({ error: "The JSON is not valid." }); return; }
-    const body = { document, customer_id: st.customer ? Number(st.customer) : null, tier: Number(st.tier) };
+    const body = { document, customer_id: st.customer ? Number(st.customer) : null, tier: Number(st.tier),
+      note: this.state.note.trim() };
     this.setState({ busy: true, error: null });
     try {
       const r = this.props.routine;
@@ -148,7 +152,7 @@ export class RoutineForm extends Component {
       ...st.tasks.map((_, j) => [`t${j}`, `Task ${j + 1}`]).filter(([k]) => k !== `t${i}` && k !== `t${i + 1}`),
       ["resolve", "Resolve"], ["wait", "Wait — unreachable"], ["noc", "NOC queue"]];
     return html`<form class="rt-form" onSubmit=${(e) => this.save(e)} autocomplete="off">
-      <header class="rt-form-head"><h2>${routine ? `Edit “${routine.name}”` : "New routine"}</h2>
+      <header class="rt-form-head"><h2>${routine ? `Edit “${routine.name}”${routine.restoring ? ` from v${routine.restoring}` : ""}` : "New routine"}</h2>
         <button type="button" class="btn-ghost" onClick=${onCancel}><${Icon} name="cross" /> Cancel</button></header>
 
       ${routine ? null : html`<div class="rt-templates" aria-label="Start from">${TEMPLATES.map((t) => html`<button key=${t.key}
@@ -233,6 +237,10 @@ export class RoutineForm extends Component {
         </div>
       </section>`}
 
+      ${routine ? html`<label class="pe-field rt-note"><span>What changed, and why</span>
+        <input maxlength="300" value=${this.state.note} placeholder="Ping before SSH: the last case was a dead path, not a dead port"
+          onInput=${(e) => this.setState({ note: e.currentTarget.value })} />
+        <small class="muted">Kept with this version, so the next reader knows what it learned (and from which case).</small></label>` : null}
       ${error ? html`<p class="err" role="alert">${error}</p>` : null}
       <footer class="acct-actions">
         <button type="button" onClick=${onCancel}>Cancel</button>

@@ -69,7 +69,9 @@ export function navEntries(agents) {
 export const BOOK = [["instructions", "Instructions", "book"], ["workbook", "Workbook", "phone"],
   ["docs", "Additional docs", "doc"], ["circuits", "Circuits", "circuit"],
   // ADR #481: the customer's own credentials and its email, beside what the agents read.
-  ["access", "Access", "vault"], ["email", "Email", "mail"]];
+  ["access", "Access", "vault"], ["email", "Email", "mail"],
+  // ADR #501: its troubleshooting, run by the agents in one call and improved case after case.
+  ["routines", "Routines", "playbook"]];
 
 /** The sidebar's line for each customer, under *Customers*, and under the one open its book's
  * four parts (ADR #473). */

@@ -87,6 +87,50 @@ class NocPlaybookMixin(StoreBase):
             (enabled, now, actor, playbook_id),
         )
 
+    # ADR #501: each version of a routine, kept whole, with who wrote it and why.
+
+    async def noc_playbook_keep_version(
+        self, playbook_id: int, now: float, actor: str, note: str = ""
+    ) -> None:
+        """Keep the routine as it now stands as its version — in the transaction that wrote it."""
+        await self.conn.execute(
+            "INSERT INTO noc_playbook_version (playbook_id, version, name, document, "
+            "organization_id, tier, written_at, written_by, note) SELECT id, version, name, "
+            "document, organization_id, tier, ?, ?, ? FROM noc_playbook WHERE id = ?",
+            (now, actor, note, playbook_id),
+        )
+
+    async def noc_playbook_versions(
+        self, playbook_id: int, limit: int = 30
+    ) -> list[dict[str, Any]]:
+        """A routine's versions, newest first, each with how its runs ended (``outcomes``)."""
+        cur = await self.conn.execute(
+            "SELECT version, name, organization_id, tier, written_at, written_by, note "
+            "FROM noc_playbook_version WHERE playbook_id = ? ORDER BY version DESC LIMIT ?",
+            (playbook_id, limit),
+        )
+        versions = [dict(r) for r in await cur.fetchall()]
+        cur = await self.conn.execute(
+            "SELECT version, COALESCE(outcome, 'running') AS outcome, COUNT(*) AS n "
+            "FROM noc_playbook_run WHERE playbook_id = ? GROUP BY version, outcome",
+            (playbook_id,),
+        )
+        tally: dict[int, dict[str, int]] = {}
+        for row in await cur.fetchall():
+            tally.setdefault(int(row["version"]), {})[str(row["outcome"])] = int(row["n"])
+        for v in versions:
+            v["outcomes"] = tally.get(int(v["version"]), {})
+        return versions
+
+    async def noc_playbook_version(self, playbook_id: int, version: int) -> dict[str, Any] | None:
+        cur = await self.conn.execute(
+            "SELECT playbook_id, version, name, document, organization_id, tier, written_at, "
+            "written_by, note FROM noc_playbook_version WHERE playbook_id = ? AND version = ?",
+            (playbook_id, version),
+        )
+        row = await cur.fetchone()
+        return dict(row) if row else None
+
     async def noc_runs(
         self, *, playbook_id: int | None = None, situation_id: int | None = None, limit: int = 20
     ) -> list[dict[str, Any]]:

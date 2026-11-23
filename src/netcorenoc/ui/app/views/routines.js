@@ -21,7 +21,7 @@ import { html, Component, cx } from "../dom.js";
 import { get, post } from "../api.js";
 import { Loader, Empty } from "../widgets.js";
 import { can } from "../session.js";
-import { count, relative, timeTitle } from "../format.js";
+import { count, plural, relative, timeTitle } from "../format.js";
 import { Icon } from "../icons.js";
 import { readNocAccess } from "../roster.js";
 import { RoutineForm } from "./parts/routineform.js";
@@ -80,15 +80,63 @@ function pathText(doc, trace) {
   }).join(" → ");
 }
 
-function matchText(m) {
+export function matchText(m) {
   return [...(m.vendors || []), ...(m.severities || []), ...(m.trap_oids || []).map((o) => `trap ${o}`)].join(" · ");
+}
+
+/** How each version's runs ended, in words: "12 runs — 7 resolved, 3 to the queue, 2 failed". */
+const OUTCOME_WORD = [["resolved", "resolved"], ["pending", "waiting"], ["queue", "to the queue"],
+  ["advised", "on demand"], ["taken", "taken by a person"], ["timeout", "timed out"], ["error", "failed"],
+  ["running", "running"]];
+
+function outcomeText(outcomes) {
+  const total = Object.values(outcomes || {}).reduce((n, k) => n + k, 0);
+  if (!total) return "not run";
+  const parts = OUTCOME_WORD.filter(([k]) => outcomes[k]).map(([k, word]) => `${outcomes[k]} ${word}`);
+  return `${plural(total, "run")} — ${parts.join(", ")}`;
+}
+
+/** ADR #501: every version a routine had, who wrote it and why, and how its runs ended; one opened
+ * shows its tree, and a writer may start an edit from it (a restore is a new version). */
+class Versions extends Component {
+  constructor(props) {
+    super(props);
+    this.state = { open: null, doc: null, error: null };
+  }
+
+  async show(v) {
+    if (this.state.open === v.version) { this.setState({ open: null, doc: null }); return; }
+    this.setState({ open: v.version, doc: null, error: null });
+    try { this.setState({ doc: await get(`/api/noc/playbooks/${this.props.p.id}/versions/${v.version}`) }); }
+    catch (error) { this.setState({ error: error.detail || error.message }); }
+  }
+
+  render({ p, labels, onRestore }, { open, doc, error }) {
+    return html`<ol class="rt-versions">${p.versions.map((v) => html`<li key=${v.version}
+        class=${cx("rt-version", v.version === p.version && "is-now")}>
+      <span class="rt-version-n">v${v.version}</span>
+      <div class="rt-version-body">
+        <p><b>${v.note || (v.version === 1 ? "First version" : "No note")}</b></p>
+        <p class="muted"><span title=${timeTitle(v.written_at)}>${relative(v.written_at)}</span> · ${v.written_by}
+          ${" "}· ${outcomeText(v.outcomes)}</p>
+        ${v.version === p.version ? html`<span class="badge">Running now</span>`
+          : html`<button type="button" class="linkish" aria-expanded=${open === v.version}
+            onClick=${() => this.show(v)}>${open === v.version ? "Hide" : "Show its steps"}</button>`}
+        ${open === v.version ? html`<div class="rt-version-tree">
+          ${error ? html`<p class="err" role="alert">${error}</p>` : !doc ? html`<p class="muted">Reading v${v.version}…</p>`
+            : html`<div class="pb-tree"><${Step} doc=${doc.document} name=${doc.document.start} seen=${new Set()} labels=${labels} /></div>
+              ${onRestore ? html`<button type="button" onClick=${() => onRestore(doc)}><${Icon} name="reply" /> Start an edit from v${v.version}</button>` : null}`}
+        </div>` : null}
+      </div>
+    </li>`)}</ol>`;
+  }
 }
 
 export function TierBadge({ tier }) {
   return html`<span class=${cx("rt-tier", `rt-tier-${tier}`)} title=${TIER_WORD[tier]}>T${tier}</span>`;
 }
 
-class RoutineDetail extends Component {
+export class RoutineDetail extends Component {
   constructor(props) {
     super(props);
     this.state = { p: null, error: null, busy: false };
@@ -145,6 +193,10 @@ class RoutineDetail extends Component {
           <td>${r.outcome || "running"}</td>
           <td class="wide-only">${pathText(p.document, r.trace)}</td></tr>`)}</tbody></table></div>`
         : html`<p class="muted">Not run yet.</p>`}
+      ${p.versions && p.versions.length ? html`<h4>How it improved</h4>
+        <${Versions} p=${p} labels=${labels} onRestore=${can("playbooks.write")
+          ? (old) => onEdit({ ...p, name: old.name, tier: old.tier, customer_id: old.customer_id,
+            document: old.document, restoring: old.version }) : null} />` : null}
       <details><summary>As JSON</summary><pre class="pb-json">${JSON.stringify(p.document, null, 2)}</pre></details>
     </section>`;
   }

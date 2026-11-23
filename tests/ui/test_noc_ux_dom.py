@@ -68,6 +68,7 @@ async def _tables(store: Store) -> tuple[dict[str, dict[str, Any]], int]:
         finally:
             await client.aclose()
     tables["customer"] = cid  # type: ignore[assignment]
+    tables["app"] = app  # type: ignore[assignment]
     return tables, sid
 
 
@@ -157,13 +158,16 @@ async def test_the_vault_offers_each_ai_provider_and_a_card_per_device_kind(
 async def test_the_overview_says_what_the_agents_still_need(store: Store) -> None:
     """ADR #478, #490: with no AI provider, agent or device credential, the overview shows the
     three panels — a customer, the agents, the cases — each step in words and a link to where it
-    is done. ADR #491: until the first case reaches the NOC; after it, no panel at all."""
+    is done. ADR #491: until the first case reaches the NOC; after it, no panel at all. ADR #502:
+    as the Broker's before its first trap, the panels are the whole screen until then — set up or
+    not — and the overview the whole screen after."""
     tables, _sid = await _tables(store)
     routes = dict(tables["admin"])
     overview = routes["/api/noc/overview"]["json"]
     assert overview["setup"]["first_case"], "the fixture's NOC has its case"
     after = _render(routes, "#/noc")
     assert '"Get the NOC working, in three steps"' not in after["dump"], "gone with the first case"
+    assert ".nov-states" in after["dump"], "the overview, once there is a case"
     before = {**overview, "setup": {**overview["setup"], "first_case": False}}
     routes["/api/noc/overview"] = {**routes["/api/noc/overview"], "json": before}
     seen = _render(routes, "#/noc")
@@ -178,6 +182,12 @@ async def test_the_overview_says_what_the_agents_still_need(store: Store) -> Non
     ):
         assert f'"{step}"' in seen["dump"], step
     assert seen["dump"].count(".fr-cta") == 3, "each step links to where it is done"
+    assert ".nov-states" not in seen["dump"], "no empty overview under the panels"
+    ready = {**before, "setup": {**before["setup"], "ready": True}}
+    routes["/api/noc/overview"] = {**routes["/api/noc/overview"], "json": ready}
+    waiting = _render(routes, "#/noc")
+    assert '"Ready — waiting for the first case"' in waiting["dump"], "set up, still the panels"
+    assert ".nov-states" not in waiting["dump"]
 
 
 @dom_test
@@ -195,3 +205,58 @@ async def test_in_a_container_a_local_ollama_is_proposed_on_the_docker_host(stor
     assert "host.docker.internal" in seen["dump"], "the Docker host, not the container"
     assert "127.0.0.1 is the container itself" in seen["dump"]
     assert not [r for r in seen["sent"] if r["method"] == "POST"], "opening it stores nothing"
+
+
+#: A routine for the DOM test below: one SSH check, then the queue or a resolve.
+ROUTINE: dict[str, Any] = {
+    "name": "Port down",
+    "match": {"trap_oids": ["1.3.6.1.4.1"]},
+    "start": "port",
+    "steps": {
+        "port": {
+            "do": {"ssh": {"command": "show interfaces"}},
+            "next": [{"if": {"contains": "up"}, "go": "clear"}, {"go": "noc"}],
+        },
+        "clear": {"end": "resolve", "cause": "cleared_before_isolation", "solution": "Up."},
+        "noc": {"end": "queue", "note": "Still down."},
+    },
+}
+
+
+@dom_test
+async def test_a_customer_has_its_routines_beside_its_book(store: Store) -> None:
+    """ADR #501: a customer's page has a Routines tab — its routines and the shared ones, one
+    opened with its versions (who wrote each, why, how its runs ended) — and a lead writes a new
+    one for that customer from there."""
+    tables, _sid = await _tables(store)
+    cid = tables["customer"]
+    admin = await authutil.client_as(tables["app"], "admin")
+    try:
+        made = await admin.post(
+            "/api/noc/playbooks", json={"document": ROUTINE, "customer_id": cid}
+        )
+        assert made.status_code == 200, made.text
+        pid = made.json()["id"]
+        better = await admin.post(
+            f"/api/noc/playbooks/{pid}",
+            json={"document": ROUTINE, "customer_id": cid, "note": "Checks the port first"},
+        )
+        assert better.status_code == 200, better.text
+        routes = dict(tables["admin"])
+        for path in (f"/api/noc/playbooks?customer_id={cid}", f"/api/noc/playbooks/{pid}"):
+            routes[path] = {"status": 200, "json": (await admin.get(path)).json()}
+    finally:
+        await admin.aclose()
+    seen = _render(routes, f"#/customers/{cid}/routines/{pid}")
+    for words in (
+        "Routines",
+        "Acme's routines",
+        "Shared — every customer",
+        "Port down",
+        "How it improved",
+        "Checks the port first",
+        "First version",
+    ):
+        assert f'"{words}"' in seen["dump"], words
+    assert "New routine for" in seen["dump"], "a lead writes one for this customer from here"
+    assert '"Running now"' in seen["dump"], "the newest version is the one that runs"

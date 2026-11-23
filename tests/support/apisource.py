@@ -62,6 +62,7 @@ MODULE_ORDER: tuple[str, ...] = (
     "broker_view.py",  # ADR #496: a read narrowed to one broker's network, for the read routes
     "noc_gate.py",  # the vault's custody and step-up gates, which both NOC route modules import
     "case_view.py",  # how a case and its feed read, shared by both case route modules
+    "routine_access.py",  # ADR #501: who may read which routine, and how one reads
     "case_close.py",  # the broker's half of resolving a case
     "customer_view.py",  # ADR #473: how a customer's book reads, shared by its three route modules
     # ADRs #465-#467: an agent's identity and views, the in-process call, the MCP protocol and
