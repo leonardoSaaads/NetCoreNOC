@@ -28,7 +28,7 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 
 from netcorenoc import __version__
-from netcorenoc.api import declare, routes
+from netcorenoc.api import broker_view, declare, routes
 from netcorenoc.api.body_limit import BodyLimit
 from netcorenoc.api.context import AppContext
 from netcorenoc.api.perimeter import (
@@ -117,6 +117,7 @@ def create_app(
         security=perimeter.security,
         guarded=[Depends(perimeter.security)],
         scope_for=perimeter.scope_for,
+        broker_scope=broker_view.broker_scope(store, perimeter.scope_for),
         all_warnings=perimeter.all_warnings,
         write_txn=perimeter.write_txn,
         governance=perimeter.governance,
@@ -199,6 +200,10 @@ def create_app(
     routes.customer_docs.register(app, ctx)
     routes.circuits.register(app, ctx)
     routes.customer_mail.register(app, ctx)  # ADR #481: each customer's email
+    # ADR #494: the brokers. The proxy's door first: `POST /api/brokers/{broker_id}` would read
+    # `ingest` as a broker id.
+    routes.broker_ingest.register(app, ctx)
+    routes.brokers.register(app, ctx)
     routes.mcp.register(app, ctx)  # ADR #466: the MCP endpoint, last — it calls the others
 
     # F40: the gate's completeness half. `DeclaredRoutes` refuses at registration and gives the

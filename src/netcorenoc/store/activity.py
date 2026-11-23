@@ -196,7 +196,13 @@ class ActivityMixin(ClassRuleMixin, TimelineMixin):
         }
 
     async def activity_severity(
-        self, *, since: float, until: float, buckets: int, ne_ids: frozenset[int] | None
+        self,
+        *,
+        since: float,
+        until: float,
+        buckets: int,
+        ne_ids: frozenset[int] | None,
+        narrow: Narrow | None = None,
     ) -> dict[str, Any]:
         """Raises per bucket **by severity band**, with `unplaced` a band of its own (item 4).
 
@@ -208,7 +214,7 @@ class ActivityMixin(ClassRuleMixin, TimelineMixin):
         and a chart that let it vanish would draw a quiet network.
         """
         width = max(1e-6, (until - since) / buckets)
-        where, args = self._timeline_scope(ne_ids, None)
+        where, args = narrowed(*self._timeline_scope(ne_ids, None), narrow)
         cur = await self.conn.execute(
             "SELECT floor((epoch(a.first_seen) - ?) / ?)::integer AS b, c.id, c.oid, "  # nosec B608
             "a.severity_rank, COUNT(*) FROM alarm a JOIN alarm_class c ON c.id=a.class_id "

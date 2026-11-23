@@ -90,7 +90,7 @@ class WindowAccess:
         return window
 
     async def permitted_targets(
-        self, body_targets: list[int], principal: auth.Principal
+        self, body_targets: list[int], principal: auth.Principal, broker_id: int | None = None
     ) -> list[int]:
         """The named elements the caller may actually see. **Silently narrowed, never reported.**
 
@@ -98,14 +98,29 @@ class WindowAccess:
         their scope gets a window over the elements they can see, with no error and no differing
         count — indistinguishable from naming an element that does not exist. Telling them *"you
         may not see 17"* would confirm that 17 exists.
+
+        A window **for a broker** (ADR #496) covers that network's elements only. One the caller
+        can see in another broker is refused with a 422 naming it — it discloses nothing they
+        could not already read, and a window silently shorter than the list an operator built is
+        worse than an error.
         """
         permitted = await self.scope_ne_ids(principal)
         known = await self.store.ne_organizations(sorted(set(body_targets)))
-        return [
+        out = [
             ne
             for ne in sorted(set(body_targets))
             if ne in known and (permitted is None or ne in permitted)
         ]
+        if broker_id is not None:
+            owners = await self.store.ne_brokers(out)
+            foreign = [ne for ne in out if owners.get(ne) != broker_id]
+            if foreign:
+                raise HTTPException(
+                    status_code=422,
+                    detail=f"element(s) {foreign} are not in this window's broker; a window for a "
+                    "broker covers that network's elements only",
+                )
+        return out
 
 
 #: The rule-row fields compared when deciding whether an edit changed what a window collects.
@@ -245,6 +260,8 @@ def shape(
         "starts_in_s": float(window["starts_at"]) - now,
         "ends_in_s": float(window["ends_at"]) - now,
         "target_count": window["target_count"],
+        # ADR #496: which network's planned work — the list is filtered by it for every role.
+        "broker_id": window["broker_id"],
         "tz": window["tz"],
         "site_time": shaping.wall_clock(str(window["tz"]), float(window["starts_at"])),
         "site_offset": shaping.offset_label(str(window["tz"]), float(window["starts_at"])),

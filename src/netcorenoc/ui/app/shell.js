@@ -34,6 +34,7 @@
 
 import { html, Component, cx } from "./dom.js";
 import { Sidebar } from "./sidebar.js";
+import { WorkHeading } from "./heading.js";
 import { Refused, Unknown } from "./widgets.js";
 import { Icon } from "./icons.js";
 import { resolve, navigate, startRouting, currentFragment } from "./router.js";
@@ -48,6 +49,8 @@ import { StopButton } from "./views/parts/autonomy.js";
 import * as store from "./store.js";
 import { customerList, hiddenViews, onRoster, roster, watchRoster } from "./roster.js";
 import { customerEntries, navEntries } from "./views/parts/nocui.js";
+import { brokerEntries, brokerList, followRoute, liveCount, onBrokers, watchBrokers }
+  from "./brokers.js";
 import { plural, utcOffset, TIMEZONE } from "./format.js";
 
 export class Shell extends Component {
@@ -80,10 +83,15 @@ export class Shell extends Component {
     // ADR #468: the NOC's agents, listed in the sidebar while the NOC plane is shown.
     this.stopRoster = onRoster((agents) => this.setState({ agents }));
     watchRoster(this.plane === "noc");
+    // ADR #494: the brokers, listed under *Brokers* while the Broker plane is shown.
+    this.stopBrokers = onBrokers(() => this.setState({ brokersAt: Date.now() }));
+    followRoute(this.state.fragment, this.plane === "broker");
   }
 
   componentWillUnmount() {
     watchRoster(false);
+    watchBrokers(false);
+    if (this.stopBrokers) this.stopBrokers();
     if (this.stopRoster) this.stopRoster();
     if (this.stopSession) this.stopSession();
     if (this.stopRouting) this.stopRouting();
@@ -92,6 +100,7 @@ export class Shell extends Component {
 
   componentDidUpdate() {
     watchRoster(this.plane === "noc");
+    followRoute(this.state.fragment, this.plane === "broker");
     const decision = this.decision();
     const viewId = decision.kind === "view" ? decision.view.id : `!${decision.kind}`;
     if (viewId !== this.lastViewId) {
@@ -118,13 +127,12 @@ export class Shell extends Component {
     // The sidebar badge has always meant "situations that have not left", and it still does:
     // v0.16.0 split that population into `new` and `open`, so the filter names what it excludes
     // rather than what it includes (DECISIONS #254).
-    const counts = {
-      situations: (live.situations || []).filter((s) => s.status !== "resolved").length,
-    };
+    const counts = { situations: liveCount(live) };
 
     const activeHref = (this.state.fragment || "").split("?")[0];
     const extras = this.plane === "noc" ? { agents: navEntries(this.state.agents), hide: hiddenViews(),
-      customers: customerEntries(customerList(), activeHref) } : {};
+      customers: customerEntries(customerList(), activeHref) }
+      : { brokers: brokerEntries(brokerList(), activeHref) };
 
     return html`<div id="app" class=${cx("shell", `nav-${this.state.nav}`)}>
       <${Sidebar} capabilities=${active.capabilities} activeId=${activeId} plane=${this.plane}
@@ -136,7 +144,7 @@ export class Shell extends Component {
                    plane=${this.plane} lastByPlane=${this.lastByPlane} />
         <${Banners} stats=${live.stats} />
         <main id="work" class="work" tabindex="-1">
-          <${WorkHeading} decision=${decision}
+          <${WorkHeading} decision=${decision} navigate=${navigate}
                           headingRef=${(node) => { this.headingRef = node; }} />
           ${this.body(decision)}
         </main>
@@ -156,18 +164,6 @@ export class Shell extends Component {
       <${View} params=${decision.params} query=${decision.query} navigate=${navigate} />
     </div>`;
   }
-}
-
-function WorkHeading({ decision, headingRef }) {
-  const title =
-    decision.kind === "view" ? decision.view.label
-      : decision.kind === "refused" ? decision.view.label
-        : "Not found";
-  const summary = decision.kind === "view" ? decision.view.summary : null;
-  return html`<div class="work-heading">
-    <h1 tabindex="-1" ref=${headingRef}>${title}</h1>
-    ${summary ? html`<p class="work-summary">${summary}</p>` : null}
-  </div>`;
 }
 
 /**

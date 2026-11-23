@@ -30,6 +30,7 @@ from netcorenoc.store.auth import AuthMixin
 from netcorenoc.store.autonomy import AutonomyMixin
 from netcorenoc.store.base import StoreBase
 from netcorenoc.store.batch_writes import BatchWriteMixin, LinkRow
+from netcorenoc.store.brokers import BrokerMixin
 from netcorenoc.store.catalogue_reads import CatalogueReadMixin
 from netcorenoc.store.class_rules import ClassRuleMixin
 from netcorenoc.store.dataset import (
@@ -129,6 +130,8 @@ class Store(
     # ADR #481: each customer's mailbox and the messages sent to it or read from it.
     NocMailMixin,
     AutonomyMixin,
+    # ADR #494: the networks this appliance monitors and how their traps reach it.
+    BrokerMixin,
     # v0.27.0: the league's decisions and pin, and pending proposals (ADRs #425, #428). Plain
     # `StoreBase` mixins that override nothing.
     LeagueMixin,
@@ -231,7 +234,7 @@ class Store(
         self._grant_to = grant_to
         # Whether the role this store runs as owns its schema (ADR #453): set by `open()`.
         self.owns_schema = True
-        self._ne_ids: dict[str, int] = {}
+        self._ne_ids: dict[tuple[int, str], int] = {}  # (broker, address) -> element (ADR #494)
         self._entity0_ids: dict[int, int] = {}  # ne id -> its level-0 entity id
         self._entity_ids: dict[tuple[int, str], int] = {}  # (ne id, key) -> promoted entity id
         self._class_ids: dict[str, int] = {}

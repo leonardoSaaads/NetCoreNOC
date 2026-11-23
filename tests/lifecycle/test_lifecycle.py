@@ -978,7 +978,7 @@ async def test_a_failed_maintenance_pass_commits_nothing_and_memory_follows(
         await store.touch_situation(quiet, BASE)
         await store.commit()
 
-    async def broken(_store: Store, _now: float) -> None:
+    async def broken(_store: Store, _now: float, *_args: object, **_kwargs: object) -> None:
         raise RuntimeError("disk full")
 
     monkeypatch.setattr(engine.learner, "save", broken)

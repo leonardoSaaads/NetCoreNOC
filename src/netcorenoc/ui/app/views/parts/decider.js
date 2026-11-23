@@ -1,4 +1,4 @@
-/* Settings → Models: **who decides links**, in plain words, and the one choice an admin has.
+/* A broker's Models: **who decides its links**, in plain words, and the one choice an admin has.
  *
  * v0.27.0 (ADRs #423, #425). Five pre-trained models compete — a GAM, gradient-boosted trees, a
  * random forest, a decision tree and a logistic regression — and the judge chooses which one
@@ -20,6 +20,7 @@
 
 import { html, Component, cx } from "../../dom.js";
 import { post, readAll } from "../../api.js";
+import { withBroker } from "../../brokers.js";
 import { Loading, Failed, SectionHeading, DataTable, TimeCell, cell } from "../../widgets.js";
 import { can } from "../../session.js";
 import { Formula } from "../scorer.js";
@@ -37,7 +38,10 @@ export class Correlation extends Component {
 
   async read() {
     try {
-      const data = await readAll({ decider: "/api/decider", scorer: "/api/scorer" });
+      const data = await readAll({
+        decider: withBroker("/api/decider", this.props.brokerId),
+        scorer: "/api/scorer",
+      });
       if (!data.decider.ok) throw data.decider.error;
       this.setState({ data, error: null });
     } catch (error) {
@@ -55,10 +59,10 @@ export class Correlation extends Component {
           ranks best. The others score the same alarms in shadow, and every five minutes the judge
           re-checks them against the groupings your operators confirmed or corrected.</p>
         <p>Full charts for each model — how it learned and how it compares — are on
-          ${" "}<a href="#/promotion">Judge</a>.</p>
+          ${" "}<a href=${this.props.judgeHref || "#/promotion"}>Judge</a>.</p>
       </div>
       <${Now} decider=${decider} />
-      <${Choice} decider=${decider} onDone=${this.read} />
+      <${Choice} decider=${decider} onDone=${this.read} brokerId=${this.props.brokerId} />
       <${League} rows=${decider.members || []} />
       <${History} rows=${decider.history || []} decisions=${decider.decisions || []}
         members=${decider.members || []} />
@@ -95,7 +99,12 @@ class Choice extends Component {
     this.setState({ busy: true, error: null, done: null });
     try {
       const pin = this.state.pin || null;
-      await post("/api/decider", { mode: "shipped", pin, reason: this.state.reason });
+      await post("/api/decider", {
+        mode: "shipped",
+        pin,
+        reason: this.state.reason,
+        ...(this.props.brokerId ? { broker_id: Number(this.props.brokerId) } : {}),
+      });
       this.setState({ busy: false, reason: "", done: pin ? "pinned" : "automatic" });
       this.props.onDone();
     } catch (error) {

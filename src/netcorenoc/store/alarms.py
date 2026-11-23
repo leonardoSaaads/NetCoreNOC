@@ -25,6 +25,7 @@ class AlarmMixin(DeviceMixin):
         severity: str | None = None,
         severity_rank: int | None = None,
         severity_source: str | None = None,
+        broker_id: int = 1,
     ) -> IngestResult:
         """Dedup by fingerprint: a repeat bumps count/last_seen; a re-raise re-activates.
 
@@ -33,7 +34,7 @@ class AlarmMixin(DeviceMixin):
         preserves cold-start parity (§5.2). entity_id is recorded on every alarm so the entity
         model is populated from day one; the profiler (S4/S5) only ever adds deeper entities.
         """
-        ne_id = device_id = await self.ne_id(event.device, event.ts)
+        ne_id = device_id = await self.ne_id(event.device, event.ts, broker_id)
         class_id = await self.class_id(event.trap_oid, event.ts)
         # The engine resolves the entity and dedup instance (promotion-aware, S5). Defaults —
         # the level-0 entity and the heuristic instance — reproduce v0.2.0 exactly (parity).

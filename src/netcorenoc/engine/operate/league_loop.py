@@ -1,5 +1,9 @@
 """The slow loop's judge step: re-rank the league on this site's labels and record the champion.
 
+ADR #495: **per broker**. Each broker's lane is judged on the labels its own situations produced,
+and its decision is its own `league_decision` row; a broker with too few labels keeps the offline
+order, exactly as a new appliance does.
+
 v0.27.0 (ADR #423). The appliance runs two loops, after OpenRAN's split between the near-real-time
 and the non-real-time RAN Intelligent Controllers (O-RAN.WG2, *Non-RT RIC Architecture*; O-RAN.WG3,
 *Near-RT RIC Architecture*):
@@ -34,6 +38,7 @@ from netcorenoc.engine.model import league_judge, site, site_labels
 
 if TYPE_CHECKING:  # pragma: no cover - type-only, no runtime edge (tests/repo/test_layers.py)
     from netcorenoc.engine.operate.engine import Engine
+    from netcorenoc.engine.operate.lanes import Lane
 
 __all__ = ["JUDGE_EVERY_TICKS", "judge_step"]
 
@@ -43,16 +48,27 @@ JUDGE_EVERY_TICKS = 60  # five minutes at the 5 s maintenance cadence
 
 
 async def judge_step(engine: Engine, now: float) -> dict[str, Any] | None:
-    """One pass of the judge. Returns what it decided (also kept on ``engine.league_view``)."""
-    members = engine.league_members
+    """One pass of the judge **for every broker** (ADR #495). Returns the Default broker's view
+    (also kept on each lane's ``league_view``)."""
+    out: dict[str, Any] | None = None
+    for lane in engine.lanes:
+        view = await _judge(engine, lane, now)
+        if lane is engine.lanes.default:
+            out = view
+    return out
+
+
+async def _judge(engine: Engine, lane: Lane, now: float) -> dict[str, Any] | None:
+    """One broker's judge: its league re-ranked on its own labels, its decision recorded."""
+    members = lane.league_members
     if members is None or not members.members:
         return None
-    store = engine.store
+    store, broker = engine.store, lane.broker_id
     async with store.lock:
-        pairs = await site_labels.label_pairs(store)
+        pairs = await site_labels.label_pairs(store, broker)
         features = await store.pair_features([int(p["pair_id"]) for p in pairs])
-        latest = await store.latest_league_decision()
-        pinned = await store.decider_pin()
+        latest = await store.latest_league_decision(broker)
+        pinned = await store.decider_pin(broker)
     rows = site.rows_from(pairs, features)
     current = None if latest is None else str(latest["champion"])
     choice = await asyncio.to_thread(
@@ -74,8 +90,9 @@ async def judge_step(engine: Engine, now: float) -> dict[str, Any] | None:
             "negative_bags": len({r.bag for r in rows if r.y == 0}),
         },
         "pinned": pinned,
+        "broker": broker,
     }
-    engine.league_view = view
+    lane.league_view = view
     unchanged = (
         latest is not None
         and str(latest["champion"]) == choice.champion
@@ -98,6 +115,7 @@ async def judge_step(engine: Engine, now: float) -> dict[str, Any] | None:
                     "ineligible": choice.ineligible,
                     "labels": view["labels"],
                 },
+                broker_id=broker,
             )
             await audit.write_event(
                 store,
@@ -109,7 +127,12 @@ async def judge_step(engine: Engine, now: float) -> dict[str, Any] | None:
                 outcome="ok",
                 object_type="league",
                 object_id=choice.champion,
-                details={"previous": current, "reason": choice.reason, "pinned": pinned},
+                details={
+                    "previous": current,
+                    "reason": choice.reason,
+                    "pinned": pinned,
+                    "broker": broker,
+                },
             )
             await store.commit()
         except Exception:

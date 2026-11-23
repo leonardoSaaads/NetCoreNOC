@@ -726,11 +726,14 @@ async def test_f43_every_path_served_today_still_registers(store: Store) -> None
     # modules).
     # Unreleased: 360 -> 362 and 201 -> 202 — routines (ADR #492): running one on a case (one /api
     # pair), and the screen's two modules in place of Playbooks' one.
-    assert len(served) == 362, f"the served surface moved: {len(served)} method/path pairs"
+    # Unreleased: 362 -> 377 and 202 -> 210 — brokers (ADRs #494-#497): the list, one broker,
+    # adding, changing, removing one, its proxy's token, moving an element and the proxy's door
+    # (eight /api pairs), and seven console modules (the brokers, their screens, the heading).
+    assert len(served) == 377, f"the served surface moved: {len(served)} method/path pairs"
     api_pairs = {(method, path) for method, path in served if path.startswith("/api")}
     # **v0.19.0: 53 -> 55.** `GET /api/models` and `POST /api/models/register`: what the
     # models are doing, and turning one of this appliance's own fits into an artefact.
-    assert len(api_pairs) == 202, (
+    assert len(api_pairs) == 210, (
         f"the /api surface moved: {len(api_pairs)} pairs. v0.16.0 adds exactly five — the "
         f"operator's five gestures — v0.16.2 adds exactly one, `POST …/promote` (DECISIONS #273), "
         f"v0.16.5 adds exactly one, `POST /api/alarms/clear` (DECISIONS #301), "
@@ -930,11 +933,14 @@ async def test_f42_every_path_served_today_still_registers(store: Store) -> None
     # modules).
     # Unreleased: 360 -> 362 and 201 -> 202 — routines (ADR #492): running one on a case (one /api
     # pair), and the screen's two modules in place of Playbooks' one.
-    assert len(served) == 362, f"the served surface moved: {len(served)} method/path pairs"
+    # Unreleased: 362 -> 377 and 202 -> 210 — brokers (ADRs #494-#497): the list, one broker,
+    # adding, changing, removing one, its proxy's token, moving an element and the proxy's door
+    # (eight /api pairs), and seven console modules (the brokers, their screens, the heading).
+    assert len(served) == 377, f"the served surface moved: {len(served)} method/path pairs"
     api_pairs = {(method, path) for method, path in served if path.startswith("/api")}
     # **v0.19.0: 53 -> 55.** `GET /api/models` and `POST /api/models/register`: what the
     # models are doing, and turning one of this appliance's own fits into an artefact.
-    assert len(api_pairs) == 202, (
+    assert len(api_pairs) == 210, (
         f"the /api surface moved: {len(api_pairs)} pairs. v0.16.0 adds exactly five — the "
         f"operator's five gestures — v0.16.2 adds exactly one, `POST …/promote` (DECISIONS #273), "
         f"v0.16.5 adds exactly one, `POST /api/alarms/clear` (DECISIONS #301), "
@@ -1220,7 +1226,9 @@ def test_the_three_postures_are_all_populated() -> None:
     # ADR #477: 50 -> 51. Ending a customer is inventory structure, as creating one is.
     # ADR #482: 51 -> 52. Forgetting a person's authenticator, by `users.manage`.
     # ADR #486: 52 -> 53. The audit log's facets, by `audit.read`, as the log itself.
-    assert len(ADMIN_ONLY) == 53, len(ADMIN_ONLY)
+    # ADR #494: 53 -> 58. Adding, changing and removing a broker, its proxy's token, moving an
+    # element between brokers: `brokers.write`, admin.
+    assert len(ADMIN_ONLY) == 58, len(ADMIN_ONLY)
     # v0.18.0: 6 -> 7. `GET /api/correlation` is `unscoped` for `GET /api/scorer`'s reason
     # — counters over the scorer's own decisions are a statement about arithmetic and
     # name no network element (Part II).
@@ -1283,7 +1291,9 @@ def test_the_three_postures_are_all_populated() -> None:
     # ADR #480: 73 -> 74, Start working this names one situation (targeted).
     # ADR #481: 74 -> 77, a customer's email settings, their change and a test message (targeted).
     # ADR #489: 77 -> 78, the merge picker's related situations (scoped as the list it narrows).
-    assert len(SCOPED) == 78, SCOPED
+    # ADR #496: 78 -> 80, the brokers a person can see (a collection, counted over their own
+    # elements) and one broker (targeted: one none of whose elements they see is a 404).
+    assert len(SCOPED) == 80, SCOPED
     assert len(rbac.ROUTE_SCOPE) == len(ADMIN_ONLY) + len(UNSCOPED) + len(SCOPED)
 
 
@@ -1497,6 +1507,9 @@ SCOPED_TARGETED = [
         for (m, p), posture in rbac.ROUTE_SCOPE.items()
         if p.startswith("/api/noc/customers/{customer_id}") and posture == "scoped"
     ],
+    # ADR #496: a broker none of whose elements the caller can see is the 404 of one that does not
+    # exist.
+    ("GET", "/api/brokers/{broker_id}"),
 ]
 SCOPED_COLLECTION = [r for r in SCOPED if r not in SCOPED_TARGETED]
 
@@ -1563,6 +1576,7 @@ async def test_scoped_routes_404_an_out_of_scope_target(
         .replace("{contact_id}", str(book["contact"]))
         .replace("{doc_id}", str(book["doc"]))
         .replace("{circuit_id}", str(book["circuit"]))
+        .replace("{broker_id}", str(out_of_scope_ne["broker"]))
     )
     if path == "/api/noc/customers/{customer_id}/docs":
         concrete += "?name=guard.txt"  # the file's name is a required query parameter
@@ -1581,15 +1595,13 @@ async def test_scoped_collection_routes_answer_differently_under_a_policy(
     """`scoped`, collection form: the response is a function of the caller's visible set, so a
     policy that hides half the estate must change what comes back."""
     engine, queue, app = await authutil.make_env(store)
-    await _out_of_scope_ids(store, engine, queue)
+    hidden_ids = await _out_of_scope_ids(store, engine, queue)
     method, path = route
     if path.startswith(("/api/noc/cases", "/api/noc/overview")):
         await _open_every_situation(store)
     if path.startswith(("/api/noc/customers", "/api/noc/circuits")):
         # ADR #473: a customer whose one element is on the hidden /24, with a circuit.
-        async with store.lock:
-            hidden = await store.ne_id("192.168.50.1", BASE)
-        await _out_of_scope_customer(store, hidden)
+        await _out_of_scope_customer(store, hidden_ids["ne"])
     if path == "/api/noc/cases/kpis":
         # ADR #470: the KPIs are a lead's; the editor is named one, so the scope is what differs.
         async with store.lock:
@@ -1730,9 +1742,26 @@ async def _open_every_situation(store: Store) -> None:
 
 
 async def _out_of_scope_ids(store: Store, engine: Any, queue: Any) -> dict[str, int]:
-    """An estate with a situation whose only member sits on the out-of-scope 192.168.50.0/24."""
+    """An estate with a situation whose only member sits on the out-of-scope 192.168.50.0/24 — in a
+    broker of its own (ADR #494), so a broker the caller cannot see is one more hidden target."""
     import util
 
+    async with store.lock:
+        hidden_broker = await store.create_broker(
+            name="Hidden",
+            slug="hidden",
+            organization_id=1,
+            description="",
+            intake="cidr",
+            udp_port=None,
+            networks="192.168.50.0/24",
+            token_hash=None,
+            token_hint=None,
+            actor="test",
+            now=BASE,
+        )
+        await engine.load_scorer_config()  # the reload point: the range routes from here on
+        await store.commit()
     await util.drive(
         engine,
         queue,
@@ -1762,4 +1791,5 @@ async def _out_of_scope_ids(store: Store, engine: Any, queue: Any) -> dict[str, 
         # v0.16.0: `POST /api/alarms/{aid}/clear` names an alarm rather than a situation, so the
         # out-of-scope estate has to hand back one of those too.
         "alarm": hidden_members[0],
+        "broker": hidden_broker,
     }

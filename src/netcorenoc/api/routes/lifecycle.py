@@ -200,6 +200,15 @@ def register(app: FastAPI, ctx: AppContext) -> None:
                 raise HTTPException(status_code=404, detail="no such situation")
         if sid == body.from_situation_id:
             raise HTTPException(status_code=409, detail="a situation cannot merge into itself")
+        async with store.reading():
+            brokers = await store.situation_brokers([sid, body.from_situation_id])
+        if len(set(brokers.values())) > 1:
+            # ADR #495: each broker is its own network; one incident never spans two of them.
+            raise HTTPException(
+                status_code=409,
+                detail="these situations are in different brokers, and a situation never spans "
+                "two networks",
+            )
         now = time.time()
         async with write_txn():
             for named in (sid, body.from_situation_id):

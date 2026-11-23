@@ -33,7 +33,34 @@ const state = {
   /** sid -> how many updates have been withheld from this card since it was expanded. */
   withheld: new Map(),
   expanded: new Set(),
+  /** ADR #496: the broker the live figures are of; null for every broker (`brokers.js`). */
+  broker: null,
 };
+
+/** Called with the new broker when the live figures should follow another one (`app.js`). */
+let onBroker = null;
+
+export function onBrokerChange(fn) { onBroker = fn; }
+
+/** `broker_id` for the broker the live figures follow, or nothing for every broker. */
+export function brokerQuery(joiner) {
+  return state.broker == null ? "" : `${joiner}broker_id=${state.broker}`;
+}
+
+/** Follow another broker's network: what is held of the last one is dropped, so a screen never
+ * shows one network's map under another's name while the stream re-opens. */
+export function setBroker(id) {
+  const next = id == null ? null : Number(id);
+  if (state.broker === next) return;
+  state.broker = next;
+  state.stats = null;
+  state.graph = null;
+  state.situations = [];
+  state.trapRate = null;
+  lastSample = null;
+  publish();
+  if (onBroker) onBroker(next);
+}
 
 const subscribers = new Set();
 

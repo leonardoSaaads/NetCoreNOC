@@ -2,11 +2,12 @@
  *
  * The editor takes a small JSON document, and a blank one teaches nothing. These are the common
  * shapes, each a complete document that "Use this" copies into the editor — never applies: the
- * admin still reads it, replaces the placeholder ids and presses Apply. Beside them, the four selector forms and
+ * admin still reads it, replaces the placeholder ids and presses Apply. Beside them, the selector forms and
  * the ids of the people and tokens a principal entry names, so nobody has to guess `user:7`.
  */
 
 import { html } from "../../dom.js";
+import { brokerList } from "../../brokers.js";
 
 const doc = (body) => JSON.stringify({ version: 1, roles: {}, principals: {}, ...body }, null, 2);
 
@@ -19,6 +20,10 @@ export function examples() {
   const user = "user:7";
   const token = "token:3";
   return [
+    // ADR #496: a customer's people see that customer's networks — their brokers — and no other.
+    ["A customer's team sees its brokers",
+      "One person sees the networks of one customer — the North-East and the South — and nothing else.",
+      doc({ principals: { [user]: ["broker:2", "broker:3"] } })],
     ["Viewers see the core only",
       "Every viewer sees the core network's management range; editors and admins see everything.",
       doc({ roles: { viewer: ["10.0.0.0/16"] } })],
@@ -35,6 +40,7 @@ export function examples() {
 }
 
 const SELECTORS = [
+  ["broker:2", "every element of one broker (network), by its id"],
   ["ne:42", "one element, by the id the Entities screen shows"],
   ["192.0.2.10", "one element, by its management address"],
   ["10.20.0.0/16", "every element in an address range (CIDR)"],
@@ -61,6 +67,11 @@ export function ScopeExamples({ users, tokens, onUse, writable }) {
       ${(tokens || []).filter((t) => !t.revoked).map((t) => html`<li key=${`t${t.id}`}><code class="mono">token:${t.id}</code>
         <span>${t.name}</span><span class="muted">${t.role} token</span></li>`)}</ul>
       <p class="hint">Admins are never narrowed by visibility; an entry naming one has no effect.</p>
+    </details>` : null}
+    ${(brokerList() || []).length ? html`<details class="scope-ids"><summary>Ids for broker selectors</summary>
+      <ul class="mini-list">${brokerList().map((b) => html`<li key=${`b${b.id}`}><code class="mono">broker:${b.id}</code>
+        <span>${b.name}</span><span class="muted">${b.customer}</span></li>`)}</ul>
+      <p class="hint">An address selector matches that address in every broker; name the broker to tell two customers' 10.0.0.1 apart.</p>
     </details>` : null}
   </section>`;
 }

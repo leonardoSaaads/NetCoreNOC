@@ -29,6 +29,7 @@
 
 import { Component, html } from "../../dom.js";
 import { get } from "../../api.js";
+import { withBroker } from "../../brokers.js";
 import { Bars } from "../../compare.js";
 import { Curve } from "../../modelcharts.js";
 import { count } from "../../format.js";
@@ -46,11 +47,14 @@ export class ModelHealth extends Component {
     try {
       // `line`: Labelling shows who decides and nothing else, from the light read.
       if (this.props.line) throw Object.assign(new Error("line"), { status: 403 });
-      this.setState({ data: await get("/api/judge?brief=true") });
+      this.setState({ data: await get(withBroker("/api/judge?brief=true", this.props.brokerId)) });
     } catch (error) {
       if (error.status !== 403) { this.setState({ error }); return; }
       try {
-        this.setState({ data: await get("/api/decider"), lineOnly: true });
+        this.setState({
+          data: await get(withBroker("/api/decider", this.props.brokerId)),
+          lineOnly: true,
+        });
       } catch (second) {
         this.setState({ error: second });
       }

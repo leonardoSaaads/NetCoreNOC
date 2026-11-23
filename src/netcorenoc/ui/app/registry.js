@@ -35,13 +35,8 @@
 
 import { Overview } from "./views/overview.js";
 import { Situations } from "./views/situations.js";
-import { GraphView } from "./views/graph.js";
-import { Timeline } from "./views/timeline.js";
-import { Entities } from "./views/entities.js";
 import { Classes } from "./views/classes.js";
 import { Maintenance } from "./views/maintenance.js";
-import { Learning, LabellingAlias, CorpusAlias } from "./views/learning.js";
-import { Promotion } from "./views/promotion.js";
 import { Access } from "./views/access.js";
 import { html } from "./dom.js";
 import { Settings } from "./views/settings.js";
@@ -56,6 +51,13 @@ import { Routines, PlaybooksAlias } from "./views/routines.js";
 import { Agents } from "./views/agents.js";
 import { Org } from "./views/org.js";
 import { Customers } from "./views/customers.js";
+import { GraphView } from "./views/graph.js";
+import { Timeline } from "./views/timeline.js";
+import { Entities } from "./views/entities.js";
+import { Learning, LabellingAlias, CorpusAlias } from "./views/learning.js";
+import { Promotion } from "./views/promotion.js";
+import { Brokers, brokerAlias, brokerHeading } from "./views/brokers.js";
+import { OverviewBroker } from "./views/parts/brokerpick.js";
 
 /**
  * `id`         the URL fragment and the DOM's `data-view`
@@ -66,11 +68,16 @@ import { Customers } from "./views/customers.js";
  * `plane`      "noc" for a phase 2 screen; absent is the Broker (see `PLANES`)
  * `icon`       the name of a mark in `icons.js`, drawn beside the label. Never the only signal:
  *              every call site renders it `aria-hidden` next to the text label
+ * `heading`    `(params) => {title, summary}` when a screen's heading depends on its address
+ * `aside`      a control drawn at the heading's right (the Overview's broker, ADR #496)
+ *
+ * **ADR #494: the screens that show one network live inside its broker** (`#/brokers/{id}/...`).
+ * Their old addresses stay, hidden, and open the same screen inside the broker they belong to.
  */
 export const VIEWS = [
   {
     id: "overview", label: "Overview", icon: "overview", group: null,
-    capability: "stats.read", component: Overview,
+    capability: "stats.read", component: Overview, aside: OverviewBroker,
     summary: "What is happening now, shaped by what your role can act on.",
   },
 
@@ -81,18 +88,18 @@ export const VIEWS = [
     summary: "Correlated groups of alarms, and why each alarm was grouped.",
   },
   {
-    id: "graph", label: "Network graph", icon: "graph", group: "operations",
-    capability: "graph.read", component: GraphView,
+    id: "graph", label: "Network graph", icon: "graph", group: null, hidden: true,
+    capability: "graph.read", component: brokerAlias(GraphView, "graph"),
     summary: "Learned affinity between network elements.",
   },
   {
-    id: "timeline", label: "Timeline", icon: "timeline", group: "operations",
-    capability: "timeline.read", component: Timeline,
+    id: "timeline", label: "Timeline", icon: "timeline", group: null, hidden: true,
+    capability: "timeline.read", component: brokerAlias(Timeline, "timeline"),
     summary: "Raises and clears over time, per device.",
   },
   {
-    id: "entities", label: "Entities", icon: "entities", group: "operations",
-    capability: "entities.read", component: Entities,
+    id: "entities", label: "Entities", icon: "entities", group: null, hidden: true,
+    capability: "entities.read", component: brokerAlias(Entities, "entities"),
     summary: "Every network element: its alarms, its components, and where it stands.",
   },
   {
@@ -111,30 +118,36 @@ export const VIEWS = [
     summary: "Planned work: what is scheduled, what is running, and what it still collects.",
   },
 
-  /* ---------- Evidence: what has been learned, and what is refused ---------- */
+  /* ---------- Brokers: each monitored network, on its own (ADR #494) ---------- */
   {
-    // ADR #484: Labelling and Corpus are one screen — what waits for a judgement, and what the
-    // models learn from. The two old addresses still open it, on their tab.
-    id: "learning", label: "Learning", icon: "labelling", group: "evidence",
-    capability: ["situations.read", "feedback.write"], component: Learning,
+    // The sidebar lists each broker below this entry and, under the one open, its five screens.
+    id: "brokers", label: "Brokers", icon: "network", group: "brokers", navLabel: "All brokers",
+    capability: "brokers.read", component: Brokers, heading: brokerHeading,
+    summary: "The networks this appliance monitors — each correlates, maps and learns on its own.",
+  },
+  {
+    // ADR #484: Labelling and Corpus are one screen; ADR #495: it is each broker's own now, and
+    // these addresses open it inside the broker they belong to.
+    id: "learning", label: "Learning", icon: "labelling", group: null, hidden: true,
+    capability: ["situations.read", "feedback.write"], component: brokerAlias(Learning, "learning"),
     summary: "What waits for your judgement, and what the models learn from it.",
   },
   {
     id: "labelling", label: "Learning", icon: "labelling", group: null, hidden: true,
-    capability: ["situations.read", "feedback.write"], component: LabellingAlias,
+    capability: ["situations.read", "feedback.write"],
+    component: brokerAlias(LabellingAlias, "learning"),
     summary: "What waits for your judgement, and what the models learn from it.",
   },
   {
     id: "corpus", label: "Learning", icon: "corpus", group: null, hidden: true,
-    capability: ["situations.read", "config.read"], component: CorpusAlias,
+    capability: ["situations.read", "config.read"], component: brokerAlias(CorpusAlias, "learning", { tab: "corpus" }),
     summary: "What waits for your judgement, and what the models learn from it.",
   },
   {
-    id: "promotion", label: "Judge & promotion", icon: "promotion", group: "evidence",
-    // Both reads, because the screen issues both on mount (v0.22.0: the running scorer's panel
-    // moved here from Situations) — the rule the Governance entry states.
-    // v0.26.0 (ADR #414): chart-first; it reads `/api/judge` (`model.read`) as well.
-    capability: ["promotion.read", "correlation.read", "model.read"], component: Promotion,
+    id: "promotion", label: "Judge & promotion", icon: "promotion", group: null, hidden: true,
+    // Both reads, because the screen issues both on mount — the rule the Governance entry states.
+    capability: ["promotion.read", "correlation.read", "model.read"],
+    component: brokerAlias(Promotion, "learning", { view: "league" }),
     summary: "How good the model deciding links is, measured, and what the site's labels say.",
   },
 
@@ -150,7 +163,7 @@ export const VIEWS = [
     id: "settings", label: "Settings", icon: "settings", group: "administer",
     // v0.26.0 (ADR #414): Link scorer folded in as the Correlation tab, beside Autonomy and Search.
     capability: "config.read", component: Settings,
-    summary: "What decides links, autonomy, what the receiver accepts, email, and every parameter.",
+    summary: "Autonomy, what the receiver accepts, email, every parameter — and, for one network, what decides links.",
   },
   {
     id: "quarantine", label: "Quarantine", icon: "quarantine", group: "administer",
@@ -234,7 +247,9 @@ export const VIEWS = [
   {
     id: "scorer", label: "Link scorer", icon: "scorer", group: null, hidden: true,
     capability: ["scorer.read", "scorer.write"],
-    component: (p) => html`<${Settings} ...${p} tab="correlation" />`,
+    // ADR #495: who decides links is each broker's own, so this opens a broker's Models.
+    component: brokerAlias((p) => html`<${Settings} ...${p} tab="correlation" />`, "learning",
+      { view: "models" }),
     summary: "The formula that decides which alarms group, when the formula is chosen.",
   },
   // The three addresses v0.24.0 had, kept so links and bookmarks still land (v0.25.0).

@@ -19,7 +19,8 @@ returns to the last screen you had open there. A principal who can reach no NOC 
 switch; a viewer reaches Cases (the customer's side of a case) and nothing of the vault. The plane
 changes what is offered, never what is allowed.
 
-The Broker's views come in three groups, plus the Overview and your account. **A view you
+The Broker's views come in three groups — *Operations*, *Brokers* and *Administer* — plus the
+Overview and your account. **A view you
 cannot use is not rendered** — a viewer sees no `Administer` group at all, rather than a group of
 disabled controls.
 
@@ -28,13 +29,35 @@ disabled controls.
 | View | The question it answers |
 |---|---|
 | **Situations** | Correlated groups of alarms, and **why each alarm was grouped**. Each row names its probable root and its port ("linkDown on tim-rjo-barra-crs326 (ether5)") and each member its port when the trap named it (ADR #476). Any gesture on a new situation — start, confirm, correct, merge, hand-clear — opens it, and opens its case in the NOC queue |
+| **Trap catalogue** | Every trap type, by name and severity: search, browse by vendor branch, name or grade a trap or a whole branch, import a trap list. Traps of 28 network vendors and the standard MIBs are named out of the box, with a default severity marked *built-in* that any rule or declaration overrides |
+| **Maintenance** | Planned work: what is scheduled, what is running, and **what it still collects**. Every broker's windows, with a broker filter; *Schedule maintenance* may make a window **for one broker**, which then lists and covers that network's hosts only (ADR #496) |
+
+The **Overview** has a broker selector at its heading's right — *All brokers*, or one — kept in the
+address (`#/overview?broker=2`); every panel and the live figures follow it. Situations has the same
+filter, and each row names its broker when more than one is monitored.
+
+## Brokers — each monitored network, on its own (ADRs #494-#497)
+
+A **broker** is one network this appliance monitors, owned by one customer; a customer may have
+several (Claro's North-East and its South). Each correlates, maps and learns from its own traps
+alone. The sidebar lists **All brokers**, then each broker; under the one open are its five screens,
+each showing **that network alone**:
+
+| View | The question it answers |
+|---|---|
+| **All brokers** | Every network, as Zabbix lists its proxies: its customer, how its traps arrive (its own UDP port, a remote proxy, or its ranges), whether they are arriving (*Listening*, *Receiving*, *Proxy silent*, a port error), its elements, live situations and last trap. An admin **adds a broker** in three steps — how its traps arrive (own port + ranges is preselected), its network, review; a remote proxy's token and the command that starts it are shown once |
+| **A broker** | What it is and how to send it traps; for an admin, *Change*, *Switch off* (its port closes, or its proxy keeps its traps on its own disk; its map and situations stay readable), *Issue a new token* (a proxy) and *Remove* (only while it has received nothing) |
 | **Network graph** | Learned affinity between network elements, drawn the same way every time. Zoom with the wheel, `+`/`−`, double-click or pinch; drag or the arrow keys pan; `0` fits. *Find* centres an address or name. Select an element (click, or Tab and Enter) for its panel: situations and the last day's traps. *Elements by load* ranks the estate exactly |
 | **Timeline** | Raises and clears over the window you pick, per element, with repeats of one trap folded into one row. Narrow by organization, element, trap (a name, or an OID meaning its branch) and kind; every filter is in the address and shown as a removable chip. From a situation card, the timeline opens as that situation's **sequence of events** |
 | **Entities** | The estate as an inventory: counts that filter, search and sort, one row per element with its severity mix, situations, components and last trap. Open one for its last day and busiest components — and, for whoever may, to **name it** and **put it in its customer** (ADR #476); the identification evidence is behind a disclosure |
-| **Trap catalogue** | Every trap type, by name and severity: search, browse by vendor branch, name or grade a trap or a whole branch, import a trap list. Traps of 28 network vendors and the standard MIBs are named out of the box, with a default severity marked *built-in* that any rule or declaration overrides |
-| **Maintenance** | Planned work: what is scheduled, what is running, and **what it still collects** |
+| **Maintenance** | That broker's planned work, and *Schedule maintenance* for it |
+| **Learning** | Four tabs: **To judge**, **Models** (who decides in this broker; an admin may pin one model here only — model A in one network, model B in another), **Judge** (the league ranked on this broker's own labels) and **Site training** (adapting the shipped model to this broker's labels) |
 
-## Evidence — what has been learned, and what is refused
+The old addresses (`#/graph`, `#/timeline`, `#/entities`, `#/learning`, `#/promotion`) still work:
+with more than one broker they open the screen inside the broker of what they name (an element, a
+situation), else the last broker opened; with one network they show the screen as it always was.
+
+### Learning and the Judge, as each broker shows them
 
 | View | The question it answers |
 |---|---|
@@ -45,8 +68,8 @@ disabled controls.
 
 | View | The question it answers |
 |---|---|
-| **People & access** | Who can sign in, what each person and program may do, and what they see — four tabs: **People** (accounts; one opens like Your account — a header with the photo, name, role and two-factor, then **Profile**, **Access** (its capability grid) and **Security** (password, two-factor, delete), ADR #490), **Roles** (what every person of a role holds by default), **Service tokens** (credentials for programs, each with a purpose, shown once — with a three-step start and the **API reference**) and **Visibility** (which network elements viewers and editors see, with worked examples) |
-| **Settings** | Six tabs: **Models** (what decides links — the league's champion, chosen by the judge or pinned), **Autonomy** (four grades, the self-suspension trigger, every act and its verdict), **Site training** (the budget, start and stop), **SNMP** (which versions and communities the receiver accepts, and the SNMPv3 users), **Email** (the SMTP server recovery links go through) and **System** (every parameter, in three classes, with its precedence and its impact) |
+| **People & access** | Who can sign in, what each person and program may do, and what they see — four tabs: **People** (accounts; one opens like Your account — a header with the photo, name, role and two-factor, then **Profile**, **Access** (its capability grid) and **Security** (password, two-factor, delete), ADR #490), **Roles** (what every person of a role holds by default), **Service tokens** (credentials for programs, each with a purpose, shown once — with a three-step start and the **API reference**) and **Visibility** (which network elements viewers and editors see, with worked examples — `broker:<id>` names every element of a broker) |
+| **Settings** | Six tabs: **Models** (what decides links — the league's champion, chosen by the judge or pinned; with more than one broker, each broker's Learning holds its own), **Autonomy** (four grades, the self-suspension trigger, every act and its verdict), **Site training** (the budget, start and stop; per broker likewise), **SNMP** (which versions and communities the receiver accepts, and the SNMPv3 users), **Email** (the SMTP server recovery links go through) and **System** (every parameter, in three classes, with its precedence and its impact) |
 | **Quarantine** | Datagrams the parser refused. **Reading this list is audited** |
 | **Audit log** | ADR #486: every change, found by **period** (1 h to 30 days, or two dates), **person**, **section** (sign-in, people, situations, models, settings, NOC, audit — each with its count), **outcome** and a text; rows open in place (source address, details); *Load older* pages back; *Download view* saves the rows on screen as CSV; *Export all* the whole chain as NDJSON |
 

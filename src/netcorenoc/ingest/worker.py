@@ -24,9 +24,13 @@ Both spend their time in system calls, which release the interpreter lock to the
 * ``["w", head]`` — every record up to ``head`` is durable;
 * ``["s", {counter: n}, {spool state}]`` — every second and on exit.
 
-From the parent, on a second pipe: ``["allowlist", "cidr,cidr"]``, ``["stop"]``. The bootstrap —
-which descriptor is which, the allowlist, the spool's directory and size — is one JSON line on
-stdin. No key and no SNMP secret reaches this process: it never parses a datagram.
+From the parent, on a second pipe: ``["allowlist", "cidr,cidr"]``, ``["stop"]``, and (ADR #494)
+``["append", id, [base64 record, ...]]`` — records a broker's remote proxy forwarded, which this
+process spools like its own and acknowledges with ``["a", id, ok]`` once they are durable, so the
+central server answers the proxy only when nothing it sent can be lost. The bootstrap — which
+descriptor is which (the standard port's socket, and one per broker with a port of its own), the
+allowlist, the spool's directory and size — is one JSON line on stdin. No key and no SNMP secret
+reaches this process: it never parses a datagram.
 
 **The one place a trap can still be refused for lack of room** is the outbox, and only when the
 spool cannot take it: the disk refuses, or the spool holds its configured maximum. Then the outbox
@@ -37,6 +41,8 @@ classified.
 
 from __future__ import annotations
 
+import base64
+import binascii
 import ipaddress
 import json
 import os
@@ -144,8 +150,10 @@ class Worker:
         control: Connection,
         writer: SpoolWriter,
         allowlist: str = "",
+        ports: tuple[tuple[socket.socket, int], ...] = (),
     ) -> None:
         self.sock = sock
+        self.ports = ports  # ADR #494: (socket, local port) for each broker with a port of its own
         self.events = events
         self.control = control
         self.writer = writer
@@ -158,6 +166,13 @@ class Worker:
         self.closed = threading.Event()  # set once the last datagram has been read
         self.spooled = threading.Event()  # set by the spool thread when it has written it all
         self._send_lock = threading.Lock()  # both threads write to the events pipe
+        # ADR #494: a proxy's records are acknowledged once written. `enqueued` and `written`
+        # count records into the outbox and out of it to the spool; an acknowledgement waits until
+        # `written` passes the count its records ended at.
+        self.enqueued = 0
+        self.written = 0
+        self._acks: deque[tuple[int, int]] = deque()
+        self._ack_lock = threading.Lock()
 
     def run(self) -> int:
         self._send(["r", os.getpid(), self.writer.head])
@@ -165,19 +180,24 @@ class Worker:
         spooler.start()
         self.sock.setblocking(False)
         selector = selectors.DefaultSelector()
-        selector.register(self.sock, selectors.EVENT_READ, "udp")
+        selector.register(self.sock, selectors.EVENT_READ, ("udp", self.sock, 0))
+        for extra, port in self.ports:
+            extra.setblocking(False)
+            selector.register(extra, selectors.EVENT_READ, ("udp", extra, port))
         selector.register(self.control.fileno(), selectors.EVENT_READ, "control")
         reported = time.monotonic()
         while not self.stopping.is_set():
             for key, _ in selector.select(timeout=STATS_EVERY_S):
-                if key.data == "udp":
-                    self._drain()
-                else:
+                if key.data == "control":
                     self._control()
+                else:
+                    self._drain(key.data[1], key.data[2])
             if time.monotonic() - reported >= STATS_EVERY_S:
                 self._report()
                 reported = time.monotonic()
-        self._drain()  # what the kernel already holds goes to the spool, not lost
+        self._drain(self.sock, 0)  # what the kernel already holds goes to the spool, not lost
+        for extra, port in self.ports:
+            self._drain(extra, port)
         self.closed.set()
         self.spooled.wait(timeout=10.0)
         # Only when the spool refused to the end: what it could not take is counted, never silent.
@@ -186,8 +206,11 @@ class Worker:
         selector.close()
         return 0
 
-    def receive(self, data: bytes, addr: tuple[str, int], ts: float | None) -> None:
-        """One datagram: counted, checked against the allowlist, and queued for the spool raw."""
+    def receive(
+        self, data: bytes, addr: tuple[str, int], ts: float | None, local_port: int = 0
+    ) -> None:
+        """One datagram: counted, checked against the allowlist, and queued for the spool raw.
+        ``local_port`` is a broker's own port when it arrived on one (ADR #494)."""
         counters, source = self.counters, str(addr[0])
         counters.received += 1
         if not allowed(self.networks, source):
@@ -196,17 +219,55 @@ class Worker:
         if len(self.outbox) >= OUTBOX_MAX:
             counters.dropped += 1
             return
-        self.outbox.append(
-            records.raw(source, int(addr[1]), time.time() if ts is None else ts, data)
-        )
+        record = records.raw(source, int(addr[1]), time.time() if ts is None else ts, data)
+        self.outbox.append(records.on_port(local_port, record) if local_port else record)
+        self.enqueued += 1
 
-    def _drain(self) -> None:
+    def _drain(self, sock: socket.socket, local_port: int) -> None:
         for _ in range(RECV_BURST):
             try:
-                data, ancillary, _flags, addr = self.sock.recvmsg(65535, _ANCILLARY)
+                data, ancillary, _flags, addr = sock.recvmsg(65535, _ANCILLARY)
             except OSError:  # nothing left (BlockingIOError) or the socket is gone
                 return
-            self.receive(data, addr, arrival(ancillary, time.time()))
+            self.receive(data, addr, arrival(ancillary, time.time()), local_port)
+
+    def append(self, request: int, encoded: list[object]) -> None:
+        """A proxy's records (ADR #494), spooled like the socket's and acknowledged once written.
+
+        Every one must be a raw record in a broker's envelope; a batch with anything else, or one
+        the outbox has no room for, is refused whole with ``["a", id, false]`` and nothing of it is
+        kept — the proxy keeps it and sends it again.
+        """
+        batch: list[bytes] = []
+        try:
+            for item in encoded:
+                if not isinstance(item, str):
+                    raise ValueError("not a string")
+                payload = base64.b64decode(item, validate=True)
+                if payload[:1] != b"X" or records.envelope(payload)[1] <= 0:
+                    raise ValueError("not a broker's record")
+                records.unraw(payload)
+                batch.append(payload)
+        except (ValueError, binascii.Error):
+            self._send(["a", request, False])
+            return
+        if len(self.outbox) + len(batch) > OUTBOX_MAX:
+            self._send(["a", request, False])
+            return
+        with self._ack_lock:
+            self.outbox.extend(batch)
+            self.enqueued += len(batch)
+            self._acks.append((self.enqueued, request))
+        self._settle()
+
+    def _settle(self) -> None:
+        """Acknowledge every proxy batch whose last record is now in the spool."""
+        ready: list[int] = []
+        with self._ack_lock:
+            while self._acks and self._acks[0][0] <= self.written:
+                ready.append(self._acks.popleft()[1])
+        for request in ready:
+            self._send(["a", request, True])
 
     def _control(self) -> None:
         try:
@@ -221,6 +282,13 @@ class Worker:
         kind = message[0]
         if kind == "stop":
             self.stopping.set()
+        elif (
+            kind == "append"
+            and len(message) == 3
+            and isinstance(message[1], int)
+            and isinstance(message[2], list)
+        ):
+            self.append(message[1], message[2])
         elif kind == "allowlist" and len(message) == 2 and isinstance(message[1], str):
             try:
                 self.networks = parse_allowlist(message[1])
@@ -276,6 +344,8 @@ class Worker:
                 self.counters.spooled += len(group)
                 self.error, pause = "", FLUSH_S
                 self._send(["w", head])
+                self.written += len(group)
+                self._settle()
         finally:
             self.spooled.set()
 
@@ -288,8 +358,9 @@ def main() -> int:
     events = Connection(int(boot["events"]), readable=False)
     control = Connection(int(boot["control"]), writable=False)
     writer = SpoolWriter(Path(str(boot["spool"])), int(boot["spool_max"]))
+    ports = tuple((socket.socket(fileno=int(fd)), int(port)) for fd, port in boot.get("ports", []))
     try:
-        return Worker(sock, events, control, writer, str(boot.get("allowlist", ""))).run()
+        return Worker(sock, events, control, writer, str(boot.get("allowlist", "")), ports).run()
     finally:
         writer.close()
 

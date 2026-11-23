@@ -40,6 +40,7 @@ from multiprocessing.connection import Connection
 from typing import Any
 
 from netcorenoc.ingest import records, snmpconf
+from netcorenoc.ingest.events import TrapEvent
 from netcorenoc.ingest.receiver import QueueItem, TrapReceiver
 
 __all__ = ["DECODE_TIMEOUT_S", "Decoder", "DecoderError", "Result", "local", "main"]
@@ -93,12 +94,19 @@ def _decode_batch(receiver: TrapReceiver, sink: _Sink, payloads: list[bytes]) ->
     out: list[Any] = []
     for payload in payloads:
         try:
+            local, broker, _record = records.envelope(payload)
             source, port, ts, datagram = records.unraw(payload)
         except ValueError as exc:
             out.append(str(exc))
             continue
         receiver.datagram_received(datagram, (source, port), ts)
-        out.append(records.as_list(sink.pop()) if sink else None)
+        if not sink:
+            out.append(None)
+            continue
+        item = sink.pop()
+        if (local or broker) and isinstance(item, TrapEvent):  # ADR #494: how it arrived
+            item = item.model_copy(update={"port": local, "broker": broker})
+        out.append(records.as_list(item))
     return out
 
 

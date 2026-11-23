@@ -405,11 +405,14 @@ class MaintenanceMixin(WindowSweepMixin):
         memory for the store on the maintenance cadence, never per trap — and because
         `engine.py`'s sweep already calls that helper, so the engine gains no line for it.
         """
-        correlator = self.correlator
-        await self.store.upsert_episodes(correlator.episodes.flush())
-        correlator.grouper.prune(set(self.members))
+        prune = now - self._memory_pruned_at >= 60.0
+        for lane in self.lanes:  # ADR #495: each broker's memories are its own
+            correlator = lane.correlator
+            await self.store.upsert_episodes(correlator.episodes.flush(), lane.broker_id)
+            correlator.grouper.prune(set(self.members))
+            if prune:
+                correlator.prune(now)
         self.upkeep.retain(self.members)  # the root samples of situations no longer open (#448)
-        if now - self._memory_pruned_at >= 60.0:
+        if prune:
             self._memory_pruned_at = now
-            correlator.prune(now)
             await self.store.prune_episodes(now - 365 * 86400.0)

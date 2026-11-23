@@ -38,6 +38,8 @@
 import { html, Component, cx } from "../dom.js";
 import { SituationCard } from "./parts/card.js";
 import { get } from "../api.js";
+import { withBroker } from "../brokers.js";
+import { BrokerSelect } from "./parts/brokerpick.js";
 import { Loading, Empty, Failed, routeKey } from "../widgets.js";
 import { plural } from "../format.js";
 import { Counts, SEARCH_NOTE, TABS } from "./parts/finder.js";
@@ -90,6 +92,8 @@ export class Situations extends Component {
    * come to disagree about what a route change is.
    */
   componentDidUpdate(previous) {
+    const before = Number(previous.query && previous.query.get("broker")) || null;
+    if (before !== this.broker() && this.state.filter.trim()) this.search(this.state.filter.trim());
     if (routeKey(previous.params) === routeKey(this.props.params)) return;
     this.followDeepLink();
   }
@@ -149,6 +153,16 @@ export class Situations extends Component {
     if (needle) this.search(needle);
   }
 
+  /** ADR #496: the broker filter (`?broker=`); the live list follows it (`brokers.brokerOfRoute`). */
+  broker() { return Number(this.props.query && this.props.query.get("broker")) || null; }
+
+  pickBroker(id) {
+    const q = new URLSearchParams(String(this.props.query ?? ""));
+    if (id) q.set("broker", String(id)); else q.delete("broker");
+    const text = q.toString();
+    this.props.navigate(`#/situations${text ? `?${text}` : ""}`);
+  }
+
   async search(needle) {
     // The status tab travels with the query: a search inside "New" means "new AND matching", which
     // is what the tab above the list says it means.
@@ -157,7 +171,8 @@ export class Situations extends Component {
     // `this.state.filter` is re-read on arrival rather than captured: two keystrokes in flight
     // must not let the slower answer overwrite the faster one.
     try {
-      const rows = await get(`/api/situations?q=${encodeURIComponent(needle)}${status}`);
+      const rows = await get(withBroker(`/api/situations?q=${encodeURIComponent(needle)}${status}`,
+        this.broker()));
       if (this.state.filter.trim() === needle) this.setState({ results: rows, searching: false });
     } catch (error) {
       if (this.state.filter.trim() === needle) {
@@ -241,6 +256,7 @@ export class Situations extends Component {
         </div>
 
         <div class="filters">
+          <${BrokerSelect} value=${this.broker()} onChange=${(id) => this.pickBroker(id)} />
           <div class="tabs" role="tablist" aria-label="Situation state">
             ${TABS.map(([value, label, hint]) => html`<button key=${value} type="button" role="tab"
                 id=${`tab-${value || "any"}`}

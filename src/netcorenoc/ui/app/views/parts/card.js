@@ -28,6 +28,7 @@ import { html, Component, cx } from "../../dom.js";
 import { Icon } from "../../icons.js";
 import { RESOLUTION_TEXT } from "./lifecycle.js";
 import { Badge } from "../../widgets.js";
+import { brokerList, brokerName } from "../../brokers.js";
 import { age, plural, timeTitle } from "../../format.js";
 import { Detail } from "./judge.js";
 import { MaintenanceMark } from "./mwmarker.js";
@@ -59,6 +60,10 @@ export function SituationCard({ situation, onToggle, onChanged }) {
           ? html`<${Badge} tone="quiet" title=${RESOLUTION_TEXT[situation.resolution] ?? ""}
                  >${situation.resolution.replace("_", " ")}<//>` : null}
         <${Badge}>${plural(situation.alarm_count, "alarm")}<//>
+        ${/* ADR #494: which network, where more than one is monitored — a situation is one
+              broker's, always. */ (brokerList() || []).length > 1 && situation.broker_id
+          ? html`<span class="sit-broker" title="The broker (network) it formed in"><${Icon}
+              name="network" />${brokerName(situation.broker_id)}</span>` : null}
         ${situation.root_class ? html`<span class="sit-root muted" title="Its probable root"
           >${situation.root_class} on ${situation.device_label}${
             situation.root_port ? ` (${situation.root_port})` : ""}</span>` : null}

@@ -28,8 +28,9 @@ declaration that does not exist at runtime cannot.
 
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable, Mapping
 from functools import cached_property
+from types import MappingProxyType
 from typing import TYPE_CHECKING, Any
 
 from netcorenoc.engine.correlate.correlate import Correlator
@@ -44,6 +45,7 @@ from netcorenoc.engine.mw import index as mw_index
 from netcorenoc.engine.mw.ledger import StateLedger
 from netcorenoc.engine.operate.deadline import DeadlineTracker
 from netcorenoc.engine.operate.intake import Feed, NullFeed
+from netcorenoc.engine.operate.lanes import Lanes
 from netcorenoc.engine.operate.occurrence import REARM_S
 from netcorenoc.engine.operate.upkeep import SituationUpkeep
 from netcorenoc.store import Store
@@ -56,9 +58,10 @@ class EngineBase:
     """The attributes the may-leave mixins rely on. Declared here, assigned in `Engine.__init__`."""
 
     store: Store
-    correlator: Correlator
-    learner: Learner
-    precedence: Precedence
+    #: ADR #495: one lane per broker — its correlator, learned state and decider. The attributes
+    #: below that used to be the engine's own are now the Default broker's lane's, kept as
+    #: properties so every reader written before brokers still reads what it read.
+    lanes: Lanes
     profiler: VarbindProfiler
     gap: GapTracker
     # Set by the runner to the receiver's cumulative queue-full drop count (§5.6). The default in
@@ -75,33 +78,7 @@ class EngineBase:
     # Scoring configuration (v0.6.0). `_loaded_key` is (config id, params hash) of the
     # configuration currently instantiated; a reload that finds the same key is a no-op, which is
     # what keeps a fail-safe degradation sticky.
-    scorer_config_id: int | None
-    # v0.11.0. The OTHER thing the active pointer may name. Exactly one of the two is ever set,
-    # which the database enforces (`0013`'s CHECK) and `scorer_lifecycle` maintains — two live
-    # values here would be two answers to "what is running", which principle 6 forbids.
-    #
-    # **A class-level default rather than an `__init__` assignment**, and the reason is a project
-    # rule rather than a style preference: `engine.py` is `COHESION_EXEMPT` at a ceiling equal to
-    # its exact size, so every line added there costs the one module that has no room. Every path
-    # through `load_scorer_config` assigns this field, so the default is only ever read by an
-    # `Engine` that has not started — which is the same state `scorer_config_id` is in there.
-    scorer_model_version_id: int | None = None
-    # v0.26.0: which decider is running, as every situation and autonomous decision records it —
-    # 'shipped:<sha12>', 'site:<model version>', 'additive:<config id>' or 'additive:default'.
-    decider_ref: str = "additive:default"
-    # v0.27.0 (ADRs #423, #424): the league the fast loop runs one member of — the champion — and
-    # shadows the rest. Class-level defaults for `scorer_model_version_id`'s reason below; the one
-    # mutable table, `latency_us`, is assigned in `Engine.__init__`.
-    league_members: league_model.League | None = None
-    champion: league_model.Member | None = None
-    challengers: tuple[league_model.Member, ...] = ()
-    latency_us: dict[str, float]
-    league_shadow: LeagueShadow
-    #: The slow loop's latest judgement (table, comparisons, labels), served by `/api/judge`.
-    league_view: dict[str, Any] | None = None
     rejected_proposals: set[tuple[int, int]]
-    scorer_warnings: list[str]
-    _loaded_key: tuple[object, ...] | None  # (config/model id or -1 for shipped; hash; …)
     # Feedback-dataset capture (v0.8.0), read by the maintenance mixin's `_capture_run`. Every
     # decision about what to write lives in `netcorenoc.capture`; these two are state the engine
     # owns and the mixin marshals.
@@ -141,6 +118,11 @@ class EngineBase:
     # ADR #450: where the batch transaction stages the spool's cursor. A class-level default for
     # the reason `_idle_active_count` gives; `runner.py` sets the spool's own feed.
     feed: Feed = NullFeed()
+    # ADR #494: how a remote proxy's records reach the spool — the ingest process's `append`,
+    # set by `runner.py`; None where there is no spool (the in-process receiver, tests).
+    proxy_spool: Callable[[list[bytes]], Awaitable[bool]] | None = None
+    #: ADR #494: a broker port the ingest process could not open, and why (`listening.loop`).
+    broker_port_errors: Mapping[int, str] = MappingProxyType({})
 
     # ADRs #447 and #448: each trap's own classification clock, and what a batch owes the
     # situations it touched. Per-instance objects created on first use, for the reason
@@ -153,6 +135,121 @@ class EngineBase:
     @cached_property
     def upkeep(self) -> SituationUpkeep:
         return SituationUpkeep()
+
+    # -- the Default broker's lane, under the names the engine always had (ADR #495) ------------
+
+    @property
+    def correlator(self) -> Correlator:
+        return self.lanes.default.correlator
+
+    @correlator.setter
+    def correlator(self, value: Correlator) -> None:
+        self.lanes.default.correlator = value
+
+    @property
+    def learner(self) -> Learner:
+        return self.lanes.default.learner
+
+    @learner.setter
+    def learner(self, value: Learner) -> None:
+        self.lanes.default.learner = value
+
+    @property
+    def precedence(self) -> Precedence:
+        return self.lanes.default.precedence
+
+    @precedence.setter
+    def precedence(self, value: Precedence) -> None:
+        self.lanes.default.precedence = value
+
+    @property
+    def league_shadow(self) -> LeagueShadow:
+        return self.lanes.default.league_shadow
+
+    @league_shadow.setter
+    def league_shadow(self, value: LeagueShadow) -> None:
+        self.lanes.default.league_shadow = value
+
+    @property
+    def decider_ref(self) -> str:
+        return self.lanes.default.decider_ref
+
+    @decider_ref.setter
+    def decider_ref(self, value: str) -> None:
+        self.lanes.default.decider_ref = value
+
+    @property
+    def champion(self) -> league_model.Member | None:
+        return self.lanes.default.champion
+
+    @champion.setter
+    def champion(self, value: league_model.Member | None) -> None:
+        self.lanes.default.champion = value
+
+    @property
+    def challengers(self) -> tuple[league_model.Member, ...]:
+        return self.lanes.default.challengers
+
+    @challengers.setter
+    def challengers(self, value: tuple[league_model.Member, ...]) -> None:
+        self.lanes.default.challengers = value
+
+    @property
+    def league_members(self) -> league_model.League | None:
+        return self.lanes.default.league_members
+
+    @league_members.setter
+    def league_members(self, value: league_model.League | None) -> None:
+        self.lanes.default.league_members = value
+
+    @property
+    def league_view(self) -> dict[str, Any] | None:
+        return self.lanes.default.league_view
+
+    @league_view.setter
+    def league_view(self, value: dict[str, Any] | None) -> None:
+        self.lanes.default.league_view = value
+
+    @property
+    def scorer_config_id(self) -> int | None:
+        return self.lanes.default.scorer_config_id
+
+    @scorer_config_id.setter
+    def scorer_config_id(self, value: int | None) -> None:
+        self.lanes.default.scorer_config_id = value
+
+    @property
+    def scorer_model_version_id(self) -> int | None:
+        return self.lanes.default.scorer_model_version_id
+
+    @scorer_model_version_id.setter
+    def scorer_model_version_id(self, value: int | None) -> None:
+        self.lanes.default.scorer_model_version_id = value
+
+    @property
+    def scorer_warnings(self) -> list[str]:
+        return self.lanes.default.scorer_warnings
+
+    @scorer_warnings.setter
+    def scorer_warnings(self, value: list[str]) -> None:
+        self.lanes.default.scorer_warnings = value
+
+    @property
+    def _loaded_key(self) -> tuple[object, ...] | None:
+        return self.lanes.default._loaded_key
+
+    @_loaded_key.setter
+    def _loaded_key(self, value: tuple[object, ...] | None) -> None:
+        self.lanes.default._loaded_key = value
+
+    @property
+    def latency_us(self) -> dict[str, float]:
+        return self.lanes.latency_us
+
+    @latency_us.setter
+    def latency_us(self, value: dict[str, float]) -> None:
+        self.lanes.latency_us.clear()
+        self.lanes.latency_us.update(value)
 
     if TYPE_CHECKING:  # pragma: no cover - declaration only; no runtime attribute exists
 

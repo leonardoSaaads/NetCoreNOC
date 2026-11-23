@@ -56,8 +56,9 @@ def register(app: FastAPI, ctx: AppContext) -> None:
             "isolation": False,
             "note": (
                 "An organization is attribution: which provider an element or a window belongs "
-                "to. It is NOT tenant isolation. Correlation still learns across every network "
-                "element and a situation may still form across an organization boundary."
+                "to. It is NOT tenant isolation. Correlation learns per broker (each monitored "
+                "network); within a broker it learns across every element, and a situation may "
+                "form across an organization boundary there."
             ),
         }
 

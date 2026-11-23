@@ -90,8 +90,9 @@ full visibility are what you get.
 
 ### ⚠ Visibility scoping is a presentation control and is **not** tenant isolation
 
-Correlation still learns across every network element, and a situation may still *form* across a
-boundary a principal cannot see. Its members are then shown to them as a redacted count and alarm
+Since ADR #495 correlation learns **per broker**: no situation spans two brokers, and one broker's
+labels never rank another's models. Within a broker, correlation still learns across every element,
+and a situation may still *form* across a boundary a principal cannot see. Its members are then shown to them as a redacted count and alarm
 class, never as identifiers — deliberately, because a scoped operator seeing a partial picture
 should know it is partial rather than have members silently vanish.
 
@@ -108,8 +109,9 @@ lists filter by it. The column answers one question — *"whose equipment is thi
   scope input. One read narrows by it: a scoped person sees a NOC customer's book only when one of
   that customer's elements is in their scope (ADR #473) — which narrows, never widens, and decides
   nothing about any element;
-* **correlation still learns across every element**, and a situation may still form across an
-  organization boundary, exactly as the scoping warning above says;
+* **within a broker, correlation still learns across every element**, and a situation may still
+  form across an organization boundary there, exactly as the scoping warning above says (a broker
+  belongs to one customer, so separating customers is what brokers are for — ADR #494);
 * it is **admin-written**, which is why it is deliberately *not* folded into the visibility-scope
   resolver: F35's rule is that no resolver input may be writable by a scopable role, and admitting
   a second admin-writable axis would widen that guarantee for a feature that is not a security
@@ -461,6 +463,29 @@ as sensitive, and use the server's storage encryption (managed providers encrypt
 encryption if your threat model needs it. The SMTP password can stay out of the database altogether
 (`NETCORENOC_SMTP_PASSWORD`). Accepted v1/v2c communities are kept as keyed hashes (F4), and a
 quarantined packet keeps neither its community nor a hash or prefix that would test a guess.
+
+## A broker's remote proxy (ADR #494)
+
+`POST /api/brokers/ingest` is the one public route that changes data: no person or account calls
+it, so its authentication is the proxy's token, in the handler.
+
+* **The token is never stored**: 256 random bits shown once to the admin who adds the broker (or
+  rotates its token, which stops the old one at once); only its SHA-256 is kept, compared against
+  every proxy broker's in constant time, without stopping at the first match. Issuing one is a
+  `token.create` audit row with its last four characters.
+* **It names one broker, and nothing else.** Every record in a batch must be a plain trap record
+  that parses (`R`); the server wraps it with the broker the token names, so a proxy cannot claim a
+  port, another broker or a quarantine record. A broker switched off refuses its proxy (403).
+* **Bounded**: a token bucket per source address, a much smaller one for failed tokens (checked
+  before the database is read), the 1 MiB body limit and 2 000 records per batch.
+* **Durable before acknowledged**, and never twice: records reach the spool through the ingest
+  process (fsynced) before the 200; a batch sent again is recognised by its numbers.
+* **The proxy side**: it reads its token from a file (mode 600) or `NETCORENOC_PROXY_TOKEN`, never
+  the command line; it sends it only to an `https://` server (or loopback, for a test), verifying
+  the certificate (`--ca-file` for a private CA); its spool directory is mode 700.
+
+Every broker change is admin-only (`brokers.write`), and so the inputs of the visibility selector
+`broker:<id>` stay admin- or engine-written (F35).
 
 ## A new route declares itself, or the process does not start
 

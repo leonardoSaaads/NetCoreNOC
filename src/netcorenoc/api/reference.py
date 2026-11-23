@@ -30,6 +30,7 @@ CASES = "NOC — Cases"
 AUTOMATION = "NOC — Executor and routines"
 ORG, MCP = "NOC — Organization", "NOC — MCP"
 CUSTOMERS = "NOC — Customers"
+BROKERS = "Brokers"
 
 REFERENCE: dict[tuple[str, str], Entry] = {
     ("POST", "/api/login"): Entry(PUBLIC, "Sign in: the password step (answers with a challenge)"),
@@ -144,6 +145,14 @@ REFERENCE: dict[tuple[str, str], Entry] = {
     ("GET", "/api/organizations"): Entry(MAINT, "List organizations (providers)"),
     ("POST", "/api/organizations"): Entry(MAINT, "Create an organization"),
     ("POST", "/api/entities/{ne_id}/organization"): Entry(MAINT, "Assign an element's provider"),
+    ("GET", "/api/brokers"): Entry(BROKERS, "List the brokers (monitored networks) you can see"),
+    ("GET", "/api/brokers/{broker_id}"): Entry(BROKERS, "One broker and how its traps arrive"),
+    ("POST", "/api/brokers"): Entry(BROKERS, "Add a broker: own port, remote proxy or ranges"),
+    ("POST", "/api/brokers/{broker_id}"): Entry(BROKERS, "Change a broker or switch it off"),
+    ("POST", "/api/brokers/{broker_id}/token"): Entry(BROKERS, "Issue a new proxy token (once)"),
+    ("DELETE", "/api/brokers/{broker_id}"): Entry(BROKERS, "Remove a broker that received nothing"),
+    ("POST", "/api/elements/{ne_id}/broker"): Entry(BROKERS, "Move an element to another broker"),
+    ("POST", "/api/brokers/ingest"): Entry(BROKERS, "A remote proxy's batch of traps"),
     ("GET", "/api/timezones"): Entry(MAINT, "Time zones this appliance can resolve"),
     ("GET", "/api/resources"): Entry(MONITOR, "Host CPU, memory, storage and queue over time"),
     ("GET", "/api/activity/severity"): Entry(MONITOR, "Alarm activity by severity over time"),

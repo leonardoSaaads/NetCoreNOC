@@ -418,8 +418,19 @@ class PolicyIn(BaseModel):
     note: str = Field(default="", max_length=MAX_NOTE_CHARS)
 
 
+#: F158: requests still in flight at a stop (a proxy's batch behind a storm's) are cancelled by
+#: uvicorn after this many seconds, inside `QuietServer.stop`'s window, so its own shutdown finishes
+#: instead of being destroyed pending at exit.
+HTTP_STOP_S = 3
+
+
 class QuietServer(uvicorn.Server):
     """Uvicorn server that leaves signal handling to the NetCoreNOC process."""
+
+    def __init__(self, config: uvicorn.Config) -> None:
+        if config.timeout_graceful_shutdown is None:
+            config.timeout_graceful_shutdown = HTTP_STOP_S
+        super().__init__(config)
 
     @contextlib.contextmanager
     def capture_signals(self) -> Iterator[None]:

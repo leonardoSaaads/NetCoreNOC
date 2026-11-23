@@ -27,7 +27,7 @@ import contextlib
 import contextvars
 import logging
 import re
-from collections.abc import AsyncIterator, Iterable, Sequence
+from collections.abc import AsyncIterator, Awaitable, Iterable, Sequence
 from typing import Any
 
 import asyncpg
@@ -95,6 +95,23 @@ class Cursor:
     async def fetchall(self) -> list[asyncpg.Record]:
         rows, self._next = self._rows[self._next :], len(self._rows)
         return rows
+
+
+async def _to_the_end(operation: Awaitable[None]) -> None:
+    """Finish a pipelined statement even when its caller is cancelled (F158). asyncpg cancelled
+    inside ``executemany`` stops sending the batch: the server waits for the rest and the
+    connection for the server, so every later statement on the writer — the stop's drain, its last
+    maintenance pass — waited forever, holding the schema's lock. The cancellation still stands."""
+    task = asyncio.ensure_future(operation)
+    try:
+        await asyncio.shield(task)
+    except asyncio.CancelledError:
+        while not task.done():
+            with contextlib.suppress(asyncio.CancelledError):
+                await asyncio.wait([task])
+        if not task.cancelled():
+            task.exception()  # retrieved: a failed batch is the next statement's to report
+        raise
 
 
 class Connection:
@@ -173,7 +190,7 @@ class Connection:
         async with self._busy:
             await self._begin()
             try:
-                await self.raw.executemany(text, batch)
+                await _to_the_end(self.raw.executemany(text, batch))
             except asyncpg.PostgresError:
                 self._failed = True
                 raise

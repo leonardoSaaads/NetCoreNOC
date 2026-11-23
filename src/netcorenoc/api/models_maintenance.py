@@ -266,6 +266,8 @@ class MaintenanceWindowIn(_WindowBody):
     #: that creates it. A window of six hours or less ignores it; a service token, or a role
     #: without `mw.confirm`, asking for it is refused rather than quietly left pending.
     confirm: bool = False
+    #: ADR #496: a window for one broker covers that network's elements only. Fixed at creation.
+    broker_id: int | None = Field(default=None, ge=1)
 
 
 class MaintenanceWindowUpdateIn(_WindowBody):

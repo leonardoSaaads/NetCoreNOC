@@ -152,10 +152,16 @@ NOT_DRIVEN = frozenset({("GET", "/api/events")})
 UNDRIVEN_QUERY_PARAMS: dict[tuple[str, str], tuple[str, ...]] = {
     # v0.29.0 (ADR #441): `brief` is the Overview's form of the Judge's body. Recorded here at its
     # default (the full body); the brief shape is driven by `tests/ui/test_ui_judge.py`.
-    ("GET", "/api/judge"): ("brief",),
+    ("GET", "/api/judge"): ("brief", "broker_id"),
     # v0.22.0 adds `ne_id` (the element panel's situations), driven by
     # `tests/api/test_elements.py` rather than here.
-    ("GET", "/api/situations"): ("limit", "ne_id", "q", "status"),
+    ("GET", "/api/situations"): (
+        "broker_id",
+        "limit",
+        "ne_id",
+        "q",
+        "status",
+    ),
     # ADR #489: recorded at its default (`new`); `open` is driven by `tests/api/test_related.py`.
     ("GET", "/api/situations/{sid}/related"): ("status",),
     # v0.20.0 adds `buckets` and `range_s`, which switch this route from marks to per-bucket
@@ -163,7 +169,15 @@ UNDRIVEN_QUERY_PARAMS: dict[tuple[str, str], tuple[str, ...]] = {
     # path template and sends no query string, so the route is recorded at its defaults —
     # which is the marks shape, unchanged. The bucketed shape is driven by
     # `tests/support/uifixtures.py` and asserted by the DOM invariants instead.
-    ("GET", "/api/timeline"): ("buckets", "limit", "ne_id", "range_s", "since", "until"),
+    ("GET", "/api/timeline"): (
+        "broker_id",
+        "buckets",
+        "limit",
+        "ne_id",
+        "range_s",
+        "since",
+        "until",
+    ),
     ("GET", "/api/quarantine"): ("limit",),
     # ADR #486: the audit log's filters, recorded at their defaults like the timeline's.
     ("GET", "/api/audit"): (
@@ -183,6 +197,7 @@ UNDRIVEN_QUERY_PARAMS: dict[tuple[str, str], tuple[str, ...]] = {
     # about. They are driven instead by `tests/api/test_maintenance_api.py`, over a real estate with
     # more windows than one page holds, which is the shape this harness cannot build.
     ("GET", "/api/maintenance-windows"): (
+        "broker_id",
         "limit",
         "mine",
         "ne_id",
@@ -203,8 +218,9 @@ UNDRIVEN_QUERY_PARAMS: dict[tuple[str, str], tuple[str, ...]] = {
     # `tests/api/test_activity.py`; the catalogue's `q`/`under`/`node`/`source` and paging in
     # `tests/api/test_catalogue.py`; the import's `dry_run` in `tests/api/test_catalogue_import.py`.
     ("GET", "/api/resources"): ("buckets", "range_s"),
-    ("GET", "/api/activity/severity"): ("buckets", "range_s"),
+    ("GET", "/api/activity/severity"): ("broker_id", "buckets", "range_s"),
     ("GET", "/api/activity/lanes"): (
+        "broker_id",
         "buckets",
         "ne_id",
         "oid",
@@ -214,6 +230,7 @@ UNDRIVEN_QUERY_PARAMS: dict[tuple[str, str], tuple[str, ...]] = {
         "top",
     ),
     ("GET", "/api/activity/groups"): (
+        "broker_id",
         "class_id",
         "kind",
         "limit",
@@ -227,8 +244,22 @@ UNDRIVEN_QUERY_PARAMS: dict[tuple[str, str], tuple[str, ...]] = {
     # v0.23.0, for the same reason: windows, a band list and the narrow filters, recorded at their
     # defaults. The sweep, the ranking by band, the filters' arc boundaries and their scope are
     # driven in `tests/api/test_active.py`.
-    ("GET", "/api/activity/active"): ("buckets", "ne_id", "oid", "organization_id", "range_s"),
-    ("GET", "/api/activity/top"): ("bands", "buckets", "limit", "organization_id", "range_s"),
+    ("GET", "/api/activity/active"): (
+        "broker_id",
+        "buckets",
+        "ne_id",
+        "oid",
+        "organization_id",
+        "range_s",
+    ),
+    ("GET", "/api/activity/top"): (
+        "bands",
+        "broker_id",
+        "buckets",
+        "limit",
+        "organization_id",
+        "range_s",
+    ),
     ("GET", "/api/catalogue"): ("limit", "offset", "q", "under"),
     ("GET", "/api/catalogue/rules"): ("limit", "offset", "source"),
     ("GET", "/api/catalogue/tree"): ("node",),
@@ -255,6 +286,16 @@ UNDRIVEN_QUERY_PARAMS: dict[tuple[str, str], tuple[str, ...]] = {
     # ADR #492: a customer's routines and those that apply to a case, recorded unfiltered; both
     # filters, and the tier ceiling beneath them, are driven in `tests/api/test_noc_routines.py`.
     ("GET", "/api/noc/playbooks"): ("customer_id", "situation_id"),
+    # ADR #496: `broker_id` narrows each of these to one broker's network. Recorded unfiltered —
+    # the record holds the Default broker alone, so the narrowed answer is the same bytes; the
+    # filter is driven over two brokers sharing addresses in `tests/api/test_brokers_api.py`.
+    ("GET", "/api/stats"): ("broker_id",),
+    ("GET", "/api/graph"): ("broker_id",),
+    ("GET", "/api/entities"): ("broker_id",),
+    ("GET", "/api/inventory"): ("broker_id",),
+    ("GET", "/api/events"): ("broker_id",),
+    ("GET", "/api/decider"): ("broker_id",),
+    ("GET", "/api/search"): ("broker_id",),
 }
 
 #: Headers dropped from the record, with the reason each one is not a behaviour of this project.

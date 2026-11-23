@@ -159,9 +159,7 @@ async def sweep(engine: Engine, now: float) -> None:
         if rate < settings.agreement_floor:
             await _suspend(engine, now, settings, rate, len(verdicts))
             return
-    if engine.decider_ref.startswith("additive"):
-        return  # the formula has no probability to be confident with
-    budget = MAX_ACTS
+    budget = MAX_ACTS  # ADR #495: a formula's situation is skipped in `_act`, one by one
     candidates = await store.autonomy_candidates(now - SETTLE_S, limit=200)
     for row in candidates:
         if budget <= 0:
@@ -180,7 +178,7 @@ async def _act(engine: Engine, settings: Settings, row: dict[str, Any], now: flo
     links = await store.situation_link_scores(sid)
     confidence, explanation = _grouping_evidence(links)
     members = await store.situation_profile(sid)
-    ref = f"model:{engine.decider_ref}"
+    ref = f"model:{decider}"  # ADR #495: the model that formed it, its broker's
     if (
         settings.grouping
         and "grouping" not in done
@@ -303,6 +301,7 @@ async def _close(engine: Engine, sid: int, members: list[dict[str, Any]], now: f
     store = engine.store
     confidence = cleared / len(members)
     subject = await gestures.snapshot(store, sid)
+    decider = await _decider(engine, sid)
     for m in active:
         aid = int(m["alarm_id"])
         if not await store.manual_clear_alarm(aid, now):
@@ -314,7 +313,7 @@ async def _close(engine: Engine, sid: int, members: list[dict[str, Any]], now: f
                 kind="manual_clear",
                 situation_id=sid,
                 at=now,
-                actor=f"model:{engine.decider_ref}",
+                actor=f"model:{decider}",
                 role=None,
                 alarm_id=aid,
             ),
@@ -339,6 +338,10 @@ async def _close(engine: Engine, sid: int, members: list[dict[str, Any]], now: f
     return 1
 
 
+async def _decider(engine: Engine, sid: int) -> str:  # ADR #495: its broker's decider
+    return engine.lanes.of(await engine.store.situation_broker(sid)).decider_ref
+
+
 async def _record(
     engine: Engine,
     sid: int,
@@ -349,11 +352,12 @@ async def _record(
     now: float,
 ) -> None:
     store = engine.store
+    decider = await _decider(engine, sid)
     await store.add_autonomy_decision(
         situation_id=sid,
         grade=grade,
         action=action,
-        decider=engine.decider_ref,
+        decider=decider,
         confidence=max(0.0, min(1.0, confidence)),
         explanation=explanation,
         at=now,
@@ -361,7 +365,7 @@ async def _record(
     await audit.write_event(
         store,
         ts=now,
-        actor=f"model:{engine.decider_ref}",
+        actor=f"model:{decider}",
         role=None,
         source_ip=None,
         action=f"autonomy.{grade}",

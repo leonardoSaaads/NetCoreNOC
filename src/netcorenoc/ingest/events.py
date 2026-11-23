@@ -35,6 +35,11 @@ class TrapEvent(BaseModel):
     ts: float
     varbinds: list[Varbind] = Field(default_factory=list)
     community_tag: str = ""
+    #: ADR #494: the local UDP port it arrived on when that is a broker's own (0: the standard
+    #: port), and the broker a remote proxy's token named (0: none). The engine resolves the
+    #: broker from these and the source address (`engine/operate/routing.py`).
+    port: int = 0
+    broker: int = 0
 
     @property
     def fingerprint(self) -> Fingerprint:

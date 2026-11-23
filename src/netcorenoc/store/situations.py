@@ -138,6 +138,7 @@ class SituationMixin(SituationEventMixin):
         act: str = "correlate",
         *,
         decider: str | None = None,
+        broker_id: int = 1,
     ) -> int:
         """Open a situation, recording which scorer configuration formed it (v0.6.0 provenance).
 
@@ -158,32 +159,38 @@ class SituationMixin(SituationEventMixin):
         decides it, through `TRANSITIONS`.
         """
         status = TRANSITIONS[act][None]
-        if decider is not None:
-            # v0.26.0: which decider formed it — the shipped model by hash, a site model by id,
-            # or the formula by configuration. The attribution an autonomous decision cites.
-            cur = await self.conn.execute(
-                "INSERT INTO situation (status, created_at, updated_at, scorer_config_id, decider) "
-                "VALUES (?, ?, ?, ?, ?) RETURNING id",
-                (status, ts, ts, scorer_config_id, decider),
-            )
-            row = await cur.fetchone()
-            assert row is not None
-            return int(row[0])
-        if scorer_config_id is None:
-            cur = await self.conn.execute(
-                "INSERT INTO situation (status, created_at, updated_at) VALUES (?, ?, ?) "
-                "RETURNING id",
-                (status, ts, ts),
-            )
-        else:
-            cur = await self.conn.execute(
-                "INSERT INTO situation (status, created_at, updated_at, scorer_config_id) "
-                "VALUES (?, ?, ?, ?) RETURNING id",
-                (status, ts, ts, scorer_config_id),
-            )
+        # v0.26.0: which decider formed it — the shipped model by hash, a site model by id, or the
+        # formula by configuration — the attribution an autonomous decision cites; ``None`` and a
+        # NULL configuration are the fail-safe state. ADR #495: and the broker whose lane formed it.
+        cur = await self.conn.execute(
+            "INSERT INTO situation (status, created_at, updated_at, scorer_config_id, decider, "
+            "broker_id) VALUES (?, ?, ?, ?, ?, ?) RETURNING id",
+            (status, ts, ts, scorer_config_id, decider, broker_id),
+        )
         row = await cur.fetchone()
         assert row is not None
         return int(row[0])
+
+    async def situation_broker(self, situation_id: int) -> int:
+        """The broker a situation belongs to (ADR #495); the Default for an unknown one."""
+        cur = await self.conn.execute("SELECT broker_id FROM situation WHERE id=?", (situation_id,))
+        row = await cur.fetchone()
+        return 1 if row is None else int(row[0])
+
+    async def situation_brokers(self, situation_ids: list[int]) -> dict[int, int]:
+        """Situation -> broker for these ids, in one query (ADR #495)."""
+        if not situation_ids:
+            return {}
+        cur = await self.conn.execute(
+            "SELECT id, broker_id FROM situation WHERE id = ANY(?::bigint[])", (situation_ids,)
+        )
+        return {int(r[0]): int(r[1]) for r in await cur.fetchall()}
+
+    async def ne_broker(self, ne_id: int) -> int:
+        """The broker an element belongs to (ADR #494); the Default for an unknown one."""
+        cur = await self.conn.execute("SELECT broker_id FROM ne WHERE id=?", (ne_id,))
+        row = await cur.fetchone()
+        return 1 if row is None else int(row[0])
 
     async def promote_situation(self, situation_id: int, ts: float, act: str) -> None:
         """`new` -> `open` for an act that constitutes attention (`ATTENTION`, ADR #382).

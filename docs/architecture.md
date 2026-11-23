@@ -205,6 +205,25 @@ operator has confirmed (`open`). Alarms it would add become a `pending` situatio
 joining it; an operator's accept is a merge and its answer — either way — is a label the slow loop
 reads.
 
+## Brokers: one appliance, many networks (decisions #494, #495)
+
+A **broker** is one monitored network, owned by one customer. Each has a **lane** in the engine
+(`engine/operate/lanes.py`): its correlator, its learned affinities and lead precedence, its
+decider and the challengers' shadow, its judge and its site search — so no situation spans two
+brokers and one network's labels never rank another's models. The trap catalogue, the packaged
+league, the fail-safe formula and autonomy's settings are shared on purpose.
+
+How a trap reaches its lane is decided twice, and never with I/O on the trap path:
+
+* **at the socket** — the ingest process writes `R` (the standard port), `P` (a broker's own port,
+  sockets the main process bound and handed over) or the central server writes `X` (a remote
+  proxy's batch, fsynced through the ingest process, the spool's one writer);
+* **in the batch** — `routing.Routing`, an immutable snapshot rebuilt at the reload point: the
+  proxy's broker, else the port's, else the longest matching range, else the Default broker.
+
+An element is **(broker, address)**. Reads take `broker_id`, which narrows the caller's visibility
+scope to that broker's elements (`api/broker_view.py`) — a view, never a grant.
+
 ## Determinism where it is load-bearing
 
 `make eval` replays a labelled corpus offline and fails on any regression in the gated metrics; the

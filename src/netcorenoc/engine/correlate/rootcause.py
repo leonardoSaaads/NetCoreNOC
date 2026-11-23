@@ -91,7 +91,8 @@ class Precedence:
                 best_id, best_score = candidate.alarm_id, score
         return best_id
 
-    async def save(self, store: Store, ts: float) -> None:
+    async def save(self, store: Store, ts: float, broker_id: int = 1) -> None:
+        """Persist what changed — one broker's precedence (ADR #494)."""
         rows = [
             EdgeRow("lead_class", a, b, self.class_wins[(a, b)], self.class_wins[(a, b)], 0)
             for a, b in sorted(self.dirty_class)
@@ -100,12 +101,12 @@ class Precedence:
             for a, b in sorted(self.dirty_device)
         ]
         if rows:
-            await store.upsert_edges(rows, ts)
+            await store.upsert_edges(rows, ts, broker_id)
         self.dirty_class.clear()
         self.dirty_device.clear()
 
-    async def load(self, store: Store) -> None:
-        for edge in await store.load_edges("lead_class"):
+    async def load(self, store: Store, broker_id: int = 1) -> None:
+        for edge in await store.load_edges("lead_class", broker_id):
             self.class_wins[(edge.a_id, edge.b_id)] = edge.weight
-        for edge in await store.load_edges("lead_device"):
+        for edge in await store.load_edges("lead_device", broker_id):
             self.device_wins[(edge.a_id, edge.b_id)] = edge.weight

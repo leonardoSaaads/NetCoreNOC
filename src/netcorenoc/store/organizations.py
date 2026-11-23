@@ -3,10 +3,11 @@
 ⚠ **Attribution, not isolation.** `migrations/0020_organization.sql` carried the banner in full and
 `crosscutting/shaping/scope.py` has carried the same warning about visibility scoping since
 v0.7.0. Restated here because this is the module somebody reads when they are about to use it for
-something it does not do: **correlation still learns across every network element, and a situation
-may still form across an organization boundary.** No method here is consulted by any authorization
-decision, and none ever should be — that is what `crosscutting/shaping/scope.py` is for, and ADR
-#367 records why the two stay separate mechanisms rather than one.
+something it does not do: **within a broker, correlation still learns across every network
+element, and a situation may still form across an organization boundary.** No method here is
+consulted by any authorization decision, and none ever should be — that is what
+`crosscutting/shaping/scope.py` is for, and ADR #367 records why the two stay separate mechanisms
+rather than one.
 
 The appliance discovers network elements continuously, from the trap stream. An element that
 arrives after an admin has created three organizations lands in the **default** one, because the

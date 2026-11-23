@@ -557,6 +557,13 @@ ROUTE_ORDER_BASELINE: list[tuple[str, str]] = [
     ("GET", "/app/views/parts/custdocs.js"),
     ("GET", "/app/views/parts/circuits.js"),
     ("GET", "/app/views/parts/circuitedit.js"),
+    ("GET", "/app/brokers.js"),
+    ("GET", "/app/heading.js"),
+    ("GET", "/app/views/brokers.js"),
+    ("GET", "/app/views/parts/brokerhome.js"),
+    ("GET", "/app/views/parts/brokerlearn.js"),
+    ("GET", "/app/views/parts/brokerpick.js"),
+    ("GET", "/app/views/parts/brokerwizard.js"),
     ("GET", "/vendor/preact-10.29.8.module.js"),
     ("GET", "/vendor/htm-3.1.1.module.js"),
     ("GET", "/style.css"),
@@ -769,6 +776,14 @@ ROUTE_ORDER_BASELINE: list[tuple[str, str]] = [
     ("GET", "/api/noc/customers/{customer_id}/mail"),
     ("POST", "/api/noc/customers/{customer_id}/mail"),
     ("POST", "/api/noc/customers/{customer_id}/mail/test"),
+    ("POST", "/api/brokers/ingest"),
+    ("GET", "/api/brokers"),
+    ("GET", "/api/brokers/{broker_id}"),
+    ("POST", "/api/brokers"),
+    ("POST", "/api/brokers/{broker_id}"),
+    ("POST", "/api/brokers/{broker_id}/token"),
+    ("DELETE", "/api/brokers/{broker_id}"),
+    ("POST", "/api/elements/{ne_id}/broker"),
     ("POST", "/api/mcp"),
 ]
 
@@ -902,8 +917,11 @@ async def test_the_api_route_order_is_unchanged_by_the_ui_rewrite(store: Store) 
     # concrete segment below `/api/audit`); ADR #487: +2 (Ollama's detect, a model's try) — 200.
     # ADR #489: +1 (`/api/situations/{sid}/related`, a concrete segment below a situation's id,
     # shadowing nothing) — 201. ADR #492: +1 (`POST …/playbooks/{playbook_id}/run`, a concrete
-    # segment below a routine's id, shadowing nothing) — 202.
-    assert len(live) == 202, (
+    # segment below a routine's id, shadowing nothing) — 202. ADR #494: +8 (the brokers: the list,
+    # one broker, its token, the proxy's door, an element's move), one able to shadow another and
+    # ordered against it: `POST /api/brokers/ingest` is registered before `POST …/{broker_id}`,
+    # which would otherwise take `ingest` as an id and refuse it (the baseline pins that) — 210.
+    assert len(live) == 210, (
         f"the /api surface is {len(live)} pairs; v0.16.0 adds exactly five, v0.16.2 exactly one, "
         f"v0.16.3 exactly one, v0.16.5 exactly one — `POST /api/alarms/clear` — v0.18.0 exactly "
         f"one, `GET /api/correlation`, and v0.21.0 exactly thirteen for maintenance windows, "
@@ -1551,8 +1569,8 @@ def test_the_queue_put_on_the_hot_path_is_non_blocking() -> None:
 #: `engine/noc/` `commands`, `executor`, `playbook` and `runbook`, `store/noc_playbooks.py`,
 #: migration `0035_noc_automation.sql`, the `noc_exec` and `playbooks` routes, and the
 #: `views/playbooks` console module.
-SRC_TREE_DIGEST = "70f35f2507ddd5cdb6918240d9a38fd2297f870d0c8162a2f769f6cf4bf5b0d9"
-SRC_FILE_COUNT = 535
+SRC_TREE_DIGEST = "1cad05b22f2a8aacbff66af4192886e4002824ec20cb04d47962aa24123274c5"
+SRC_FILE_COUNT = 554
 SRC_VERSION_FILE = "src/netcorenoc/__init__.py"
 
 

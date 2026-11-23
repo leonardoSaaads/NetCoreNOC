@@ -62,18 +62,20 @@ async function signOut() {
   stopStream();
   store.reset();
   setSession(null);
-  // Clear the fragment so a signed-out browser does not sit on a deep link it can no longer
-  // resolve; the next sign-in then lands on the default view rather than on a refusal.
+  // A signed-out browser must not sit on a deep link it can no longer resolve.
   globalThis.location.hash = "";
   draw();
 }
 
 /* ---------- live updates: SSE primary, polling fallback ---------- */
 
+// ADR #496: the shell moved to another broker's screens; the stream re-opens on that network.
+store.onBrokerChange(() => { if (session() && !session().mustChangePassword) { startStream(); poll(); } });
+
 function startStream() {
   stopStream();
   try {
-    stream = new globalThis.EventSource("/api/events");
+    stream = new globalThis.EventSource(`/api/events${store.brokerQuery("?")}`);
     stream.addEventListener("update", (event) => {
       try { store.applyUpdate(JSON.parse(event.data)); store.setConnection("live"); }
       catch { /* a malformed frame is not a reason to tear down the stream */ }
@@ -98,22 +100,21 @@ function startPolling() {
 /**
  * One read of the three live things.
  *
- * Every screen renders from the store, so this is the only place the live triple is fetched, and
- * a screen that needs something else fetches it itself. That is what keeps the shared path
- * unchanged as views are added — principle 4's discipline applied to the client.
+ * Every screen renders from the store, so this is the only place the live triple is fetched; a
+ * screen that needs something else fetches it itself (principle 4, applied to the client).
  */
 async function poll() {
   if (!session()) return;
+  const broker = store.get().broker;
   try {
     const [stats, graph, situations] = await Promise.all([
-      get("/api/stats"),
-      get("/api/graph"),
-      // v0.16.0: **no status filter.** Three tabs filter this page client-side, so asking the
-      // server for one state would leave two of them empty — and `open` would empty the DEFAULT
-      // tab, because the correlator creates `new` (DECISIONS #254). Still bounded at 50; every
-      // consumer that means "live" now says so rather than relying on the fetch to have meant it.
-      get("/api/situations?limit=50"),
+      get(`/api/stats${store.brokerQuery("?")}`),
+      get(`/api/graph${store.brokerQuery("?")}`),
+      // v0.16.0: no status filter — three tabs filter this page client-side, and the correlator
+      // creates `new` (DECISIONS #254), so `open` would empty the default tab. Bounded at 50.
+      get(`/api/situations?limit=50${store.brokerQuery("&")}`),
     ]);
+    if (store.get().broker !== broker) return;  // another broker's answer, arriving late
     store.applyUpdate({ stats, graph, situations });
     if (!stream) store.setConnection("polling");
   } catch {

@@ -52,14 +52,19 @@ def _window(range_s: float, buckets: int | None = None) -> tuple[float, float]:
 MAX_TOP = 25
 
 
-def _narrow(organization_id: int | None, oid: str | None, sid: int | None) -> Narrow:
-    """The optional filters, validated before they reach SQL (#392)."""
+def _narrow(
+    organization_id: int | None, oid: str | None, sid: int | None, broker_id: int | None = None
+) -> Narrow:
+    """The optional filters, validated before they reach SQL (#392); ``broker_id`` is one
+    broker's view (ADR #496)."""
     cleaned = oid.strip().lstrip(".") if oid else None
     if cleaned and not OID.match(cleaned):
         raise HTTPException(
             status_code=422, detail="oid: must be dotted numbers, like 1.3.6.1.4.1.2011"
         )
-    return Narrow(organization_id=organization_id, oid=cleaned or None, situation_id=sid)
+    return Narrow(
+        organization_id=organization_id, oid=cleaned or None, situation_id=sid, broker_id=broker_id
+    )
 
 
 def _bands(raw: str) -> tuple[str, ...]:
@@ -82,6 +87,7 @@ def register(app: FastAPI, ctx: AppContext) -> None:
     async def activity_severity(
         range_s: float = 7200.0,
         buckets: int = 24,
+        broker_id: int | None = None,
         principal: auth.Principal = Depends(security),
     ) -> dict[str, Any]:
         """Raises per bucket by severity band, `unplaced` included, over the last `range_s`."""
@@ -93,6 +99,7 @@ def register(app: FastAPI, ctx: AppContext) -> None:
                 since=since,
                 until=until,
                 buckets=wanted,
+                narrow=_narrow(None, None, None, broker_id),
                 ne_ids=None if scope.unrestricted else scope.ne_ids,
             )
 
@@ -105,10 +112,11 @@ def register(app: FastAPI, ctx: AppContext) -> None:
         organization_id: int | None = None,
         oid: str | None = None,
         sid: int | None = None,
+        broker_id: int | None = None,
         principal: auth.Principal = Depends(security),
     ) -> dict[str, Any]:
         """Raises per element per bucket for the busiest `top`, the rest as one lane."""
-        narrow = _narrow(organization_id, oid, sid)
+        narrow = _narrow(organization_id, oid, sid, broker_id)
         scope = await scope_for(principal)
         wanted = min(max(int(buckets), 2), MAX_BUCKETS)
         since, until = _window(range_s, wanted)
@@ -135,10 +143,11 @@ def register(app: FastAPI, ctx: AppContext) -> None:
         organization_id: int | None = None,
         oid: str | None = None,
         sid: int | None = None,
+        broker_id: int | None = None,
         principal: auth.Principal = Depends(security),
     ) -> dict[str, Any]:
         """Bursts of one trap on one element (*"x14 over 2 min"*), newest first, paged."""
-        narrow = _narrow(organization_id, oid, sid)
+        narrow = _narrow(organization_id, oid, sid, broker_id)
         scope = await scope_for(principal)
         since, until = _window(range_s)
         async with store.reading():
@@ -162,10 +171,11 @@ def register(app: FastAPI, ctx: AppContext) -> None:
         organization_id: int | None = None,
         oid: str | None = None,
         ne_id: int | None = None,
+        broker_id: int | None = None,
         principal: auth.Principal = Depends(security),
     ) -> dict[str, Any]:
         """Active alarms at each bucket's end by severity band — the stock, not the flow (#393)."""
-        narrow = _narrow(organization_id, oid, None)
+        narrow = _narrow(organization_id, oid, None, broker_id)
         scope = await scope_for(principal)
         wanted = min(max(int(buckets), 2), MAX_BUCKETS)
         since, until = _window(range_s, wanted)
@@ -186,12 +196,13 @@ def register(app: FastAPI, ctx: AppContext) -> None:
         bands: str = "",
         limit: int = 10,
         organization_id: int | None = None,
+        broker_id: int | None = None,
         principal: auth.Principal = Depends(security),
     ) -> dict[str, Any]:
         """The elements with the most alarms active now in `bands` (every band when none is named),
         each with its trend (#393)."""
         chosen = _bands(bands)
-        narrow = _narrow(organization_id, None, None)
+        narrow = _narrow(organization_id, None, None, broker_id)
         scope = await scope_for(principal)
         wanted = min(max(int(buckets), 2), MAX_BUCKETS)
         since, until = _window(range_s, wanted)

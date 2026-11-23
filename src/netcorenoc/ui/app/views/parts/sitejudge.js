@@ -29,7 +29,7 @@ export function SiteJudge({ site, canSearch = true }) {
       ${judgement ? html`<${Judgement} j=${judgement} run=${latest} />`
         : html`<section class="chart-block"><h4 class="chart-title">Latest site search</h4>
             <p class="hint">No search has run on this appliance. ${canSearch
-              ? "Settings → Site training starts one: it adapts the GAM to this site's labels, and the result joins the league."
+              ? "Site training, beside this tab, starts one: it adapts the GAM to this broker's labels, and the result joins its league."
               : "A search adapts the league's GAM, and this build carries none."}</p>
             <p class="chart-caption">${SITE}: no run yet</p></section>`}
     </div>

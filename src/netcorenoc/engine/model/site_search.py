@@ -97,6 +97,7 @@ class _Job:
     train: list[site.SiteRow]
     test: list[site.SiteRow]
     started: float
+    broker_id: int = 1  # ADR #495: the broker whose labels it fits, and whose model it makes
 
 
 class Runner:
@@ -131,7 +132,8 @@ class Runner:
                 int(run["id"]), "refused", now, f"no shipped model: {exc}"
             )
             return
-        pairs = await site_labels.label_pairs(store)
+        broker_id = int(run.get("broker_id") or 1)
+        pairs = await site_labels.label_pairs(store, broker_id)  # ADR #495: its own labels only
         features = await store.pair_features([int(p["pair_id"]) for p in pairs])
         # The rows, the payload and the worker's start run in a thread (ADR #488): building them is
         # CPU, and a spawn start writes the whole pickled payload (hundreds of KB) into a pipe and
@@ -157,6 +159,7 @@ class Runner:
         self.job = await asyncio.to_thread(
             self._launch, int(run["id"]), base.document, rows, budget, int(run["seed"]), now
         )
+        self.job.broker_id = broker_id
 
     def _launch(
         self,
@@ -239,6 +242,7 @@ class Runner:
             created_by="search",
             created_at=now,
             note=f"site-adapted from {base.ref} by search run {job.run_id}: {verdict.verdict}",
+            broker_id=job.broker_id,
         )
         await store.finish_search_run(
             job.run_id,

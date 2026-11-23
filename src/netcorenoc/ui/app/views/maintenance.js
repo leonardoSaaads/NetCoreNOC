@@ -22,6 +22,7 @@
 
 import { html } from "../dom.js";
 import { get, post } from "../api.js";
+import { brokerList, brokerName, withBroker } from "../brokers.js";
 import { Loader, Empty, Badge, SectionHeading } from "../widgets.js";
 import { count, plural } from "../format.js";
 import { can } from "../session.js";
@@ -64,7 +65,20 @@ export class Maintenance extends Loader {
   }
 
   async load() {
-    return get(`/api/maintenance-windows?limit=${this.state.limit}`);
+    return get(withBroker(`/api/maintenance-windows?limit=${this.state.limit}`, this.broker()));
+  }
+
+  /** ADR #496: inside a broker, its windows; on the general tab, the broker the filter names. */
+  broker() {
+    if (this.props.brokerId) return this.props.brokerId;
+    const chosen = this.props.query && this.props.query.get("broker");
+    return Number(chosen) || null;
+  }
+
+  routeKey(props) { return `${props.brokerId || ""}:${props.query ? props.query.get("broker") : ""}`; }
+
+  filter(value) {
+    this.props.navigate(value ? `#/maintenance?broker=${value}` : "#/maintenance");
   }
 
   /* **Each operation names its own route, literally.**
@@ -141,7 +155,7 @@ export class Maintenance extends Loader {
           <button type="button" data-role="mw-cancel-form"
             onClick=${() => this.setState({ creating: false })}>Cancel</button>
         </div>
-        <${WindowForm}
+        <${WindowForm} brokerId=${this.broker()}
           onSaved=${() => this.setState({ creating: false }, () => this.reload())}
         />
       </div>`;
@@ -158,6 +172,13 @@ export class Maintenance extends Loader {
               Schedule maintenance
             </button>`
           : null}
+        ${this.props.brokerId || (brokerList() || []).length < 2 ? null : html`<label class="mw-broker">
+          <span class="visually-hidden">Broker</span>
+          <select data-role="mw-filter-broker" onChange=${(e) => this.filter(e.target.value)}>
+            <option value="" selected=${!this.broker()}>All brokers</option>
+            ${(brokerList() || []).map((b) => html`<option key=${b.id} value=${b.id}
+              selected=${String(b.id) === String(this.broker())}>${b.name}</option>`)}
+          </select></label>`}
         <div class="mw-sizes" data-role="sizes">
           ${SIZES.map(
             (n) => html`<button
@@ -208,7 +229,7 @@ export class Maintenance extends Loader {
           ? html`<${Badge} tone="info" title="Created through the API by a service token">agent<//>`
           : null}
       </button>
-      <span class="mw-row-meta muted">${w.redacted ? "" : `${w.organization_name} · `}${
+      <span class="mw-row-meta muted">${w.broker_id && !this.props.brokerId ? `${brokerName(w.broker_id)} · ` : ""}${w.redacted ? "" : `${w.organization_name} · `}${
         plural(w.target_count, "host", "hosts")}</span>
       <span class="mw-row-when" data-role="countdown">${when(w)}</span>
       <span class="mw-row-actions">

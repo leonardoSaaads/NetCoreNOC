@@ -4939,3 +4939,91 @@ td.ckt-acts .linkish + .linkish { margin-left: var(--space-3); }
 .recovery-warn { display: flex; align-items: center; gap: var(--space-2); margin: 0; padding: var(--space-2) var(--space-3); border-top: 1px solid var(--line); background: var(--warn-bg); color: var(--warn); font-size: var(--fs-sm); }
 .recovery-box.is-masked .recovery-codes { color: var(--fg-muted); letter-spacing: 0.12em; }
 .recovery-ready { background: var(--warn); border-color: var(--warn); color: #111; font-weight: 600; }
+
+/* ---------- Brokers (ADR #494): each monitored network, on its own ---------- */
+/* The heading's right holds a screen's control (the Overview's broker, as a Grafana variable). */
+.work-heading.has-aside { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--space-3); flex-wrap: wrap; }
+.work-heading-text { min-width: 0; flex: 1 1 20rem; }
+.work-heading-aside { flex: none; padding-top: 2px; }
+.brk-pick { display: inline-flex; align-items: stretch; border: 1px solid var(--line-strong); border-radius: var(--radius-1); background: var(--bg-raised); overflow: hidden; font-size: var(--fs-sm); max-width: 100%; }
+.brk-pick-label { display: inline-flex; align-items: center; gap: var(--space-1); padding: 0 var(--space-2); background: var(--bg-sunken); color: var(--fg-muted); font-weight: 600; border-right: 1px solid var(--line); white-space: nowrap; }
+.brk-pick select { border: 0; border-radius: 0; background: transparent; min-width: 10rem; max-width: 16rem; padding: 6px var(--space-2); color: var(--fg); }
+.filters .brk-pick { margin-right: var(--space-2); }
+.brk-toolbar { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); flex-wrap: wrap; margin-bottom: var(--space-3); }
+.brk-toolbar p { margin: 0; }
+.brk-toolbar button { display: inline-flex; align-items: center; gap: var(--space-1); }
+table.data.brk-table td { vertical-align: middle; }
+.brk-name { display: inline-flex; align-items: center; gap: var(--space-2); color: var(--fg); text-decoration: none; }
+.brk-name:hover b { text-decoration: underline; }
+.brk-name .record-icon, .brk-card-head .record-icon { width: 32px; height: 32px; font-size: 18px; border-radius: 8px; }
+.brk-intake { font-weight: 600; }
+.brk-table .badge { margin-left: var(--space-1); }
+tr.row-muted td { color: var(--fg-muted); }
+.brk-status { display: inline-flex; align-items: center; gap: 6px; font-size: var(--fs-sm); font-weight: 600; white-space: nowrap; }
+.brk-status.st-ok { color: var(--quiet); }
+.brk-status.st-ok .agent-dot { background: var(--quiet); }
+.brk-status.st-warn { color: var(--warn); }
+.brk-status.st-warn .agent-dot { background: var(--warn); }
+.brk-status.st-bad { color: var(--alarm); }
+.brk-status.st-bad .agent-dot { background: var(--alarm); }
+.brk-status.st-muted { color: var(--fg-muted); }
+.sit-broker { display: inline-flex; align-items: center; gap: 4px; font-size: var(--fs-xs); font-weight: 600; color: var(--fg-muted); border: 1px solid var(--line); border-radius: 999px; padding: 1px 8px; white-space: nowrap; }
+/* The wizard: three steps, the first three cards to choose from. */
+.brk-wizard-head { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); }
+.brk-wizard-head h3 { margin: 0; }
+.brk-steps { list-style: none; display: flex; flex-wrap: wrap; gap: var(--space-2); margin: var(--space-3) 0; padding: 0; }
+.brk-steps li { display: inline-flex; align-items: center; gap: var(--space-1); font-size: var(--fs-sm); color: var(--fg-muted); }
+.brk-steps li span { display: inline-grid; place-items: center; width: 22px; height: 22px; border-radius: 50%; border: 1px solid var(--line-strong); font-size: var(--fs-xs); font-weight: 700; }
+.brk-steps li.on { color: var(--fg); font-weight: 600; }
+.brk-steps li.on span { background: var(--accent); border-color: var(--accent); color: var(--accent-fg); }
+.brk-steps li.done span { border-color: var(--quiet); color: var(--quiet); }
+.brk-steps li + li::before { content: ""; width: 18px; height: 1px; background: var(--line-strong); margin-right: var(--space-1); }
+.brk-modes { display: grid; grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr)); gap: var(--space-3); }
+.brk-mode { display: grid; gap: var(--space-1); text-align: left; padding: var(--space-3); border: 1px solid var(--line); border-radius: var(--radius-2); background: var(--bg); color: var(--fg); cursor: pointer; align-content: start; }
+.brk-mode:hover { border-color: var(--line-strong); background: var(--bg-hover); }
+.brk-mode.on { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); background: var(--accent-soft); }
+.brk-mode-icon { display: inline-grid; place-items: center; width: 36px; height: 36px; border-radius: 9px; font-size: 20px; background: color-mix(in srgb, var(--accent) 16%, transparent); color: var(--accent); }
+.brk-mode .muted { font-size: var(--fs-sm); }
+.brk-mode-fact { font-size: var(--fs-xs); color: var(--fg-muted); }
+.brk-form { margin-top: var(--space-2); }
+.brk-form .brk-wide { grid-column: 1 / -1; }
+.brk-form textarea { width: 100%; font-family: var(--mono, ui-monospace, monospace); }
+.brk-nav { display: flex; justify-content: flex-end; gap: var(--space-2); margin-top: var(--space-3); }
+.brk-facts { display: grid; grid-template-columns: max-content 1fr; gap: var(--space-2) var(--space-4); margin: var(--space-3) 0 0; }
+.brk-facts dt { font-size: var(--fs-xs); font-weight: 600; color: var(--fg-muted); text-transform: uppercase; letter-spacing: 0.06em; padding-top: 2px; }
+.brk-facts dd { margin: 0; min-width: 0; overflow-wrap: anywhere; }
+.brk-ready h3 { display: flex; align-items: center; gap: var(--space-2); }
+.brk-ready h3 .icon-svg { color: var(--quiet); }
+.brk-cmd { white-space: pre-wrap; overflow-wrap: anywhere; background: var(--bg-sunken); border: 1px solid var(--line); border-radius: var(--radius-1); padding: var(--space-2) var(--space-3); font-size: var(--fs-sm); }
+/* One broker's page. */
+.brk-home { display: grid; gap: var(--space-3); }
+.brk-home > .panel-block { margin-bottom: 0; }
+.brk-card-head { display: flex; align-items: center; gap: var(--space-3); flex-wrap: wrap; }
+.brk-card-head > div { flex: 1 1 16rem; min-width: 0; }
+.brk-card-head h2 { margin: 0; font-size: var(--fs-xl); display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap; }
+.brk-card-head p { margin: 2px 0 0; }
+.brk-card-line { display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap; }
+.brk-card-head button { display: inline-flex; align-items: center; gap: var(--space-1); }
+.brk-tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr)); gap: var(--space-3); }
+.brk-tile { display: grid; grid-template-columns: auto 1fr; grid-template-rows: auto 1fr; column-gap: var(--space-2); row-gap: 2px; align-items: start; padding: var(--space-3); border: 1px solid var(--line); border-radius: var(--radius-2); background: var(--bg-raised); box-shadow: var(--shadow-1); color: var(--fg); text-decoration: none; }
+.brk-tile:hover { border-color: var(--accent); background: var(--bg-hover); }
+.brk-tile-icon { grid-row: span 2; align-self: center; display: inline-grid; place-items: center; width: 34px; height: 34px; border-radius: 8px; font-size: 18px; background: color-mix(in srgb, var(--accent) 14%, transparent); color: var(--accent); }
+.brk-tile .muted { font-size: var(--fs-xs); }
+.brk-admin h3 { margin-top: 0; }
+.brk-admin-row { display: flex; align-items: center; gap: var(--space-3); flex-wrap: wrap; padding: var(--space-2) 0; border-top: 1px solid var(--line); }
+.brk-admin-row:first-of-type { border-top: 0; }
+.brk-admin-row button { flex: none; min-width: 9rem; }
+.brk-admin-row .muted { font-size: var(--fs-sm); flex: 1 1 16rem; }
+.brk-learning > .access-tabs { margin-bottom: var(--space-3); }
+.mw-broker select { min-width: 10rem; }
+/* The sidebar's broker that is switched off reads as off, beside its words. */
+.nav-glyph.is-off { opacity: 0.5; }
+@media (max-width: 560px) {
+  .brk-facts { grid-template-columns: 1fr; }
+  .brk-facts dt { padding-top: var(--space-2); }
+  .work-heading-aside, .brk-pick { width: 100%; }
+  .brk-pick select { flex: 1; max-width: none; }
+  .brk-admin-row button { width: 100%; }
+}
+/* A broker's Models and Site training read as Settings' tabs did: the screen's width. */
+.brk-learning .stack { max-width: none; }

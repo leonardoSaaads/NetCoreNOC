@@ -12,7 +12,11 @@ From then on:
 * an admin's allowlist or SNMP-policy change is forwarded as the document the store already holds;
 * if the process dies it is started again on the **same socket** and the same spool: datagrams the
   kernel buffered in between are read by the new one, what the old one wrote is still on disk, the
-  counters carry over, and the restart is a warning.
+  counters carry over, and the restart is a warning;
+* ADR #494: each broker with a port of its own gets a socket, bound **here** too (a port in use is
+  the admin's error to see, not a silent gap); when the set changes the process is started again
+  with every socket — the sockets stay open in this process meanwhile, so the kernel holds what
+  arrives — and a broker's remote proxy's records are spooled through it (:meth:`append`).
 
 To the runner it looks like the in-process receiver: ``stats``, ``reasons``, ``networks``,
 ``accepts``, ``close()``. ``NETCORENOC_INGEST_PROCESSES=0`` keeps the receiver in this process,
@@ -37,6 +41,7 @@ from pathlib import Path
 from typing import Any
 
 from netcorenoc.ingest import snmpconf, worker
+from netcorenoc.ingest.brokerports import BrokerPortsMixin
 from netcorenoc.ingest.decoder import Decoder
 from netcorenoc.ingest.receiver import ReceiverStats, parse_allowlist
 from netcorenoc.ingest.records import string, whole
@@ -90,7 +95,7 @@ async def bind(host: str, port: int) -> socket.socket:
     return sock
 
 
-class IngestProcess:
+class IngestProcess(BrokerPortsMixin):
     """The ingest process, seen from the main process. See the module docstring."""
 
     def __init__(
@@ -123,6 +128,14 @@ class IngestProcess:
         self._ready: asyncio.Future[int] | None = None
         self._loop: asyncio.AbstractEventLoop | None = None
         self._closing = False
+        # ADR #494: a broker's own port -> its socket, and why a port could not be bound.
+        self._host = str(sock.getsockname()[0]) if sock.family in (2, 10) else "0.0.0.0"  # nosec B104 - the standard socket's own address
+        self._ports: dict[int, socket.socket] = {}
+        self.port_errors: dict[int, str] = {}
+        self._swapping = False
+        self._request = 0
+        self._pending: dict[int, asyncio.Future[bool]] = {}
+        self._bind = bind  # how a broker's port is opened (`brokerports.py`)
 
     # -- what the runner reads and sets, as on the in-process receiver ----------------------
 
@@ -166,6 +179,11 @@ class IngestProcess:
 
     def warnings(self) -> list[str]:
         out = []
+        for port, error in sorted(self.port_errors.items()):
+            out.append(
+                f"UDP port {port} could not be opened for its broker ({error}); its traps are not "
+                "received until the port is free or the broker is given another one."
+            )
         if self.restarts:
             out.append(
                 f"The ingest process stopped and was restarted {self.restarts} time(s). Traps it "
@@ -234,11 +252,14 @@ class IngestProcess:
             if self._control is not None:
                 self._control.close()
         self._sock.close()
+        for extra in self._ports.values():
+            extra.close()
 
     def _spawn(self) -> None:
         assert self._loop is not None
         events_r, events_w = os.pipe()
         control_r, control_w = os.pipe()
+        extra = [(sock.fileno(), port) for port, sock in sorted(self._ports.items())]
         boot = {
             "socket": self._sock.fileno(),
             "events": events_w,
@@ -246,11 +267,12 @@ class IngestProcess:
             "allowlist": ",".join(str(n) for n in self._networks or ()),
             "spool": str(self.spool_dir),
             "spool_max": self.spool_max,
+            "ports": [[fd, port] for fd, port in extra],
         }
         proc = subprocess.Popen(  # nosec B603 - this interpreter, this package's module, no shell
             [sys.executable, "-m", "netcorenoc.ingest.worker"],
             stdin=subprocess.PIPE,
-            pass_fds=(self._sock.fileno(), events_w, control_r),
+            pass_fds=(self._sock.fileno(), events_w, control_r, *(fd for fd, _ in extra)),
             close_fds=True,
         )
         os.close(events_w)
@@ -267,7 +289,7 @@ class IngestProcess:
         )
         self._reader.start()
 
-    def _send(self, message: list[str]) -> None:
+    def _send(self, message: list[Any]) -> None:
         if self._control is None:
             return
         # A dead process cannot take it; its replacement starts from the current values.
@@ -293,6 +315,11 @@ class IngestProcess:
                         counters = {name: whole(message[1][name]) for name in _COUNTERS}
                         state = _spool_state(message[2])
                         loop.call_soon_threadsafe(self._counted, counters, state)
+                    elif message[0] == "a" and len(message) == 3:
+                        ok = message[2]
+                        if not isinstance(ok, bool):
+                            raise ValueError("not an acknowledgement")
+                        loop.call_soon_threadsafe(self._acked, whole(message[1]), ok)
                     elif message[0] == "r" and len(message) == 3:
                         pid, head = whole(message[1]), whole(message[2])
                         loop.call_soon_threadsafe(self._written, head)
@@ -326,6 +353,19 @@ class IngestProcess:
             self._ready.set_exception(RuntimeError("the ingest process exited before it was ready"))
             return
         if self._closing or self._loop is None:
+            return
+        for future in self._pending.values():  # its outbox went with it: the proxy sends again
+            if not future.done():
+                future.set_result(False)
+        if self._swapping:  # ADR #494: stopped to take a broker's port, not a failure
+            self._swapping = False
+            for name in _COUNTERS:
+                self._base[name] += self._child[name]
+            self._child = dict.fromkeys(_COUNTERS, 0)
+            with contextlib.suppress(OSError):
+                if self._control is not None:
+                    self._control.close()
+            self._respawn()
             return
         log.error("the ingest process exited; starting it again on the same socket")
         for name in _COUNTERS:

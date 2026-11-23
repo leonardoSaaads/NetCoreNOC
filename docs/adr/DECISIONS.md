@@ -7276,3 +7276,144 @@ From this release an entry is about six lines: decision, reason, release.*
 - **Decision** (`views/parts/decider.js`): the models table's role badge uses `league-role-*` (ADR
   #485), so *deciding* is a pill, not a stretched box.
 - **Reason**: reported as unclear or misaligned; the facts are unchanged.
+
+## 494. Brokers: one appliance, many networks, and how a trap reaches its own (unreleased)
+
+- **Context**: every trap belonged to one network. Provider A's co-failures moved provider B's
+  learned affinities, a model the judge chose on A's labels grouped B's alarms, and one map and one
+  Timeline mixed both. The NOC plane already separates by customer; the Broker plane did not, and
+  two customers' private ranges could not both contain 10.0.0.1.
+- **Decision** (migration `0047_brokers.sql`): a **broker** is one monitored network owned by one
+  customer (`organization`); a customer may have several. An element is **(broker, address)**
+  (`UNIQUE (broker_id, ip)`). The **Default broker** (id 1, ranges-only, never switched off) holds
+  everything from before and every trap no other broker claims. `situation`, `maintenance_window`
+  (NULL: not tied to one), `edge`, `episode_pair`, `decider_setting`, `league_decision`,
+  `model_version` and `search_run` carry the broker.
+- **Decision**: how a trap arrives is chosen when the broker is created and never changes:
+  **own port + ranges** (the default; its own UDP port on this server, repeated addresses allowed
+  there; its ranges claim sources on the standard port), **remote proxy** (below), **ranges only**
+  (the standard port, by source; addresses may not repeat). The same range in two brokers is
+  refused; a narrower one wins over a wider one (longest prefix), as in routing.
+- **Decision** (`ingest/records.py`, `worker.py`, `brokerports.py`): the spool says how a trap
+  arrived — `R` (the standard port, as before), `P | port | R` (a broker's own port), `X | broker |
+  R` (its proxy). The broker ports are bound in the main process and handed to the ingest process;
+  a change of ports starts it again with every socket still open, so a datagram that arrives during
+  the change waits in the kernel (201 of 201 in the test). A port that cannot be opened is a
+  warning, retried every two seconds (`engine/operate/listening.py`).
+- **Decision** (`engine/operate/routing.py`): which broker a trap belongs to is one pure decision
+  over an immutable snapshot — its proxy, else its port, else the longest prefix, else the Default —
+  rebuilt at the reload point like the maintenance-window index: no query and no lock per trap.
+- **Decision** (`ingest/forwarder.py`, `python -m netcorenoc proxy`; `api/routes/broker_ingest.py`):
+  the **remote proxy** receives in the customer's network, writes each trap to its own spool before
+  anything else, and forwards numbered batches over HTTPS to `POST /api/brokers/ingest`, moving its
+  cursor only when the server answered that the batch is durable — fsynced through the ingest
+  process, the spool's one writer. Numbers are the proxy spool's; a batch sent again is recognised
+  (`proxy_seq`) and not spooled twice; a reinstalled proxy starts a new **stream**. Every minute
+  with nothing to send it says it is alive (an empty batch), as a Zabbix proxy's heartbeat does.
+- **Decision** (security): the proxy's token is its identity and names one broker: 256 random bits,
+  shown once, kept only as its SHA-256 and compared against every proxy broker's in constant time
+  without stopping at the first match. The door is in `rbac.PUBLIC_ROUTES` for that reason, bounded
+  per address, with failed tokens far more tightly; every record must be a plain `R` record that
+  parses, so a proxy cannot claim a port or another broker. The proxy reads its token from a file
+  or the environment, never the command line, and sends it only over HTTPS (or to loopback).
+- **Decision** (`api/routes/brokers.py`): admins add, change, switch off, remove (only while it
+  has received nothing) and move elements between brokers; each is a `config.change` audit row,
+  and a proxy token a `token.create` row with its last four characters. The engine reloads in the
+  same transaction, so a new broker has its lane and its port before its first trap.
+- **Reason**: separate networks are separate evidence. Zabbix separates monitored networks by
+  proxy, and so does this appliance — in the three ways a network actually reaches a NOC.
+
+## 495. One lane per broker: its correlation, its learning, its decider, its judge (unreleased)
+
+- **Decision** (`engine/operate/lanes.py`): each broker has its own **lane** — the correlation
+  window, recall, episodes and grouping; the learned class and element affinities; the lead
+  precedence; the decider (`ScorerLifecycleMixin`, per lane) with the challengers' live shadow. So
+  **no situation spans two brokers**, and each broker's grouping is what it would be alone (tested:
+  the same fibre cut in two networks with the same addresses forms the same situations in each).
+- **Decision**: shared on purpose — the trap catalogue (classes, names, severities, raise/clear
+  pairs, state clears: every lane's `Learner` holds the Default's), the packaged league and its
+  offline scorecards, the fail-safe formula, autonomy settings, the receiver, users and the audit.
+- **Decision** (`engine/operate/league_loop.py`, `engine/model/site_labels.py`, `site_search.py`):
+  the judge ranks the league **per broker on that broker's labels**; an admin may pin a member
+  **for one broker** (`POST /api/decider` with `broker_id`) — model A in one network, model B in
+  another; a site search trains on one broker's labels for it. `GET /api/decider`, `/api/judge`
+  and `/api/search` take `broker_id`.
+- **Decision** (`api/routes/lifecycle.py`): a manual merge of situations from two brokers is a 409.
+- **Reason**: the precision lost when two networks taught each other is the reason for brokers;
+  what a network does not own (the vocabulary of its traps) is still learned once.
+
+## 496. A broker's screens read that network alone; a person may be limited to brokers (unreleased)
+
+- **Decision** (`api/broker_view.py`, `crosscutting/shaping/scope.py:within`): `broker_id` on
+  `/api/stats`, `/graph`, `/situations`, `/timeline`, `/entities`, `/inventory`, `/events`,
+  `/activity/*` and the maintenance list narrows the caller's scope to that broker's elements — a
+  **view, never a grant**: what is kept is what the principal could already see, through the same
+  predicate every read already applies. The map filters by element id, never by address (two
+  brokers may reuse one), and its edges are the broker's own.
+- **Decision**: the visibility selector **`broker:<id>`** names every element of a broker, beside
+  `ne:`, addresses, CIDRs and globs; an address selector matches that address in every broker. Its
+  input stays admin-written (F35): only an admin creates a broker or moves an element. `GET
+  /api/brokers` is scoped: a person limited to some brokers is shown those, counted over their own
+  elements.
+- **Decision** (maintenance): the list stays general, with a broker filter (the windows for it and
+  the windows over its elements); a window may be created **for a broker**, and then covers that
+  network's hosts only (a 422 names an element of another).
+- **Reason**: Grafana's "All" variable over one set of panels, and a person's view as narrow as
+  their customer's networks.
+
+## 497. The console: a Brokers section, each network's screens inside it (unreleased)
+
+- **Decision** (`registry.js`, `sidebar.js`, `brokers.js`): the Broker plane's sidebar is
+  *Operations* (Overview, Situations, Trap catalogue, Maintenance), **Brokers** (All brokers, then
+  each broker; under the open one its Network graph, Timeline, Entities, Maintenance and Learning)
+  and *Administer*. Network graph, Timeline, Entities, Learning and the Judge exist only inside a
+  broker; *Evidence* is gone with them.
+- **Decision** (`views/brokers.js`, `parts/brokerwizard.js`, `brokerhome.js`): *All brokers* lists
+  each like Zabbix's proxies — how its traps arrive, whether they are arriving (listening, its
+  proxy's last batch, or why not), elements, live situations, last trap. Adding one is three steps:
+  how its traps arrive (own port + ranges preselected), its network, review; a proxy's token and the
+  command that starts the proxy are shown once. A broker's page says how to send it traps, holds an
+  admin's changes, and leads to its five screens.
+- **Decision** (`views/parts/brokerpick.js`, `heading.js`): the Overview has **All brokers / one
+  broker** at its heading's right, in the address (`?broker=`); Situations has the same filter and
+  names each situation's broker. The live stream follows the broker of the address
+  (`brokers.brokerOfRoute`), and an answer for a broker no longer chosen is dropped.
+- **Decision** (`parts/brokerlearn.js`): a broker's Learning is four tabs — To judge, Models (its
+  decider and pin), Judge, Site training. Settings offers Models and Site training only while one
+  network is monitored; the old addresses (`#/graph`, `#/promotion`, …) open the screen inside the
+  broker of what they name, and with one network show it as it always was.
+- **Decision**: People & access → Visibility shows `broker:<id>` in its examples and lists each
+  broker's id.
+- **Reason**: the owner's request (2026-11-22), with Grafana's dashboard variable and Zabbix's
+  proxy list as the patterns: a network is a place you go into, not a filter you remember to set.
+
+## 498. What the broker soak found (unreleased)
+
+- **Context**: five networks run together for hours on one appliance — a large ISP core of 3 000
+  routers with storms of 600 at once on its own port, two regions of one ISP sharing one private
+  plan, a small ISP behind a remote proxy, a corporate range on the standard port, unclaimed
+  sources — with the appliance stopped for two minutes mid-run while the proxy kept receiving.
+- **Decision**: a broker's own read returns its counts (`store.broker`): without them its page said
+  0 elements and offered *Remove* on a broker that had received traps (the server refused it).
+- **Decision**: the Overview and the busiest-assets panel drop an answer for a broker no longer
+  chosen: an *All brokers* read still in flight overwrote the chosen broker's chart.
+- **Decision**: the sidebar's *Situations* count is every broker's while a broker's screens are
+  open (the stream then follows that broker).
+- **Reason**: found in a browser against the soak's appliance; each is the kind of disagreement
+  between two numbers on one screen that makes an operator stop trusting both.
+- **Decision** (F158): a stop is bounded by the process itself. The first `SIGTERM`/`SIGINT` arms a
+  60 s watchdog (`faulthandler.dump_traceback_later`, a C thread that fires even when the event
+  loop or a lock is what is stuck) and starts the graceful stop; past the limit every thread's stack
+  goes to stderr and the process exits 1, releasing the schema's lock. A second signal does both at
+  once. The compose file gives the container 75 s (`stop_grace_period`): Docker's default 10 s cut
+  the drain and the final maintenance pass, which take about 15 s under a storm.
+- **Decision** (F158): a cancelled `executemany` on the writer runs to its end before the writer is
+  used again (`store/db.py`); the caller's cancellation still stands. Requests still in flight at a stop are
+  cancelled by uvicorn after 3 s (`HTTP_STOP_S`), inside the 5 s the stop gives the server, so its
+  shutdown finishes; a proxy's cancelled batch is sent again.
+- **Reason**: in the soak, a `SIGTERM` after an hour of storms closed the HTTP port within seconds
+  but the process never exited; it held the schema's lock for 55 minutes and the restart was
+  refused. Reproduced, the writer was mid-`executemany` (the varbind profiles' flush) and waiting
+  on the client: asyncpg cancelled mid-pipeline stops sending, and every later statement waited.
+  The runner's steps are each bounded (§A.5) only if the writer answers; the watchdog keeps the
+  promise for whatever else may not, and its dump names it.

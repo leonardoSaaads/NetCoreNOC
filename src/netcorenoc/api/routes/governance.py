@@ -274,9 +274,9 @@ def register(app: FastAPI, ctx: AppContext) -> None:
             "admin_is_never_scoped": True,
             "not_tenant_isolation": (
                 "Visibility scoping is a presentation control, NOT tenant isolation. Correlation "
-                "still learns across every network element, and a situation may still form across "
-                "a boundary a principal cannot see — its members are then hidden from them, not "
-                "prevented from correlating."
+                "learns per broker; within a broker a situation may still form across a boundary "
+                "a principal cannot see — its members are then hidden from them, not prevented "
+                "from correlating."
             ),
             "history": [_policy_row(row) for row in history],
         }

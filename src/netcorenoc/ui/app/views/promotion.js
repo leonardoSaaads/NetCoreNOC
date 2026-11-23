@@ -38,6 +38,7 @@
 
 import { html, Component, cx } from "../dom.js";
 import { post, readAll } from "../api.js";
+import { withBroker } from "../brokers.js";
 import { Loader, DataTable, SectionHeading, Stat, TimeCell, cell } from "../widgets.js";
 import { Icon } from "../icons.js";
 import { InfoTip } from "../info.js";
@@ -58,7 +59,10 @@ export class Promotion extends Loader {
   }
 
   async load() {
-    const got = await readAll({ promotion: "/api/promotion", judge: "/api/judge" });
+    const got = await readAll({
+      promotion: "/api/promotion",
+      judge: withBroker("/api/judge", this.props.brokerId),
+    });
     if (!got.promotion.ok) throw got.promotion.error;
     return { ...got.promotion.value, judge: got.judge.ok ? got.judge.value : null };
   }
@@ -70,7 +74,10 @@ export class Promotion extends Loader {
     return q && q.get("model") ? "charts" : "overview";
   }
 
-  go(tab) { if (this.props.navigate) this.props.navigate(`#/promotion?tab=${tab}`); }
+  go(tab) {
+    const base = this.props.base || "#/promotion";
+    if (this.props.navigate) this.props.navigate(`${base}${base.includes("?") ? "&" : "?"}tab=${tab}`);
+  }
 
   view(data) {
     const judge = data.judge;

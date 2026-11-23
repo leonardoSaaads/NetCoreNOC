@@ -45,18 +45,19 @@ def register(app: FastAPI, ctx: AppContext) -> None:
     """Register the read routes on `app`."""
     store, engine, security, guarded = ctx.store, ctx.engine, ctx.security, ctx.guarded
     scope_for, all_warnings, extra_stats = ctx.scope_for, ctx.all_warnings, ctx.extra_stats
+    broker_scope = ctx.broker_scope  # ADR #496: `broker_id` narrows a read to one broker's network
     route = DeclaredRoutes(app)
 
     # -- read endpoints (viewer+) ------------------------------------------------------
 
     @route.get("/api/stats")
-    async def stats(principal: auth.Principal = Depends(security)) -> dict[str, Any]:
-        scope = await scope_for(principal)
+    async def stats(
+        broker_id: int | None = None, principal: auth.Principal = Depends(security)
+    ) -> dict[str, Any]:
+        scope = await broker_scope(principal, broker_id)
         async with store.reading():
-            # Every enumerating counter is computed over the in-scope set, so out-of-scope activity
-            # cannot move a scoped viewer's numbers and become a volume oracle (F32). The assembly
-            # is shared with the `/api/events` stream (F115): this route and that one publish the
-            # same object, and building it twice is how the severity census reached one of them.
+            # Every enumerating counter is over the in-scope set, so activity out of scope cannot
+            # move a scoped viewer's numbers (F32); the assembly is `/api/events`'s too (F115).
             out: dict[str, Any] = await live_stats(store, engine, scope, all_warnings, extra_stats)
             # The two members the stream genuinely does not carry, kept at the call site so the
             # difference between the surfaces is visible where it is made.
@@ -65,10 +66,12 @@ def register(app: FastAPI, ctx: AppContext) -> None:
         return out
 
     @route.get("/api/graph")
-    async def graph(principal: auth.Principal = Depends(security)) -> dict[str, Any]:
-        scope = await scope_for(principal)
+    async def graph(
+        broker_id: int | None = None, principal: auth.Principal = Depends(security)
+    ) -> dict[str, Any]:
+        scope = await broker_scope(principal, broker_id)
         async with store.reading():
-            snapshot = await store.graph_snapshot(min_edge_n=MIN_EDGE_N)
+            snapshot = await store.graph_snapshot(min_edge_n=MIN_EDGE_N, broker_id=broker_id)
         projected = shaping.project_graph(snapshot, scope)  # in-scope nodes; edges need both ends
         return shaping.shape(projected, principal.role)  # coarsen device IPs below editor
 
@@ -80,12 +83,9 @@ def register(app: FastAPI, ctx: AppContext) -> None:
         element, and the table carries no NE reference. The count that *would* leak ("a device you
         cannot see just emitted a new trap type") is `stats.classes`, and that one is scoped.
 
-        **It is shaped now, and it was not before.** That is the same sentence commit `8609962`
-        wrote about `GET /api/situations`: the row carried an id, an OID, a name and a vendor, not
-        one protected field — correctly unshaped, until it started carrying a declaration. A class
-        label is text an operator typed, and an operator may type an address (F104). So the route
-        takes the principal it never needed, which is why `dependencies=guarded` is gone: the
-        `security` dependency it now names resolves the same identity that guard did.
+        **It is shaped**: a class label is text an operator typed, and an operator may type an
+        address (F104). So the route takes the principal — the `security` dependency resolves the
+        same identity `dependencies=guarded` did.
         """
         async with store.reading():
             listed = await store.list_classes()
@@ -98,6 +98,7 @@ def register(app: FastAPI, ctx: AppContext) -> None:
         limit: int = 100,
         q: str | None = None,
         ne_id: int | None = None,
+        broker_id: int | None = None,
     ) -> list[dict[str, Any]]:
         """Situations with at least one in-scope member; counts are of visible members only.
 
@@ -147,7 +148,7 @@ def register(app: FastAPI, ctx: AppContext) -> None:
         **It discloses nothing.** The id set is unscoped, and it is used only to mark rows this
         caller has already been shown — never to add one.
         """
-        scope = await scope_for(principal)
+        scope = await broker_scope(principal, broker_id)
         needle = (q or "").strip()[:MAX_SEARCH_CHARS] or None
         stale_cutoff = time.time() - IDLE_CLOSE_S
         async with store.reading():
@@ -272,6 +273,7 @@ def register(app: FastAPI, ctx: AppContext) -> None:
         until: float | None = None,
         buckets: int = 0,
         range_s: float | None = None,
+        broker_id: int | None = None,
         principal: auth.Principal = Depends(security),
     ) -> dict[str, Any]:
         """Recent raise/clear marks, optionally narrowed to one element and one window.
@@ -296,7 +298,7 @@ def register(app: FastAPI, ctx: AppContext) -> None:
         element outside their scope receives an empty answer through the predicate that hides it,
         which is the same non-answer they would get for an element that does not exist.
         """
-        scope = await scope_for(principal)
+        scope = await broker_scope(principal, broker_id)
         if buckets:
             # **The aggregate form** (v0.20.0, F144). The Overview's chart is about twenty-four
             # numbers and was being served as a thousand rows — 108.5 KiB to draw a histogram.
@@ -329,7 +331,9 @@ def register(app: FastAPI, ctx: AppContext) -> None:
     # -- entity tree + varbind profiler (viewer+, inspectable) -------------------------
 
     @route.get("/api/entities")
-    async def entities(principal: auth.Principal = Depends(security)) -> list[dict[str, Any]]:
+    async def entities(
+        broker_id: int | None = None, principal: auth.Principal = Depends(security)
+    ) -> list[dict[str, Any]]:
         """Every in-scope element, and **whether planned work is in force on it** (IV.3).
 
         The `maintenance` marker's *existence* ignores `visibility` entirely, which is prime
@@ -342,7 +346,7 @@ def register(app: FastAPI, ctx: AppContext) -> None:
         Scoped in the WHERE clause, not here — a marker on an element this principal cannot see
         would answer *"does this exist?"*, which is the oracle the scope exists to close.
         """
-        scope = await scope_for(principal)
+        scope = await broker_scope(principal, broker_id)
         now = time.time()
         async with store.reading():
             nes = shaping.filter_rows(await store.list_ne(), scope, ne_key="id")

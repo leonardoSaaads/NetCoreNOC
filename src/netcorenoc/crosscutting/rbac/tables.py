@@ -165,6 +165,11 @@ PERMISSIONS: dict[str, str] = {
     # write because it is inventory structure rather than operation.
     "organizations.read": "viewer",
     "organizations.write": "admin",
+    # ADR #494: the brokers. Every role reads the list it can see (the sidebar names them); only an
+    # admin adds, changes or removes one, issues a proxy token or moves an element — a broker's
+    # rows feed the visibility selector `broker:<id>`, and F35 keeps those admin-written.
+    "brokers.read": "viewer",
+    "brokers.write": "admin",
     # The zones this host can resolve. `viewer`, and it names no network element at all — it is a
     # property of the operating system's `tzdata`, which is public information about a public
     # database.

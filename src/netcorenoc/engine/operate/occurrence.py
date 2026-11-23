@@ -69,7 +69,7 @@ async def rearm(engine: Engine, result: IngestResult, event: TrapEvent, instance
         return False
     sid = engine.sit_of.get(result.alarm_id)
     if sid is None:
-        engine.correlator.remove(result.alarm_id)
+        engine.lanes.remove(result.alarm_id)
         return True
     previous = result.previous_seen
     if engine.rearm_s <= 0 or previous is None or event.ts - previous <= engine.rearm_s:
@@ -82,7 +82,7 @@ async def rearm(engine: Engine, result: IngestResult, event: TrapEvent, instance
     gesture = gestures.Gesture("idle_close", sid, event.ts, alarm_id=result.alarm_id)
     await gestures.record(engine.store, gesture, subject)
     engine.forget_situation(sid)
-    engine.correlator.remove(result.alarm_id)
+    engine.lanes.remove(result.alarm_id)
     return True
 
 
@@ -102,7 +102,7 @@ async def settled(engine: Engine, now: float, hold_s: float) -> list[int]:
     """
     ended = await engine.store.end_occurrences(OCCURRENCE_NOTIFICATIONS, now - hold_s, now)
     for alarm_id in ended:
-        engine.correlator.remove(alarm_id)
+        engine.lanes.remove(alarm_id)
     candidates = await engine.store.cleared_open_situations(now - hold_s)
     fingerprints = await engine.store.member_fingerprints(candidates)
     return [

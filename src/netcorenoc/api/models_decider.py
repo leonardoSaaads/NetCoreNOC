@@ -26,6 +26,8 @@ class DeciderIn(BaseModel):
     mode: Literal["shipped", "site", "additive"] = "shipped"
     pin: str | None = Field(default=None, max_length=80, pattern=r"^[a-z_-]+:[0-9a-f]{12}$")
     reason: str = Field(min_length=3, max_length=500)
+    #: ADR #495: each broker has its own decider — model A in one network, model B in another.
+    broker_id: int = Field(default=1, ge=1)
 
 
 class AutonomyIn(BaseModel):
@@ -57,3 +59,5 @@ class SearchIn(BaseModel):
     max_rounds: int = Field(default=120, ge=20, le=600)
     minutes: int = Field(default=30, ge=1, le=240)
     seed: int = Field(default=0, ge=0, le=2**31 - 1)
+    #: ADR #495: a site model is trained on one broker's labels, for that broker.
+    broker_id: int = Field(default=1, ge=1)

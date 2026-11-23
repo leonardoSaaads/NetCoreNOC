@@ -2750,3 +2750,35 @@ this into a sentence in a build report instead of a failed gate.
   scoped like every other count — and the screen says *"N active alarms re-reported"* with a link to
   Situations (ADR #381).
 - **What now catches it**: `tests/test_activity.py::test_a_fault_that_keeps_firing_is_counted_as_re_reported_not_as_nothing`.
+
+## F158 — under an hour of storms, a stop never finished and held the schema's lock
+
+- **What**: found by the broker soak (ADR #498). After an hour of a 3 000-router core's storms, a
+  remote proxy and four other networks, `SIGTERM` closed the HTTP port within 17 s (the proxy's
+  next request was refused) but the process never exited. Its memory stayed flat and nothing was
+  classified; it held the schema's lock, so the restart two minutes later failed with *another
+  NetCoreNOC is already using schema 'netcorenoc'*, and the appliance stayed down for the rest of
+  the run. No `receiver stats` line was logged, so the stop stopped after the HTTP server and before
+  the end of the final maintenance pass.
+- **Cause**: reproduced after 40 minutes of the same load, alive 240 s after `SIGTERM` with every
+  thread idle. In PostgreSQL the writer — the connection holding the schema's lock — was `active`
+  on `INSERT INTO varbind_profile …` and waiting on the **client** (`ClientRead`). The stop had
+  cancelled the maintenance pass inside `executemany` (3 000 routers' varbind profiles); asyncpg,
+  cancelled mid-pipeline, stops sending the batch, so the server waits for the rest and the
+  connection for the server. Every later statement on the writer — the stop's drain, its last
+  maintenance pass — then waited forever. A four-minute run stopped in 13 s because its profiles
+  were few and the flush was over before the signal.
+- **Reproduce**: the soak (`scratchpad/brk/soak.sh`): five networks and storms for an hour, then
+  `kill` the appliance; or, directly, cancel a 200 000-row `executemany` on the writer 50 ms in.
+- **Repair**: a cancelled `executemany` now runs to its end before the writer is used again
+  (`store/db.py::_to_the_end`); the caller is still cancelled. And the stop is bounded by the
+  process whatever the cause (`main._stopper`): a 60 s watchdog writes every thread's stack to
+  stderr and exits 1; a second signal does it at once. The compose file allows 75 s before Docker
+  kills the container. The validation run (40 minutes, the same load) stopped in 16 s, and showed
+  one more thing: a request still waiting at the stop kept uvicorn's shutdown past its 5 s window,
+  so it was destroyed pending at exit (an `ERROR` line). uvicorn now cancels such a request after
+  3 s (`api/models.py::HTTP_STOP_S`); the proxy sends that batch again.
+- **What now catches it**: `tests/store/test_store_concurrency.py::test_a_batch_cancelled_mid_flight_finishes_and_the_writer_stays_usable`
+  (fails in 30 s without the repair, where the appliance hung) and
+  `tests/ops/test_main.py::test_a_stop_is_bounded_and_a_second_signal_ends_it_at_once`.
+

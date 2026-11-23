@@ -369,3 +369,34 @@ async def test_a_side_write_cancelled_mid_transaction_leaves_no_lock_behind(stor
         )
         await store.commit()
     assert await store.get_meta("test.lock") == "before"
+
+
+async def test_a_batch_cancelled_mid_flight_finishes_and_the_writer_stays_usable(
+    store: Store,
+) -> None:
+    """F158: the soak's stop cancelled the maintenance pass inside a large ``executemany`` (the
+    varbind profiles of 3 000 routers). asyncpg stopped sending the pipeline; the server waited for
+    the rest and the writer for the server, so the stop's drain and last maintenance pass waited
+    forever on it, holding the schema's lock. The batch now runs to its end; the cancellation still
+    reaches the caller, and the next statement runs."""
+    conn = store.conn
+    await conn.execute("CREATE TEMP TABLE f158 (a integer, b text)")
+    rows = [(i, f"value {i}") for i in range(200_000)]
+    batch = asyncio.create_task(conn.executemany("INSERT INTO f158 (a, b) VALUES (?, ?)", rows))
+    await asyncio.sleep(0.05)
+    assert not batch.done(), "the batch must still be on the wire when it is cancelled"
+    batch.cancel()
+
+    async def within(task: asyncio.Task[Any]) -> None:
+        # Not `wait_for`: cancelling anything on a wedged writer waits forever too.
+        if not (await asyncio.wait({task}, timeout=30))[0]:
+            conn.raw.terminate()  # free the test database, then fail rather than hang the suite
+            pytest.fail("the writer never answered after a cancelled batch (F158)")
+
+    await within(batch)
+    assert batch.cancelled()
+    probe = asyncio.create_task(conn.execute("SELECT count(*) FROM f158"))
+    await within(probe)
+    counted = await (await probe).fetchone()
+    assert counted is not None and counted[0] == len(rows)
+    await store.rollback()

@@ -280,22 +280,36 @@ class Learner:
         for a_id, b_id in {_pair(a[1], b[1]) for a, b in asserted if a[1] != b[1]}:
             self.E.scale_pair(a_id, b_id, SPLIT_PENALTY)
 
-    async def save(self, store: Store, ts: float) -> None:
-        rows = self.A.flush() + self.E.flush() + self.clears.flush()
+    async def save(
+        self, store: Store, ts: float, broker_id: int = 1, *, shared: bool = True
+    ) -> None:
+        """Persist what changed. ADR #494: the two matrices are one broker's (the Default broker
+        keeps the keys it always had); the raise/clear pairs and state clears are the trap
+        catalogue's knowledge, shared by every broker, and written by the lane that owns them
+        (``shared``)."""
+        rows = self.A.flush() + self.E.flush()
         if rows:
-            await store.upsert_edges(rows, ts)
-        state_rows = self.states.flush()
-        if state_rows:
-            await store.upsert_state_clears(state_rows, ts)
-        await store.set_meta("matrix_class", self.A.state())
-        await store.set_meta("matrix_device", self.E.state())
+            await store.upsert_edges(rows, ts, broker_id)
+        if shared:
+            clears = self.clears.flush()
+            if clears:
+                await store.upsert_edges(clears, ts)
+            state_rows = self.states.flush()
+            if state_rows:
+                await store.upsert_state_clears(state_rows, ts)
+        suffix = "" if broker_id == 1 else f"@{broker_id}"
+        await store.set_meta(f"matrix_class{suffix}", self.A.state())
+        await store.set_meta(f"matrix_device{suffix}", self.E.state())
 
-    async def load(self, store: Store) -> None:
+    async def load(self, store: Store, broker_id: int = 1, *, shared: bool = True) -> None:
+        suffix = "" if broker_id == 1 else f"@{broker_id}"
         for matrix, key in ((self.A, "matrix_class"), (self.E, "matrix_device")):
-            raw = await store.get_meta(key)
+            raw = await store.get_meta(key + suffix)
             if raw is not None:
-                matrix.load_state(raw, await store.load_edges(matrix.kind))
+                matrix.load_state(raw, await store.load_edges(matrix.kind, broker_id))
         self._clocked = False  # the first activation after a load re-checks the clock
+        if not shared:
+            return
         contradicted = self.clears.load(await store.load_edges("clear_pair"))
         if contradicted:
             # **Said out loud, through the channel that already carries damaged durable state.**

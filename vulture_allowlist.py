@@ -399,3 +399,11 @@ audit_facets  # unused function (netcorenoc/api/routes/audit.py) — ADR #486
 detect_ollama  # unused function (netcorenoc/api/routes/providers.py) — ADR #487
 try_model  # unused function (netcorenoc/api/routes/providers.py)
 related_situations  # unused function (netcorenoc/api/routes/related.py) — ADR #489
+# ADR #494: the brokers' request validators (pydantic calls them) and routes (their decorators
+# register them).
+_trimmed  # _BrokerBody: names and descriptions without surrounding blanks
+_by_intake  # BrokerIn: what each intake requires, said in words
+_numbered  # ProxyBatchIn: a batch numbers exactly first..last
+list_brokers  # unused function (netcorenoc/api/routes/brokers.py)
+read_broker  # unused function (netcorenoc/api/routes/brokers.py)
+rotate_token  # unused function (netcorenoc/api/routes/brokers.py)

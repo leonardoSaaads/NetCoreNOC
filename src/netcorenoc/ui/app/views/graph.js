@@ -60,16 +60,19 @@ export class GraphView extends Component {
     return raw && /^\d+$/.test(raw) ? Number(raw) : null;
   }
 
+  /** Where this map lives: inside a broker (ADR #496), or the old address. */
+  base() { return this.props.base || "#/graph"; }
+
   select(id) {
     const same = id === this.selected();
-    this.props.navigate(id == null || same ? "#/graph" : `#/graph?ne=${id}`);
+    this.props.navigate(id == null || same ? this.base() : `${this.base()}?ne=${id}`);
   }
 
   /** Select an element and bring it into view: the find box and the load table use this. */
   focus(id) {
     const seq = (this.state.focus ? this.state.focus.seq : 0) + 1;
     this.setState({ focus: { id, seq }, miss: false });
-    if (id !== this.selected()) this.props.navigate(`#/graph?ne=${id}`);
+    if (id !== this.selected()) this.props.navigate(`${this.base()}?ne=${id}`);
     globalThis.document.querySelector(".graphview .netgraph")
       ?.scrollIntoView?.({ block: "nearest", behavior: "smooth" });
   }

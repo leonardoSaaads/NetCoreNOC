@@ -46,7 +46,7 @@ class EntityMixin(StoreBase):
         an estate of thousands that is a full table read per click.
         """
         cur = await self.conn.execute(
-            "SELECT n.id, n.ip, n.first_seen, n.last_seen, l.label FROM ne n "  # nosec B608
+            "SELECT n.id, n.ip, n.first_seen, n.last_seen, n.broker_id, l.label FROM ne n "  # nosec B608
             + self._label_join("l", "ne", "n.id")
             + "WHERE n.id=?",
             (ne_id,),

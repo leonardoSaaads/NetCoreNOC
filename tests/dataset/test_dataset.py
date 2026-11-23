@@ -287,6 +287,7 @@ async def test_the_bag_survives_a_merge_that_destroys_every_other_trace(store: S
                 storm=False,
                 placement=Placement(survivor, (absorbed,)),
             ),
+            engine.lanes.default,
         )
         await store.commit()
 

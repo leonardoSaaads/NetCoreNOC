@@ -443,6 +443,10 @@ def test_every_capability_names_the_role_it_was_designed_for() -> None:
         # inventory structure rather than operation.
         "organizations.read": "viewer",
         "organizations.write": "admin",
+        # ADR #494: every role reads the brokers it can see (the sidebar names them); only an admin
+        # adds, changes or removes one — a broker's rows feed the visibility selector `broker:<id>`.
+        "brokers.read": "viewer",
+        "brokers.write": "admin",
         # A property of the host's own `tzdata`. Public information about a public database,
         # naming no network element and no principal.
         "timezones.read": "viewer",

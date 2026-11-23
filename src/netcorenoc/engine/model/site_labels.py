@@ -21,8 +21,10 @@ from typing import Any
 __all__ = ["label_pairs"]
 
 
-async def label_pairs(store: Any) -> list[dict[str, Any]]:
-    """The three sources, normalised. The caller holds ``store.lock``."""
+async def label_pairs(store: Any, broker_id: int | None = None) -> list[dict[str, Any]]:
+    """The three sources, normalised; with ``broker_id``, only that broker's (ADR #495) — the
+    labels its own situations produced, which are all its judge and its site search may read.
+    The caller holds ``store.lock``."""
     out: list[dict[str, Any]] = []
     for row in await store.labelled_pairs():
         out.append({**row, "source": "feedback"})
@@ -39,4 +41,14 @@ async def label_pairs(store: Any) -> list[dict[str, Any]]:
             }
         )
     out.extend(await store.proposal_negative_pairs())
-    return out
+    if broker_id is None:
+        return out
+    incidents = {_incident(r) for r in out}
+    owner = await store.situation_brokers(sorted(incidents))
+    return [r for r in out if owner.get(_incident(r), 1) == broker_id]
+
+
+def _incident(row: dict[str, Any]) -> int:
+    """The situation a label is about: every source names it, under one name or the other."""
+    value = row.get("incident", row.get("situation_id"))
+    return -1 if value is None else int(value)

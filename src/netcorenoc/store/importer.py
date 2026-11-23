@@ -243,12 +243,23 @@ async def import_sqlite(store: Store, path: str) -> ImportReport:
         async with raw.transaction():
             for table in _GUARDED_SEEDS:
                 await raw.execute(f"ALTER TABLE {table} DISABLE TRIGGER {table}_append_only")
+            # ADR #494: the Default broker (a seed of 0047) names the default organization, which
+            # the source replaces; it is pointed at the source's default once that is copied.
+            await raw.execute("ALTER TABLE broker DROP CONSTRAINT broker_organization_id_fkey")
             for table in SEEDED:
                 await raw.execute(f"DELETE FROM {table}")  # nosec B608 - a constant
             for table in _GUARDED_SEEDS:
                 await raw.execute(f"ALTER TABLE {table} ENABLE TRIGGER {table}_append_only")
             for source_table, target in TABLES:
                 await _copy(raw, source, source_table, target, report)
+            await raw.execute(
+                "UPDATE broker SET organization_id = "
+                "(SELECT id FROM organization WHERE is_default) WHERE is_default"
+            )
+            await raw.execute(
+                "ALTER TABLE broker ADD CONSTRAINT broker_organization_id_fkey "
+                "FOREIGN KEY (organization_id) REFERENCES organization (id)"
+            )
             await _reset_identities(raw)
             # The chain as PostgreSQL now holds it, verified before the transaction commits: a
             # value that did not survive the conversion fails here and nothing is written.
@@ -304,7 +315,13 @@ async def _copy(
         "WHERE table_schema = current_schema() AND table_name = $1 ORDER BY ordinal_position",
         target,
     )
-    columns = [str(r["column_name"]) for r in described]
+    # A column the last SQLite schema never had (ADR #494's `broker_id`, say) is left out of the
+    # copy so it takes its default — the Default broker — rather than a NULL it may not hold.
+    pragma = f'PRAGMA table_info("{source_table}")'  # a constant table name
+    present = {str(r[1]) for r in source.execute(pragma)}
+    if "device_id" in present:
+        present.add("ne_id")  # the device and the element shared ids (`_rows` maps it)
+    columns = [str(r["column_name"]) for r in described if str(r["column_name"]) in present]
     kinds = {str(r["column_name"]): str(r["udt_name"]) for r in described}
     expected = int(source.execute(f'SELECT COUNT(*) FROM "{source_table}"').fetchone()[0])  # nosec B608
     if expected:
