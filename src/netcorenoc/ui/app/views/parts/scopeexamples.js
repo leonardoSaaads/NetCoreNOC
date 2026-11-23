@@ -20,9 +20,13 @@ export function examples() {
   const user = "user:7";
   const token = "token:3";
   return [
-    // ADR #496: a customer's people see that customer's networks — their brokers — and no other.
-    ["A customer's team sees its brokers",
-      "One person sees the networks of one customer — the North-East and the South — and nothing else.",
+    // ADR #499: a customer's people see that customer — every broker it owns and its NOC side.
+    ["A customer's team sees that customer",
+      "One person sees one customer: every broker it owns, now and later, and its cases and book.",
+      doc({ principals: { [user]: ["org:2"] } })],
+    // ADR #496: or some of its networks — their brokers — and no other.
+    ["A regional team sees two brokers",
+      "One person sees two networks of one customer — the North-East and the South — and nothing else.",
       doc({ principals: { [user]: ["broker:2", "broker:3"] } })],
     ["Viewers see the core only",
       "Every viewer sees the core network's management range; editors and admins see everything.",
@@ -40,6 +44,7 @@ export function examples() {
 }
 
 const SELECTORS = [
+  ["org:2", "one customer: every element it owns in every broker, and its side of the NOC"],
   ["broker:2", "every element of one broker (network), by its id"],
   ["ne:42", "one element, by the id the Entities screen shows"],
   ["192.0.2.10", "one element, by its management address"],

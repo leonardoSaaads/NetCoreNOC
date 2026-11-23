@@ -96,7 +96,13 @@ def register(app: FastAPI, ctx: AppContext) -> None:
             return None
         async with store.reading():
             owners = await store.ne_brokers(sorted(scope.ne_ids))
-        seen: dict[int, int] = {}
+            # ADR #499: a broker of a customer the policy names, before its first trap.
+            named = [
+                int(r["id"])
+                for r in await store.brokers()
+                if int(r["organization_id"]) in scope.named_orgs
+            ]
+        seen: dict[int, int] = dict.fromkeys(named, 0)
         for broker_id in owners.values():
             seen[broker_id] = seen.get(broker_id, 0) + 1
         return seen

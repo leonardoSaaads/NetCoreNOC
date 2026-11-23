@@ -7417,3 +7417,32 @@ From this release an entry is about six lines: decision, reason, release.*
   on the client: asyncpg cancelled mid-pipeline stops sending, and every later statement waited.
   The runner's steps are each bounded (§A.5) only if the writer answers; the watchdog keeps the
   promise for whatever else may not, and its dump names it.
+
+## 499. A person may be limited to customers: their brokers and their side of the NOC (unreleased)
+
+- **Context**: one appliance serves several customers, each with brokers and a NOC book. A person
+  made for one of them — "Claro - viewer", or an editor who works Claro's cases — must see Claro
+  and nothing of any other customer, in the Broker plane and in the NOC alike, and an admin must be
+  able to say so when the person is made.
+- **Decision**: the visibility policy takes a sixth selector, **`org:<id>`**: every element the
+  customer owns (`ne.organization_id`), in every broker. A resolved scope now carries the
+  customers it reaches — those it names and the owners of the elements it sees (`Scope.orgs`) —
+  and those it names (`named_orgs`), whose every broker it lists even before the first trap.
+- **Decision**: the NOC's customer records follow `Scope.orgs`: the customer list and book, its
+  documents, circuits and email settings; its **routines** (a shared routine stays everyone's, its
+  runs on other customers' cases are hidden); its **credentials** — a limited custodian holds its
+  customers' and never a shared one (an AI provider's key), files new ones under one of them, and
+  an agent token limited the same way leases only those; an **agent's runs and cases** are shown
+  for the caller's cases only. A record out of reach is the same 404 as one that does not exist.
+- **Decision**: People & access gains a **Customers** tab — every customer, or only these — written
+  as `org:` selectors in that person's entry of the visibility policy (`POST /api/scope/subject`,
+  admin): a new version of the whole policy, audited, reversible. A new account is limited **in the
+  same commit** that makes it, so "Claro - viewer" never exists unlimited. An admin is never
+  limited, so narrowing one is refused; the list shows each person's customers.
+- **Reason (F35)**: every input the resolver reads stays admin- or engine-written:
+  `ne.organization_id` is set by the engine on discovery (the broker's customer) and by admin-only
+  routes (`organizations.write`, `brokers.write`). A selector a viewer could influence would make
+  them the author of their own scope.
+- **Not tenant isolation**: correlation still learns per broker; the policy decides what a person
+  is shown, as it did (ADR #366).
+

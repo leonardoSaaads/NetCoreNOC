@@ -99,6 +99,7 @@ ROUTE_PERMISSIONS: dict[tuple[str, str], str] = {
     ("POST", "/api/rbac/subject"): "rbac.write",
     ("GET", "/api/scope"): "scope.read",
     ("POST", "/api/scope"): "scope.write",
+    ("POST", "/api/scope/subject"): "scope.write",  # ADR #499: one person's customers
     ("GET", "/api/quarantine"): "quarantine.read",
     ("GET", "/api/audit"): "audit.read",
     ("GET", "/api/audit/facets"): "audit.read",
@@ -290,6 +291,7 @@ ROUTE_SCOPE: dict[tuple[str, str], Literal["scoped", "unscoped", "admin_only"]] 
     ("POST", "/api/rbac/subject"): "admin_only",
     ("GET", "/api/scope"): "admin_only",
     ("POST", "/api/scope"): "admin_only",
+    ("POST", "/api/scope/subject"): "admin_only",
     ("GET", "/api/quarantine"): "admin_only",
     ("GET", "/api/audit"): "admin_only",
     ("GET", "/api/audit/facets"): "admin_only",

@@ -100,6 +100,7 @@ REFERENCE: dict[tuple[str, str], Entry] = {
     ("POST", "/api/rbac/subject"): Entry(ACCESS, "Narrow one role, person or token"),
     ("GET", "/api/scope"): Entry(ACCESS, "The visibility policy and what each role sees"),
     ("POST", "/api/scope"): Entry(ACCESS, "Apply, restore or clear the visibility policy"),
+    ("POST", "/api/scope/subject"): Entry(ACCESS, "Set which customers one person serves"),
     ("GET", "/api/config"): Entry(SETTINGS, "Live configuration and where each value comes from"),
     ("POST", "/api/config"): Entry(SETTINGS, "Set the trap allowlist and operational retention"),
     ("GET", "/api/dataset/retention"): Entry(SETTINGS, "The feedback dataset's retention tiers"),

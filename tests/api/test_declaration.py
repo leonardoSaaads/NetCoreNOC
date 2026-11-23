@@ -729,11 +729,13 @@ async def test_f43_every_path_served_today_still_registers(store: Store) -> None
     # Unreleased: 362 -> 377 and 202 -> 210 — brokers (ADRs #494-#497): the list, one broker,
     # adding, changing, removing one, its proxy's token, moving an element and the proxy's door
     # (eight /api pairs), and seven console modules (the brokers, their screens, the heading).
-    assert len(served) == 377, f"the served surface moved: {len(served)} method/path pairs"
+    # Unreleased: 377 -> 379 and 210 -> 211 — one person's customers (ADR #499): `POST
+    # /api/scope/subject` (one /api pair) and its console module (`parts/custscope.js`).
+    assert len(served) == 379, f"the served surface moved: {len(served)} method/path pairs"
     api_pairs = {(method, path) for method, path in served if path.startswith("/api")}
     # **v0.19.0: 53 -> 55.** `GET /api/models` and `POST /api/models/register`: what the
     # models are doing, and turning one of this appliance's own fits into an artefact.
-    assert len(api_pairs) == 210, (
+    assert len(api_pairs) == 211, (
         f"the /api surface moved: {len(api_pairs)} pairs. v0.16.0 adds exactly five — the "
         f"operator's five gestures — v0.16.2 adds exactly one, `POST …/promote` (DECISIONS #273), "
         f"v0.16.5 adds exactly one, `POST /api/alarms/clear` (DECISIONS #301), "
@@ -936,11 +938,13 @@ async def test_f42_every_path_served_today_still_registers(store: Store) -> None
     # Unreleased: 362 -> 377 and 202 -> 210 — brokers (ADRs #494-#497): the list, one broker,
     # adding, changing, removing one, its proxy's token, moving an element and the proxy's door
     # (eight /api pairs), and seven console modules (the brokers, their screens, the heading).
-    assert len(served) == 377, f"the served surface moved: {len(served)} method/path pairs"
+    # Unreleased: 377 -> 379 and 210 -> 211 — one person's customers (ADR #499): `POST
+    # /api/scope/subject` (one /api pair) and its console module (`parts/custscope.js`).
+    assert len(served) == 379, f"the served surface moved: {len(served)} method/path pairs"
     api_pairs = {(method, path) for method, path in served if path.startswith("/api")}
     # **v0.19.0: 53 -> 55.** `GET /api/models` and `POST /api/models/register`: what the
     # models are doing, and turning one of this appliance's own fits into an artefact.
-    assert len(api_pairs) == 210, (
+    assert len(api_pairs) == 211, (
         f"the /api surface moved: {len(api_pairs)} pairs. v0.16.0 adds exactly five — the "
         f"operator's five gestures — v0.16.2 adds exactly one, `POST …/promote` (DECISIONS #273), "
         f"v0.16.5 adds exactly one, `POST /api/alarms/clear` (DECISIONS #301), "
@@ -1228,7 +1232,8 @@ def test_the_three_postures_are_all_populated() -> None:
     # ADR #486: 52 -> 53. The audit log's facets, by `audit.read`, as the log itself.
     # ADR #494: 53 -> 58. Adding, changing and removing a broker, its proxy's token, moving an
     # element between brokers: `brokers.write`, admin.
-    assert len(ADMIN_ONLY) == 58, len(ADMIN_ONLY)
+    # ADR #499: 58 -> 59. Which customers one person serves, by `scope.write`, as the policy.
+    assert len(ADMIN_ONLY) == 59, len(ADMIN_ONLY)
     # v0.18.0: 6 -> 7. `GET /api/correlation` is `unscoped` for `GET /api/scorer`'s reason
     # — counters over the scorer's own decisions are a statement about arithmetic and
     # name no network element (Part II).

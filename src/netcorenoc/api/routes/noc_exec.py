@@ -157,9 +157,7 @@ def register(app: FastAPI, ctx: AppContext) -> None:
         """Forget the SSH host key pinned for this credential (the device was replaced)."""
         await gate.require_custodian(ctx, request, principal)
         async with store.reading():
-            row = await store.noc_get_secret(secret_id)
-        if row is None:
-            raise HTTPException(status_code=404, detail="no such credential")
+            await gate.require_reach(ctx, principal, await store.noc_get_secret(secret_id))
         await gate.confirm(
             ctx,
             request,

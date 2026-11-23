@@ -149,6 +149,7 @@ UNAUTHENTICATED_PATHS: frozenset[str] = frozenset(
         "/app/views/access.js",
         "/app/views/parts/capgrid.js",
         "/app/views/parts/people.js",
+        "/app/views/parts/custscope.js",
         "/app/views/parts/roles.js",
         "/app/views/parts/tokenspanel.js",
         "/app/views/parts/visibility.js",

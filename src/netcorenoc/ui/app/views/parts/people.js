@@ -22,6 +22,7 @@ import { Destructive } from "../../destructive.js";
 import { session, can, passwordPolicy } from "../../session.js";
 import { CapGrid, sameSet, isFixed } from "./capgrid.js";
 import { PasswordReset, TwoFactorReset } from "./personsecurity.js";
+import { CustomerScope, CustomerBadge, customerNames } from "./custscope.js";
 import { relative, timeTitle } from "../../format.js";
 
 export const ROLES = [["viewer", "Viewer"], ["editor", "Editor"], ["admin", "Admin"]];
@@ -58,10 +59,14 @@ export function RoleSwitch({ value, onChange, disabled, name }) {
 export class PeopleList extends Component {
   constructor(props) {
     super(props);
-    this.state = { q: "" };
+    this.state = { q: "", names: {} };
   }
 
-  render({ users, rbac, onOpen }, { q }) {
+  async componentDidMount() {
+    if (this.props.users.some((u) => u.organizations)) this.setState({ names: await customerNames() });
+  }
+
+  render({ users, rbac, onOpen }, { q, names }) {
     const me = session();
     const needle = q.trim().toLowerCase();
     const shown = users.filter((u) => !needle || [u.username, u.display_name, u.role]
@@ -85,7 +90,8 @@ export class PeopleList extends Component {
               <span class=${`role-pill role-${u.role}`}>${u.role}</span>
               <span class="person-access">${access == null ? null : access.custom
                 ? html`<span class="badge badge-warn">custom · ${access.value.size}</span>`
-                : html`<span class="muted">role default</span>`}</span>
+                : html`<span class="muted">role default</span>`}
+                <${CustomerBadge} organizations=${u.organizations} names=${names} /></span>
               <span class="person-meta muted" title=${timeTitle(u.created_at)}>
                 ${u.must_change_password ? "must set password" : `added ${relative(u.created_at)}`}
                 ${u.two_factor ? null : html` · <span class="warn-text">no two-factor yet</span>`}</span>
@@ -98,8 +104,17 @@ export class PeopleList extends Component {
   }
 }
 
+function sameList(a, b) {
+  return (a == null && b == null) || (a != null && b != null && a.join(",") === b.join(","));
+}
+
 /** Create or edit one person. `user` is null for a new account. */
 export class PersonEditor extends Component {
+  /** Whether the Customers choice is sent: an admin may write it, and the role may be limited. */
+  scoping() {
+    return can("scope.write") && !accessOf(this.props.rbac, this.state.role, null)?.fixed;
+  }
+
   constructor(props) {
     super(props);
     const u = props.user;
@@ -109,6 +124,7 @@ export class PersonEditor extends Component {
       name: u ? u.display_name || "" : "", email: u ? u.email || "" : "", username: "", password: "",
       role,
       caps: access ? access.value : null, photo: undefined, busy: false, error: null, tab: "profile",
+      orgs: u ? u.organizations || null : null,
     };
   }
 
@@ -120,15 +136,23 @@ export class PersonEditor extends Component {
   async save(event) {
     event.preventDefault();
     const { user, rbac } = this.props;
-    const { name, email, username, password, role, caps, photo } = this.state;
+    const { name, email, username, password, role, caps, photo, orgs } = this.state;
+    if (this.scoping() && orgs && !orgs.length) {
+      this.setState({ tab: "customers", error: "Choose at least one customer, or Every customer." });
+      return;
+    }
     this.setState({ busy: true, error: null });
     try {
       let id = user && user.id;
       if (!user) {
+        // ADR #499: limited to its customers in the same commit as the account.
         id = (await post("/api/users", { username: username.trim(), password, role,
-          display_name: name.trim() || null })).id;
-      } else if (role !== user.role) {
-        await post(`/api/users/${id}/role`, { role });
+          display_name: name.trim() || null, ...(this.scoping() ? { organizations: orgs } : {}) })).id;
+      } else {
+        if (role !== user.role) await post(`/api/users/${id}/role`, { role });
+        if (this.scoping() && !sameList(orgs, user.organizations || null)) {
+          await post("/api/scope/subject", { subject: `user:${id}`, organizations: orgs });
+        }
       }
       // A new account's name went with its creation; its address, and any edit, go here.
       const changed = user
@@ -164,7 +188,9 @@ export class PersonEditor extends Component {
       username: user.username } : { name, username };
     // ADR #490: the same shape as Your account — a header with the photo and who this is, then
     // tabs of cards. The form is one, so Save keeps whatever was changed on either tab.
-    const tabs = [["profile", "Profile", "account"], ...(rbac && caps ? [["access", "Access", "key"]] : []),
+    const tabs = [["profile", "Profile", "account"],
+      ...(can("scope.write") ? [["customers", "Customers", "network"]] : []),
+      ...(rbac && caps ? [["access", "Access", "key"]] : []),
       ...(user && !self ? [["security", "Security", "shield"]] : [])];
     const on = tabs.some(([key]) => key === tab) ? tab : "profile";
     const custom = rbac && caps && !base.fixed && !sameSet(caps, base.value);
@@ -218,6 +244,12 @@ export class PersonEditor extends Component {
           <small class="muted">${sole ? "The only admin: add another admin first."
             : `The most this person can ever hold — narrow it on Access.${user ? " Changing it signs them out." : ""}`}</small>
         </div>
+      </section>` : null}
+
+      ${on === "customers" ? html`<section class="panel-block acct-card pe-customers">
+        <h3><${Icon} name="network" /> Customers</h3>
+        <${CustomerScope} value=${this.state.orgs} fixed=${base.fixed} roleName=${role}
+          onChange=${(next) => this.setState({ orgs: next })} />
       </section>` : null}
 
       ${on === "access" ? html`<section class="panel-block acct-card pe-access">

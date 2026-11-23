@@ -122,6 +122,9 @@ def register(app: FastAPI, ctx: AppContext) -> None:
                 customer = await store.noc_customer(body.customer_id)
             if customer is None:
                 raise HTTPException(status_code=400, detail="customer_id: no such customer")
+        if not (await ctx.scope_for(principal)).allows_org(body.customer_id):
+            # ADR #499: a scoped author writes for its own customers, never a shared routine.
+            raise HTTPException(status_code=400, detail="customer_id: not a customer you serve")
         top, _agent = await ceiling(principal)
         if body.tier > top:
             raise HTTPException(
@@ -129,11 +132,16 @@ def register(app: FastAPI, ctx: AppContext) -> None:
                 detail=f"a tier-{top} agent writes routines of tier {top} or below",
             )
 
+    def reaches(row: dict[str, Any], scope: Any) -> bool:
+        """ADR #499: a customer's routine for those who serve it; a shared one for everyone."""
+        return row["organization_id"] is None or scope.allows_org(row["organization_id"])
+
     async def visible(playbook_id: int, principal: auth.Principal) -> dict[str, Any]:
         top, _agent = await ceiling(principal)
+        scope = await ctx.scope_for(principal)
         async with store.reading():
             row = await store.noc_playbook(playbook_id)
-        if row is None or int(row["tier"]) > top:
+        if row is None or int(row["tier"]) > top or not reaches(row, scope):
             raise HTTPException(status_code=404, detail=NO_SUCH)
         return row
 
@@ -162,9 +170,14 @@ def register(app: FastAPI, ctx: AppContext) -> None:
         await require_lead(ctx, request, principal)
         top, _agent = await ceiling(principal)
         facts = await case_facts(situation_id, principal) if situation_id is not None else None
+        scope = await ctx.scope_for(principal)
         async with store.reading():
-            rows = [r for r in await store.noc_playbooks() if int(r["tier"]) <= top]
-            customers = await store.noc_customers()
+            rows = [
+                r
+                for r in await store.noc_playbooks()
+                if int(r["tier"]) <= top and reaches(r, scope)
+            ]
+            customers = await store.noc_customers(None if scope.unrestricted else scope.orgs)
         if customer_id is not None:
             rows = [r for r in rows if r["organization_id"] in (None, customer_id)]
         if facts is not None:
@@ -229,8 +242,13 @@ def register(app: FastAPI, ctx: AppContext) -> None:
         """One routine, its whole tree, and its last twenty runs with their traces."""
         await require_lead(ctx, request, principal)
         row = await visible(playbook_id, principal)
+        scope = await ctx.scope_for(principal)
         async with store.reading():
             runs = await store.noc_runs(playbook_id=playbook_id)
+        if not scope.unrestricted:  # a shared routine's runs on another customer's cases
+            runs = [
+                r for r in runs if await ctx.perimeter.situation_in_scope(r["situation_id"], scope)
+            ]
         return _view(row, runs=runs)
 
     @route.post("/api/noc/playbooks/{playbook_id}", operation_id="noc_update_playbook")

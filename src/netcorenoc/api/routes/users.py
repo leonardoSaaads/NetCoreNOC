@@ -17,10 +17,11 @@ from typing import Any
 
 from fastapi import Depends, FastAPI, HTTPException, Request
 
+from netcorenoc.api import scope_subject
 from netcorenoc.api.context import AppContext
 from netcorenoc.api.declare import DeclaredRoutes
 from netcorenoc.api.models import RoleIn, UserIn
-from netcorenoc.crosscutting import administration, auth
+from netcorenoc.crosscutting import administration, auth, rbac
 
 
 def _within(request: Request, role: str) -> None:
@@ -51,10 +52,18 @@ def register(app: FastAPI, ctx: AppContext) -> None:
             rows = await store.list_users()
             enrolled = await store.second_factor_users()
             enabled_admins = [r for r in rows if r["role"] == "admin" and not r["disabled"]]
+            document, _row = await scope_subject.active_document(store)
         sole = enabled_admins[0]["id"] if len(enabled_admins) == 1 else None
         # ADR #482: whether each person has an authenticator (never anything about it).
+        # ADR #499: the customers each serves (None: every one), and whether that can be narrowed.
         return [
-            {**row, "sole_admin": row["id"] == sole, "two_factor": int(row["id"]) in enrolled}
+            {
+                **row,
+                "sole_admin": row["id"] == sole,
+                "two_factor": int(row["id"]) in enrolled,
+                "organizations": scope_subject.organizations_of(document, f"user:{row['id']}"),
+                "scopable": row["role"] not in rbac.FIXED_ROLES,
+            }
             for row in rows
         ]
 
@@ -76,6 +85,25 @@ def register(app: FastAPI, ctx: AppContext) -> None:
             )
             if display := (body.display_name or "").strip() or None:
                 await store.set_display_name(uid, display, now)
+            if body.organizations is not None:  # ADR #499: limited from the first commit
+                if body.role in rbac.FIXED_ROLES:
+                    raise HTTPException(status_code=400, detail=rbac.FIXED_ROLE_REFUSAL)
+                scoped = await scope_subject.set_organizations(
+                    store,
+                    f"user:{uid}",
+                    body.organizations,
+                    principal.actor,
+                    f"new: {body.username}",
+                )
+                await audit_row(
+                    request,
+                    principal,
+                    "scope.policy.update",
+                    "ok",
+                    object_type="governance_policy",
+                    object_id=str(scoped["after"]["policy_id"]),
+                    details=scoped,
+                )
             await audit_row(
                 request,
                 principal,
@@ -87,6 +115,7 @@ def register(app: FastAPI, ctx: AppContext) -> None:
                     "username": body.username,
                     "role": body.role,
                     "display_name_set": display is not None,
+                    "organizations": body.organizations,
                 },
             )
         return {"id": uid, "username": body.username, "role": body.role, "display_name": display}

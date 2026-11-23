@@ -61,6 +61,26 @@ async def require_custodian(ctx: AppContext, request: Request, principal: auth.P
         raise HTTPException(status_code=403, detail=NOT_CUSTODIAN)
 
 
+async def require_reach(
+    ctx: AppContext, principal: auth.Principal, row: Mapping[str, Any] | None
+) -> dict[str, Any]:
+    """The credential, or the 404 that also answers "not a customer your scope reaches"
+    (ADR #499). A scoped caller sees only its customers' credentials: never another customer's,
+    and never a shared one (an AI provider's key belongs to no customer)."""
+    if row is None or not (await ctx.scope_for(principal)).allows_org(row.get("organization_id")):
+        raise HTTPException(status_code=404, detail="no such credential")
+    return dict(row)
+
+
+async def require_customer(
+    ctx: AppContext, principal: auth.Principal, customer_id: int | None
+) -> None:
+    """ADR #499: a scoped caller files a record under one of its own customers, never under
+    another's and never as a shared one."""
+    if not (await ctx.scope_for(principal)).allows_org(customer_id):
+        raise HTTPException(status_code=400, detail="customer_id: not a customer you serve")
+
+
 async def is_agent(ctx: AppContext, principal: auth.Principal) -> bool:
     if not principal.is_token or principal.ref is None:
         return False

@@ -3058,6 +3058,19 @@ button.mw-row-name {
   .person-row { grid-template-columns: 40px minmax(0, 1fr) auto; }
   .person-access, .person-meta { display: none; }
 }
+.person-access { display: flex; flex-wrap: wrap; gap: var(--space-1); align-items: center; }
+/* ADR #499: which customers a person serves — the badge in the list, the choice in the editor. */
+.badge-scope { border-color: var(--accent); color: var(--accent); display: inline-flex; gap: 4px; align-items: center; }
+.badge-scope svg { width: 12px; height: 12px; }
+.cust-scope { display: grid; gap: var(--space-3); }
+.cust-scope-list { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--space-2); }
+.cust-scope-row {
+  display: flex; gap: var(--space-3); align-items: center; padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--line); border-radius: var(--radius-1); cursor: pointer; min-height: var(--tap);
+}
+.cust-scope-row.on { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 6%, transparent); }
+.cust-scope-name { display: flex; flex-direction: column; min-width: 0; }
+.cust-scope-name small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 /* ADR #490: one person, shaped like Your account — the header with the photo, then tabs of cards. */
 .person-editor { display: grid; gap: var(--space-4); }
 .person-editor .access-tabs { margin-bottom: 0; }

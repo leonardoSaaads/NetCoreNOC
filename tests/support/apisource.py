@@ -90,6 +90,7 @@ MODULE_ORDER: tuple[str, ...] = (
     "routes/related.py",  # ADR #489: the merge picker's candidates
     "routes/annotate.py",
     "routes/operate.py",
+    "scope_subject.py",  # ADR #499: one person's customers, written by `users` and `governance`
     "routes/users.py",  # ADR #453: the account routes, split from `admin` in the same order
     "routes/admin.py",
     "routes/people.py",

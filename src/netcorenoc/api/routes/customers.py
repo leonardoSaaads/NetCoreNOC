@@ -1,8 +1,9 @@
 """NOC → Customers: each customer's book — instructions, memory and workbook (ADR #473).
 
 A NOC serves several customers, and an agent about to act on one's network reads how that customer
-wants to be served first. **Reading is `cases.read`, scoped**: a customer is visible when one of
-its elements is in the caller's scope, and one that is not answers the same 404 as one that does
+wants to be served first. **Reading is `cases.read`, scoped**: a customer is visible when the
+caller's scope names it (`org:<id>`) or reaches one of its elements, and one that is not answers
+the same 404 as one that does
 not exist. **Writing is `cases.work`**, split by who knows what (`api/customer_view.py`): the
 instructions and the workbook are the customer's words, kept by people; the memory is what the NOC
 learned, kept by agents as much as people. Every write is one transaction and one audit row.
@@ -100,7 +101,7 @@ def register(app: FastAPI, ctx: AppContext) -> None:
         Read a customer's book (`noc_get_customer`) before acting on its network."""
         scope = await scope_for(principal)
         async with store.reading():
-            rows = await store.noc_customers(None if scope.unrestricted else scope.ne_ids)
+            rows = await store.noc_customers(None if scope.unrestricted else scope.orgs)
         editor = await editor_of(ctx, request, principal)
         return {
             "customers": [

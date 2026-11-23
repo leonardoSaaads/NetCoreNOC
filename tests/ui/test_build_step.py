@@ -509,6 +509,9 @@ UI_HASHES: dict[str, str] = {
     "app/views/parts/custmail.js": (
         "91303b22a06b5bda94937c748f38ee52daaf8c9c4a54f6db5dbcb8e48f969c64"
     ),
+    "app/views/parts/custscope.js": (
+        "10e02d4577ceb725a96a92017f361017bf71064ed6a98eb90fd44c1ead29ec23"
+    ),
     "app/views/parts/decide.js": "a1c9f2cae33838f8f78673cc2d74c61ea8a3d4633a51c9155f686ad57ebf0f90",
     "app/views/parts/decider.js": (
         "54104bfa1b28dc11b47ae2daff99b665f4872cb25a0b24659b94248e6d2421f8"
@@ -594,7 +597,7 @@ UI_HASHES: dict[str, str] = {
     "app/views/parts/orgmove.js": (
         "68fd9c8f811b622c32b33224ec0487e159fc792cb5b9294f6a0f27247ee0ac25"
     ),
-    "app/views/parts/people.js": "434e7b1321475191015915e83e74feba71baca285323f78502b8005befdbfcbd",
+    "app/views/parts/people.js": "e82c35368f4a387aa3dd8c99c974b4ab395fb425a3686c2441d47457507c0862",
     "app/views/parts/personsecurity.js": (
         "6106957759f4e570e8778964dc74b5af33ee52734a00f918485e7c2fc69867ef"
     ),
@@ -613,7 +616,7 @@ UI_HASHES: dict[str, str] = {
         "0d0d4cd176115b2f4a6bfcea53ea9edd1406dd528b8656a8fdcfe32a3ba67de5"
     ),
     "app/views/parts/scopeexamples.js": (
-        "f3c316cce9c586f7ed818eebed4e8d0e980e028ada8a7e3d922c800431e032d3"
+        "3856b9330cce2005f99d978df7f8fe7ae085d70d956ea1b0cf6e96fea0079548"
     ),
     "app/views/parts/searchpanel.js": (
         "3a0661325525683b067e0aeee19beb04fd49bb604b9302d0094313830b68f582"
@@ -672,7 +675,7 @@ UI_HASHES: dict[str, str] = {
     "favicon.svg": "67be772b54d99f4978143983b4d5313c8aab40e1498a1fa748680e00f7735bf2",
     "index.html": "d057123e5cfc1ab497db465df016c598e38b049fbde26ecc9ee868eb4899fad7",
     "login-bg.svg": "5f677f3371a2828c8d21668cd83381c105ccdc1780a66dc09fc6f6bc19d211d6",
-    "style.css": "21586f153036a007c9979f1543ca347826eabde943a637f5dc6bafbfaf316277",
+    "style.css": "bb502d089d20d24d43bcdaf1171dbe379720c9d8f6c06505ffdf6e12c8e5d64d",
     "vendor/CHECKSUMS.txt": "d0a7c4ec48719c3cb3c86f6da7e010b7be5e822cf62ed9f2aafdf39726405ad7",
     "vendor/htm-3.1.1.module.js": (
         "ab33dd3f38059b9be4d5f5350128eefb2356639c4e0bbe9d9e8b3ba75847e9e4"
@@ -775,6 +778,7 @@ UI_SIZES: dict[str, int] = {
     "app/views/parts/custcontacts.js": 9_060,
     "app/views/parts/custdocs.js": 8_190,
     "app/views/parts/custmail.js": 8_900,
+    "app/views/parts/custscope.js": 4_458,
     "app/views/parts/decide.js": 5_370,
     "app/views/parts/decider.js": 10_170,
     "app/views/parts/declare.js": 13_092,
@@ -812,7 +816,7 @@ UI_SIZES: dict[str, int] = {
     "app/views/parts/oidtree.js": 6_358,
     "app/views/parts/ollamamodels.js": 5_547,
     "app/views/parts/orgmove.js": 4_154,
-    "app/views/parts/people.js": 14_671,
+    "app/views/parts/people.js": 16_266,
     "app/views/parts/personsecurity.js": 4_853,
     "app/views/parts/pipeline.js": 9_966,
     "app/views/parts/pulse.js": 5_701,
@@ -820,7 +824,7 @@ UI_SIZES: dict[str, int] = {
     "app/views/parts/retention.js": 5_092,
     "app/views/parts/roles.js": 4_973,
     "app/views/parts/routineform.js": 16_526,
-    "app/views/parts/scopeexamples.js": 4_382,
+    "app/views/parts/scopeexamples.js": 4_742,
     "app/views/parts/searchpanel.js": 6_096,
     "app/views/parts/secretdetail.js": 14_281,
     "app/views/parts/secretform.js": 12_484,
@@ -850,7 +854,7 @@ UI_SIZES: dict[str, int] = {
     "favicon.svg": 1_136,
     "index.html": 1_549,
     "login-bg.svg": 18_884,
-    "style.css": 322_003,
+    "style.css": 323_021,
     "vendor/CHECKSUMS.txt": 2_426,
     "vendor/htm-3.1.1.module.js": 1_207,
     "vendor/htm.LICENSE": 11_341,

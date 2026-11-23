@@ -88,13 +88,11 @@ async def editor_of(ctx: Any, request: Request, principal: auth.Principal) -> Ed
 
 
 async def visible_customer(ctx: Any, principal: auth.Principal, customer_id: int) -> dict[str, Any]:
-    """The customer, or the 404 that also answers "none of its elements is in your scope"."""
+    """The customer, or the 404 that also answers "not a customer your scope reaches"."""
     scope = await ctx.scope_for(principal)
-    ne_ids = None if scope.unrestricted else scope.ne_ids
     async with ctx.store.reading():
         row = await ctx.store.noc_customer(customer_id)
-        seen = row is not None and await ctx.store.noc_customer_visible(customer_id, ne_ids)
-    if row is None or not seen:
+    if row is None or not scope.allows_org(customer_id):
         raise HTTPException(status_code=404, detail=NO_SUCH)
     return dict(row)
 

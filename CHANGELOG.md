@@ -46,6 +46,23 @@ data directory), without which sealed values and every password are unreadable (
 secrets key file** (`secrets.key`; the image keeps it on a volume of its own), without which every
 stored device credential is unreadable (#455).
 
+### Added — a person limited to customers (#499)
+
+- **People & access → Customers**: *every customer*, or *only these*. "Claro - viewer" sees Claro's
+  brokers (every element Claro owns, in every broker) and Claro's side of the NOC — its book,
+  cases, routines and, for a custodian, its credentials — and nothing of any other customer. The
+  limit is written in the commit that makes the account. The visibility policy's new selector is
+  `org:<id>`; `POST /api/scope/subject` sets one person's customers (#499).
+- A shared credential (an AI provider's key) and a shared routine's runs on other customers' cases
+  are no longer shown to a person limited to customers; an agent's page shows its work on the
+  caller's cases only (#499).
+
+### Fixed
+
+- A broker's Network graph opens an element's panel on a click again, and a broker's Timeline
+  filters again: both screens' `base()` method was replaced by the DOM node Preact keeps in
+  `this.base` (#496).
+
 ### Added — brokers: one appliance, many networks (#494-#498)
 
 - **A broker is one monitored network, owned by one customer** — a customer may have several

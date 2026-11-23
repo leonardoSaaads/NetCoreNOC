@@ -489,6 +489,7 @@ ROUTE_ORDER_BASELINE: list[tuple[str, str]] = [
     ("GET", "/app/views/access.js"),
     ("GET", "/app/views/parts/capgrid.js"),
     ("GET", "/app/views/parts/people.js"),
+    ("GET", "/app/views/parts/custscope.js"),
     ("GET", "/app/views/parts/roles.js"),
     ("GET", "/app/views/parts/tokenspanel.js"),
     ("GET", "/app/views/parts/visibility.js"),
@@ -649,6 +650,7 @@ ROUTE_ORDER_BASELINE: list[tuple[str, str]] = [
     ("POST", "/api/rbac"),
     ("POST", "/api/rbac/subject"),
     ("GET", "/api/scope"),
+    ("POST", "/api/scope/subject"),
     ("POST", "/api/scope"),
     ("GET", "/api/quarantine"),
     ("GET", "/api/audit"),
@@ -921,7 +923,8 @@ async def test_the_api_route_order_is_unchanged_by_the_ui_rewrite(store: Store) 
     # one broker, its token, the proxy's door, an element's move), one able to shadow another and
     # ordered against it: `POST /api/brokers/ingest` is registered before `POST …/{broker_id}`,
     # which would otherwise take `ingest` as an id and refuse it (the baseline pins that) — 210.
-    assert len(live) == 210, (
+    # ADR #499: +1 (`POST /api/scope/subject`, one person's customers, a concrete segment) — 211.
+    assert len(live) == 211, (
         f"the /api surface is {len(live)} pairs; v0.16.0 adds exactly five, v0.16.2 exactly one, "
         f"v0.16.3 exactly one, v0.16.5 exactly one — `POST /api/alarms/clear` — v0.18.0 exactly "
         f"one, `GET /api/correlation`, and v0.21.0 exactly thirteen for maintenance windows, "
@@ -1569,8 +1572,8 @@ def test_the_queue_put_on_the_hot_path_is_non_blocking() -> None:
 #: `engine/noc/` `commands`, `executor`, `playbook` and `runbook`, `store/noc_playbooks.py`,
 #: migration `0035_noc_automation.sql`, the `noc_exec` and `playbooks` routes, and the
 #: `views/playbooks` console module.
-SRC_TREE_DIGEST = "4013b9fbf2bd61b5a29f8730ad71750aa3197252ff0b6b859e9a0c7e57379d95"
-SRC_FILE_COUNT = 554
+SRC_TREE_DIGEST = "7a3e44b145079d109aae01824b8c1608321fb63af3bbee1698c3f345ea3d011c"
+SRC_FILE_COUNT = 556
 SRC_VERSION_FILE = "src/netcorenoc/__init__.py"
 
 

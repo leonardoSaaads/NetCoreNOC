@@ -208,7 +208,7 @@ class GovernanceMixin(StoreBase):
         }
 
     async def list_ne_for_scope(self) -> list[dict[str, Any]]:
-        """Every NE as ``(id, ip, broker_id)`` — the input to resolving scope selectors to NE ids.
+        """Every NE as ``(id, ip, broker_id, organization_id)``: what selectors resolve against.
 
         **v0.7.1 (F35): the operator label is deliberately NOT selected here.** v0.7.0 joined it in
         so a glob selector could match a labelled estate, which made `POST /api/labels` — an
@@ -216,12 +216,17 @@ class GovernanceMixin(StoreBase):
         column is gone rather than guarded, because a guard protects only the write paths it sits
         on and this one must survive the next one (DECISIONS #66). Everything this query returns is
         engine-written: `ne.id` and `ne.ip` are created from the trap stream and are not writable
-        through any API route; `ne.broker_id` is the routing's answer, moved only by an admin.
+        through any API route; `ne.broker_id` is the routing's answer, moved only by an admin;
+        `ne.organization_id` — whose element it is, which `org:<id>` reads (ADR #499) — is written
+        by the engine (the default on discovery) and by admin-only routes (`organizations.write`,
+        `brokers.write`).
 
         Called only when a scope policy is active and the caller is not an admin, so an
         un-configured appliance runs the v0.6.0 read paths untouched.
         """
-        cur = await self.conn.execute("SELECT n.id, n.ip, n.broker_id FROM ne n ORDER BY n.id")
+        cur = await self.conn.execute(
+            "SELECT n.id, n.ip, n.broker_id, n.organization_id FROM ne n ORDER BY n.id"
+        )
         return [dict(r) for r in await cur.fetchall()]
 
     async def broker_nes(self, broker_id: int) -> list[dict[str, Any]]:

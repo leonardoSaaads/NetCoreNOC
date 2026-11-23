@@ -188,6 +188,7 @@ _UI_MODULES = (
     "app/views/access.js",
     "app/views/parts/capgrid.js",
     "app/views/parts/people.js",
+    "app/views/parts/custscope.js",  # ADR #499: which customers a person serves
     "app/views/parts/roles.js",
     "app/views/parts/tokenspanel.js",
     "app/views/parts/visibility.js",

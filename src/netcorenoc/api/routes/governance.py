@@ -20,9 +20,11 @@ from typing import Any
 
 from fastapi import Depends, FastAPI, HTTPException, Request
 
+from netcorenoc.api import scope_subject
 from netcorenoc.api.context import AppContext
 from netcorenoc.api.declare import DeclaredRoutes
 from netcorenoc.api.models import PolicyIn, SubjectAccessIn
+from netcorenoc.api.models_brokers import ScopeSubjectIn
 from netcorenoc.crosscutting import auth, rbac, shaping
 
 MAX_POLICY_HISTORY = 50
@@ -280,6 +282,45 @@ def register(app: FastAPI, ctx: AppContext) -> None:
             ),
             "history": [_policy_row(row) for row in history],
         }
+
+    @route.post("/api/scope/subject")
+    async def set_subject_scope(
+        body: ScopeSubjectIn, request: Request, principal: auth.Principal = Depends(security)
+    ) -> dict[str, Any]:
+        """Set or clear which customers ONE person or token serves (ADR #499).
+
+        `org:<id>` selectors in that subject's entry of the visibility policy: the customer's
+        brokers (every element it owns) and its side of the NOC — its book, cases, routines and
+        credentials. A new version of the whole policy, audited with before and after and
+        reversible from its history. An admin is never scoped, so narrowing one is refused.
+        """
+        kind, key = body.subject.split(":", 1)
+        async with write_txn():
+            if kind == "user":
+                user = await store.get_user(int(key))
+                if user is None:
+                    raise HTTPException(status_code=404, detail="no such user")
+                if user["role"] in rbac.FIXED_ROLES and body.organizations is not None:
+                    raise HTTPException(status_code=400, detail=rbac.FIXED_ROLE_REFUSAL)
+            elif not any(int(t["id"]) == int(key) for t in await store.list_tokens()):
+                raise HTTPException(status_code=404, detail="no such token")
+            details = await scope_subject.set_organizations(
+                store,
+                body.subject,
+                body.organizations,
+                principal.actor,
+                body.note or f"customers: {body.subject}",
+            )
+            await audit_row(
+                request,
+                principal,
+                "scope.policy.update",
+                "ok",
+                object_type="governance_policy",
+                object_id=str(details["after"]["policy_id"]),
+                details=details,
+            )
+        return details
 
     @route.post("/api/scope")
     async def set_scope_policy(

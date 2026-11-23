@@ -47,6 +47,12 @@ def register(app: FastAPI, ctx: AppContext) -> None:
     audit_row, write_txn = ctx.perimeter.audit_row, ctx.write_txn
     route = DeclaredRoutes(app)
 
+    async def in_scope(sid: int | None, scope: Any) -> bool:
+        """A run or a case the caller may read: any, unscoped; one on its cases, scoped (#499)."""
+        if scope.unrestricted:
+            return True
+        return sid is not None and await ctx.perimeter.situation_in_scope(int(sid), scope)
+
     async def everyone() -> dict[int, dict[str, Any]]:
         return {int(a["id"]): a for a in await store.noc_agents()}
 
@@ -197,6 +203,10 @@ def register(app: FastAPI, ctx: AppContext) -> None:
             runs = await store.noc_agent_runs(agent_id, limit=20)
             cases_ = await store.noc_agent_cases(agent_id)
             activity = await store.noc_agent_activity(agent_id, time.time() - span * DAY)
+        scope = await ctx.scope_for(principal)
+        if not scope.unrestricted:  # ADR #499: what it did for the caller's customers only
+            runs = [r for r in runs if await in_scope(r["situation_id"], scope)]
+            cases_ = [c for c in cases_ if await in_scope(c["situation_id"], scope)]
         return {
             "agent": agent_view(people[agent_id], people),
             "runs": [run_view(r) for r in runs],
@@ -354,7 +364,7 @@ def register(app: FastAPI, ctx: AppContext) -> None:
         async with store.reading():
             run = await store.noc_agent_run(run_id)
             steps = await store.noc_agent_run_steps(run_id) if run else []
-        if run is None:
+        if run is None or not await in_scope(run["situation_id"], await ctx.scope_for(principal)):
             raise HTTPException(status_code=404, detail=NO_RUN)
         return {"run": run_view(run), "steps": steps}
 
