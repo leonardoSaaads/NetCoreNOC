@@ -1,0 +1,189 @@
+/* Planned work, on the Overview (v0.21.1).
+ *
+ * The Overview is the screen an operator opens first and reads in about four seconds. Until now
+ * it answered *"what is broken?"* completely and *"is any of this on purpose?"* not at all — so a
+ * quiet estate at 02:00 looked the same whether nobody had touched it or somebody had a window
+ * open over half of it. The marker on a device says so once you are looking at that device; this
+ * says so before you go looking.
+ *
+ * ## What it leads with, and why that ordering
+ *
+ * **A running window first, always.** It is the only state that changes how the rest of the
+ * screen should be read: while it is in force, the alarm counts above are incomplete by
+ * construction. Scheduled work is context; running work is a caveat on everything else, so its
+ * tile is the one that turns red and the hosts it covers get the card's one sentence (v0.29.0:
+ * three counts and the next three windows — the rest is on the Maintenance screen).
+ *
+ * Then at most three upcoming, because this is a summary and the screen it summarises is one
+ * click away. A fourth row would buy nothing an operator cannot get by following the link.
+ *
+ * ## It cannot take the dashboard down
+ *
+ * Its own `get`, its own state, its own failure. `/api/maintenance-windows` needs `mw.read`, and
+ * a deployment that has withheld it — or an appliance whose migration has not run — answers 403
+ * or 500 here. This is v0.12.0's `Promise.all` lesson as a component boundary: a panel that
+ * cannot read its own route renders **one quiet line** and the other five panels are untouched.
+ * A blank Overview during an incident is the worst thing this console can do.
+ *
+ * ## ADR #490: counted from every window, a week at a glance, and a picture when there is none
+ *
+ * The card read ten windows and counted those: with fifty planned it said "10 scheduled". It now
+ * reads the live ones (running, scheduled, to confirm — up to the store's 200) and counts from
+ * them, beside the server's `total`. Between the counts and the next three rows sits the coming
+ * week as seven columns — how much work starts each day — because fifty windows read as a list are
+ * a scroll, and read as a week they are a shape. With none, the card shows a sleeping moon and one
+ * line, not a bare sentence: nothing is suppressed anywhere, which is itself the reading.
+ */
+
+import { Component, html } from "../../../dom.js";
+import { get } from "../../../api.js";
+import { withBroker } from "../../../brokers.js";
+import { SectionMark } from "../../../widgets.js";
+import { count, plural } from "../../../format.js";
+import { can } from "../../../session.js";
+import { humanise } from "./mwdraft.js";
+
+/* How many upcoming rows a summary shows. Three, because the fourth is a scroll and the whole
+ * screen it summarises is one click away. */
+const SHOWN = 3;
+/* The live statuses, the only ones this card reads (the store bounds a page at 200). */
+const LIVE = "active,scheduled,pending_confirmation";
+const DAY = 86400;
+const WEEKDAY = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+
+const TONE = { active: "alarm", pending_confirmation: "warn", scheduled: "info" };
+const LABEL = { active: "running", pending_confirmation: "to confirm", scheduled: "scheduled" };
+
+/* Windows that are in force now, and the ones still to come — in the order an operator cares
+ * about them. Pure, so `tests/ui/test_maintenance_dom.py` can drive it without a network. */
+export function split(windows) {
+  const rows = Array.isArray(windows) ? windows : [];
+  const running = rows.filter((w) => w.status === "active");
+  const ahead = rows
+    .filter((w) => w.status === "scheduled" || w.status === "pending_confirmation")
+    .sort((a, b) => (a.starts_at || 0) - (b.starts_at || 0));
+  return { running, ahead };
+}
+
+/* The coming week: how many windows start on each of the next seven local days. Pure. */
+export function week(windows, now = Date.now() / 1000) {
+  const midnight = new Date(now * 1000);
+  midnight.setHours(0, 0, 0, 0);
+  const first = midnight.getTime() / 1000;
+  return Array.from({ length: 7 }, (_, i) => {
+    const from = first + i * DAY;
+    const day = new Date(from * 1000);
+    return {
+      key: i,
+      label: i === 0 ? "Today" : WEEKDAY[day.getDay()],  // the Date's own getter, as `format.absolute`
+      n: windows.filter((w) => w.starts_at >= from && w.starts_at < from + DAY).length,
+    };
+  });
+}
+
+export class PlannedWork extends Component {
+  constructor(props) {
+    super(props);
+    this.state = { windows: null, total: 0, error: null };
+  }
+
+  componentDidMount() {
+    this.read();
+    // The list is a clock: a countdown that never moves is a countdown an operator stops
+    // believing. One read a minute, and cleared on unmount so a closed screen stops polling.
+    this.timer = setInterval(() => this.read(), 60000);
+  }
+
+  componentWillUnmount() { clearInterval(this.timer); }
+
+  async read() {
+    try {
+      const body = await get(withBroker(`/api/maintenance-windows?status=${LIVE}&limit=200`,
+        this.props.brokerId));
+      this.setState({ windows: body.windows || [], total: body.total || 0, error: null });
+    } catch (error) {
+      this.setState({ error: error.message || String(error) });
+    }
+  }
+
+  render() {
+    const { windows, total, error } = this.state;
+    const head = html`<div class="section-heading"><h3><${SectionMark} icon="maintenance" />Planned work</h3>
+      <a class="sitsum-all" href="#/maintenance">View all</a></div>`;
+    if (error) {
+      // A read that failed is a sentence, not a spinner and not a blank.
+      return html`<section class="panel-block mwsum" data-role="planned-work">${head}
+        <p class="hint" data-role="planned-error">Could not read planned work. ${error}</p>
+      <//>`;
+    }
+    if (windows === null) return null;  // first read in flight; no skeleton for one line
+    if (!windows.length) {
+      return html`<section class="panel-block mwsum" data-role="planned-work">${head}
+        <div class="mwsum-empty" data-role="planned-none">
+          <${Asleep} />
+          <div><b>Nothing planned</b>
+            <p class="muted">No maintenance window is running or scheduled — no alarm is suppressed.</p>
+            ${can("mw.write") ? html`<a class="btn-ghost" href="#/maintenance">Plan a window</a>` : null}</div>
+        </div>
+      <//>`;
+    }
+
+    const { running, ahead } = split(windows);
+    const pending = ahead.filter((w) => w.status === "pending_confirmation").length;
+    const hosts = running.reduce((n, w) => n + (w.target_count || 0), 0);
+    const next = [...running, ...ahead].slice(0, SHOWN);
+    const more = Math.max(0, total - next.length);
+    const days = week(ahead);
+    const top = Math.max(1, ...days.map((d) => d.n));
+    const tiles = [
+      ["running", running.length, running.length ? "mwsum-hot" : ""],
+      ["scheduled", ahead.length - pending, ""],
+      ["to confirm", pending, pending ? "mwsum-warn" : ""],
+    ];
+    return html`<section class="panel-block mwsum" data-role="planned-work">${head}
+      <div class="mwsum-body">
+        <div class="mwsum-kpis">
+          ${tiles.map(([word, n, tone]) => html`<a key=${word} href="#/maintenance"
+              class=${`mwsum-kpi ${tone}`} data-role=${word === "running" ? "running" : null}>
+            <b>${count(n)}</b><span>${word}</span></a>`)}
+          ${hosts
+            ? html`<p class="mwsum-caveat">Alarms from ${plural(hosts, "host", "hosts")} may be
+                suppressed.</p>`
+            : null}
+        </div>
+        <div class="mwsum-week" role="img"
+             aria-label=${`Windows starting in the next 7 days: ${days.map((d) => `${d.label} ${d.n}`).join(", ")}`}>
+          ${days.map((d) => html`<div key=${d.key} class="mwsum-day" title=${`${d.label}: ${plural(d.n, "window")}`}>
+            <span class="mwsum-col"><i style=${`height:${d.n ? Math.max(8, (100 * d.n) / top) : 0}%`}></i></span>
+            <b>${d.n || ""}</b><small>${d.label}</small>
+          </div>`)}
+        </div>
+        <div>
+          <ul class="mwsum-list" data-role="upcoming">${next.map((w) => html`<li key=${w.id}
+            data-window=${w.id} data-status=${w.status}>
+            <a class="mwsum-row" href="#/maintenance">
+              <i class=${`mwsum-dot mwsum-${TONE[w.status] || "muted"}`} title=${LABEL[w.status] || w.status}
+                aria-label=${LABEL[w.status] || w.status}></i>
+              ${/* A redacted row still says a window EXISTS and when — prime directive 4. */ null}
+              <span class="mw-sum-name">${w.redacted
+                ? html`<span class="muted">Maintenance on ${plural(w.target_count, "host", "hosts")}</span>`
+                : w.name}</span>
+              <span class="muted mw-row-when">${w.status === "active"
+                ? `${humanise(w.ends_in_s)} left`
+                : w.starts_in_s > 0 ? `in ${humanise(w.starts_in_s)}` : "starting"}</span>
+            </a></li>`)}</ul>
+          ${more ? html`<a class="mwsum-more" href="#/maintenance">and ${count(more)} more</a>` : null}
+        </div>
+      </div>
+    <//>`;
+  }
+}
+
+/* A crescent moon asleep, in the console's own line weight — the empty state's picture. */
+function Asleep() {
+  return html`<svg class="mwsum-asleep" viewBox="0 0 96 72" aria-hidden="true" focusable="false">
+    <path class="mwsum-moon" d="M44 12a24 24 0 1 0 26 33A20 20 0 1 1 44 12z" />
+    <path class="mwsum-lid" d="M27 41q4 4 8 0" />
+    <text x="66" y="22" class="mwsum-z">z</text><text x="76" y="13" class="mwsum-z mwsum-z2">z</text>
+  </svg>`;
+}

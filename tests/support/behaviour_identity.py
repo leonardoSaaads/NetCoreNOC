@@ -273,6 +273,10 @@ UNDRIVEN_QUERY_PARAMS: dict[tuple[str, str], tuple[str, ...]] = {
     ("GET", "/api/noc/secrets"): ("customer_id", "unassigned"),
     ("GET", "/api/noc/cases/kpis"): ("days",),
     ("GET", "/api/noc/cases/{sid}/feed"): ("before", "limit"),
+    # ADR #500: an email's draft — a reply's, a reply all's, the customer update's — recorded at
+    # its defaults (the record's cases have no customer); driven in
+    # `tests/api/test_noc_customer_mail.py`.
+    ("GET", "/api/noc/cases/{sid}/email/draft"): ("all_", "reply_to", "update"),
     # ADR #465: an agent's activity window, recorded at its default; driven in
     # `tests/api/test_noc_agents.py`.
     ("GET", "/api/noc/agents/{agent_id}"): ("days",),

@@ -7,8 +7,9 @@ What the owner asked, each answered by driving the real routes:
 * an agent sees whose equipment each credential reaches, and never leases a customer's mail server;
 * a customer's email settings are its book (who works cases keeps them) but which credential sends
   and reads is a custodian's choice, of that customer's own SMTP and IMAP credentials;
-* a sent customer update is emailed to the customer's recipients, its subject tagged with the case,
-  and recorded with its Message-ID — or, with no mail server, recorded as not sent, and said so;
+* an email written on a case (ADR #500) goes to its own To, Cc and Bcc, its subject tagged with the
+  case, and is recorded with its Message-ID and shown on the feed — or, with no mail server,
+  recorded as not sent, and said so; Reply all answers a customer's message on the same thread;
 * the customer's reply, read from its mailbox, lands on the case's feed as the customer's, and a
   case waiting on the customer goes back to the queue **unassigned**, for the agent at its tier with
   the fewest cases; a reply from an unregistered address, an automatic reply and a message read
@@ -25,7 +26,7 @@ import httpx
 import pytest
 
 from netcorenoc.crosscutting import inbox, mail
-from netcorenoc.engine.noc import custmail, mail_loop, routing
+from netcorenoc.engine.noc import custmail, mail_loop
 from netcorenoc.store import Store
 
 import authutil
@@ -240,11 +241,19 @@ async def test_the_email_settings_name_the_customers_own_credentials(store: Stor
 
 
 def _reply(
-    *, sender: str, subject: str, refs: str = "", body: str = "", auto: bool = False
+    *,
+    sender: str,
+    subject: str,
+    refs: str = "",
+    body: str = "",
+    auto: bool = False,
+    cc: str = "",
 ) -> bytes:
     message = EmailMessage()
     message["From"] = sender
     message["To"] = "noc@acme.example"
+    if cc:
+        message["Cc"] = cc
     message["Subject"] = subject
     message["Message-ID"] = f"<{abs(hash((sender, subject, refs, body)))}@customer.example>"
     if refs:
@@ -256,15 +265,23 @@ def _reply(
     return bytes(message)
 
 
-async def test_the_update_is_emailed_and_the_reply_requeues_the_case(
+async def test_an_email_from_the_case_and_reply_all_to_the_customers_answer(
     store: Store, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    """ADR #500, the owner's own scenario: the NOC emails the customer from the case asking for a
+    date; the customer answers with two; the case goes back to the queue; the engineer who takes
+    it answers with Reply all — recipients, subject and thread worked out — and sets the case
+    pending on the customer again."""
     _engine, _queue, app = await authutil.make_env(store)
     ids = await _estate(store)
-    acme, globex = ids["acme"], ids["globex"]
+    acme = ids["acme"]
     admin = await authutil.client_as(app, "admin")
-    sent: list[EmailMessage] = []
-    monkeypatch.setattr(mail, "send", lambda config, message, password=None: sent.append(message))
+    sent: list[tuple[EmailMessage, list[str] | None]] = []
+    monkeypatch.setattr(
+        mail,
+        "send",
+        lambda config, message, password=None, envelope=None: sent.append((message, envelope)),
+    )
     try:
         smtp = (
             await admin.post(
@@ -292,127 +309,184 @@ async def test_the_update_is_emailed_and_the_reply_requeues_the_case(
                 ),
             )
         ).json()
-        assert imap["port"] == 993
-        await admin.post(
+        saved = await admin.post(
             f"/api/noc/customers/{acme}/mail",
             json={
-                "recipients": "ops@acme.example",
-                "cc": "boss@acme.example",
                 "sender": "noc@acme.example",
                 "smtp_secret_id": smtp["id"],
                 "imap_secret_id": imap["id"],
                 "version": 0,
             },
         )
-        # Two agents at tier 1; the case is taken by the first and set pending on the customer.
+        assert saved.status_code == 200, saved.text
         async with store.lock:
             spec = {"role": "engineer", "adapter": "external", "entry": True}
             busy = await store.noc_create_agent({**spec, "name": "Atlas"}, time.time(), "t")
-            free = await store.noc_create_agent({**spec, "name": "Nova"}, time.time(), "t")
+            await store.noc_create_agent({**spec, "name": "Nova"}, time.time(), "t")
             await store.commit()
         sid = await _case(store)
         assert (await admin.post(f"/api/noc/cases/{sid}/take")).status_code == 200
-        assert (
-            await admin.post(
-                f"/api/noc/cases/{sid}", json={**COMPLETE, "next_update_at": time.time() + 3600}
-            )
-        ).status_code == 200
-        async with store.lock:
-            await store.noc_case_assign(sid, busy, time.time())
-            await store.commit()
-        answer = await admin.post(f"/api/noc/cases/{sid}/customer-update")
-        assert answer.status_code == 200, answer.text
-        assert (
-            answer.json()["email"]
-            and "Emailed the customer update to Acme" in answer.json()["email"][0]
+        full = {**COMPLETE, "next_update_at": time.time() + 3600}
+        assert (await admin.post(f"/api/noc/cases/{sid}", json=full)).status_code == 200
+        # The update is posted; emailing it is a step of its own (ADR #500).
+        posted = await admin.post(f"/api/noc/cases/{sid}/customer-update")
+        assert posted.status_code == 200 and "email" not in posted.json() and not sent
+        draft = (await admin.get(f"/api/noc/cases/{sid}/email/draft?update=1")).json()
+        assert draft["available"] and draft["from"] == "noc@acme.example"
+        assert draft["subject"] == f"[NetCoreNOC #{sid}] Fibre span down"
+        assert any("One link down" in r["t"] for b in draft["doc"] for r in b.get("p", []))
+
+        doc = [
+            {"p": [{"t": "Hello. "}, {"t": "A technician must connect the device.", "b": True}]},
+            {"p": [{"t": "Which day suits you?"}]},
+            {"ul": [[{"t": "10th"}], [{"t": "15th"}]]},
+        ]
+        out = await admin.post(
+            f"/api/noc/cases/{sid}/email",
+            json={
+                "to": ["ops@acme.example"],
+                "cc": ["boss@acme.example"],
+                "bcc": ["audit@noc.example"],
+                "subject": "Field visit",
+                "doc": doc,
+            },
         )
-        assert len(sent) == 1
-        message = sent[0]
-        assert message["Subject"] == f"[NetCoreNOC #{sid}] Fibre span down"
+        assert out.status_code == 200, out.text
+        assert out.json()["outcome"] == "sent"
+        message, envelope = sent[-1]
+        assert message["Subject"] == f"[NetCoreNOC #{sid}] Field visit"
         assert message["To"] == "ops@acme.example" and message["Cc"] == "boss@acme.example"
-        assert "One link down between two sites" in message.get_content()
+        assert "audit@noc.example" not in str(message), "a blind copy is on the envelope only"
+        assert envelope == ["ops@acme.example", "boss@acme.example", "audit@noc.example"]
+        html_part = message.get_body(preferencelist=("html",))
+        assert html_part is not None
+        assert "<strong>A technician must connect the device.</strong>" in html_part.get_content()
+        plain = message.get_body(preferencelist=("plain",))
+        assert plain is not None and "- 10th" in plain.get_content()
+
+        feed = (await admin.get(f"/api/noc/cases/{sid}/feed")).json()["posts"]
+        email_post = next(p for p in feed if p["kind"] == "email")
+        assert email_post["mail"]["bcc"] == "audit@noc.example", "the NOC sees its blind copies"
+        assert email_post["mail"]["doc"][2] == {"ul": [[{"t": "10th"}], [{"t": "15th"}]]}
+        viewer = await authutil.client_as(app, "viewer")
+        seen = (await viewer.get(f"/api/noc/cases/{sid}/feed")).json()["posts"]
+        assert next(p for p in seen if p["kind"] == "email")["mail"]["bcc"] == ""
+        await viewer.aclose()
+
         pend = await admin.post(
             f"/api/noc/cases/{sid}/status",
             json={"status": "pending_customer", "next_update_at": time.time() + 3600},
         )
         assert pend.status_code == 200, pend.text
+        async with store.lock:
+            await store.noc_case_assign(sid, busy, time.time())
+            await store.commit()
 
-        replies = [
-            _reply(
-                sender="ops@acme.example",
-                subject=f"Re: [NetCoreNOC #{sid}] Fibre span down",
-                refs=str(message["Message-ID"]),
-                body="Circuit ref ACME-778. Go ahead.\n\nOn Mon, NOC wrote:\n> old text",
-            ),
-            _reply(sender="stranger@evil.example", subject=f"[NetCoreNOC #{sid}] hi", body="x"),
-            _reply(sender="ops@acme.example", subject="Out of office", body="away", auto=True),
-        ]
-        monkeypatch.setattr(inbox, "fetch_unseen", lambda box, limit=20: list(replies))
+        answer = _reply(
+            sender="ops@acme.example",
+            cc="boss@acme.example, noc@acme.example",
+            subject=f"Re: [NetCoreNOC #{sid}] Field visit",
+            refs=str(message["Message-ID"]),
+            body="The 10th or the 15th of next month.\n\nOn Mon, NOC wrote:\n> old text",
+        )
+        stranger = _reply(sender="stranger@evil.example", subject=f"[NetCoreNOC #{sid}] hi")
+        away = _reply(sender="ops@acme.example", subject="Out of office", body="x", auto=True)
+        monkeypatch.setattr(inbox, "fetch_unseen", lambda box, limit=20: [answer, stranger, away])
         counts = await mail_loop.tick(store)
         assert counts["posted"] == 1 and counts["refused"] == 2, counts
         async with store.reading():
             case = await store.noc_case(sid)
-            cur = await store.conn.execute(
-                "SELECT body, author_kind, visibility FROM noc_case_post WHERE situation_id = ? "
-                "AND author_kind = 'customer'",
-                (sid,),
-            )
-            customer_posts = [dict(r) for r in await cur.fetchall()]
-            cur = await store.conn.execute(
-                "SELECT reason FROM noc_case_cycle WHERE situation_id = ? ORDER BY id DESC LIMIT 1",
-                (sid,),
-            )
-            last = await cur.fetchone()
-            assert last is not None
-            reason = last[0]
-        assert case is not None and case["status"] == "queue" and case["agent_id"] is None, (
-            "back in the queue, off its agent, for the routing to balance"
-        )
-        assert reason == "customer_email"
-        assert len(customer_posts) == 1 and customer_posts[0]["visibility"] == "all"
-        assert "Circuit ref ACME-778. Go ahead." in customer_posts[0]["body"]
-        assert "old text" not in customer_posts[0]["body"], "the quoted history is cut"
-        # Read twice: posted once.
-        assert (await mail_loop.tick(store))["known"] == 3
-        # The routing gives it to the agent with the fewest cases at its tier.
-        async with store.reading():
-            everyone = {int(a["id"]): a for a in await store.noc_agents()}
-        loads = {busy: 3, free: 0}
-        picked = routing.pick_entry(everyone, loads)
-        assert picked is not None and picked["id"] == free
+        assert case is not None and case["status"] == "queue" and case["agent_id"] is None
+        feed = (await admin.get(f"/api/noc/cases/{sid}/feed")).json()["posts"]
+        received = next(p for p in feed if p.get("mail") and p["mail"]["direction"] == "in")
+        assert received["author"]["kind"] == "customer"
+        assert "The 10th or the 15th" in received["mail"]["text"]
+        assert "old text" not in received["mail"]["text"], "the quoted history is cut"
 
-        # A reply naming a case of another customer is kept, not posted.
-        other = await _case(store, device="192.168.50.1")
-        stray = _reply(
-            sender="ops@acme.example", subject=f"[NetCoreNOC #{other}] status?", body="?"
+        # Reply all: recipients, subject and thread from the server, never retyped.
+        reply_draft = (
+            await admin.get(
+                f"/api/noc/cases/{sid}/email/draft?reply_to={received['mail']['id']}&all=1"
+            )
+        ).json()
+        assert reply_draft["to"] == ["ops@acme.example"]
+        assert reply_draft["cc"] == ["boss@acme.example"], "everyone else, never ourselves"
+        assert reply_draft["subject"] == f"Re: [NetCoreNOC #{sid}] Field visit"
+        assert "The 10th or the 15th" in reply_draft["doc"][-1]["quote"][0]["t"]
+        assert (await admin.post(f"/api/noc/cases/{sid}/take")).status_code == 200
+        back = await admin.post(
+            f"/api/noc/cases/{sid}/email",
+            json={
+                "reply_to": received["mail"]["id"],
+                "reply_all": True,
+                "text": "We can book the 11th.\n\n- 09:00 to 12:00",
+            },
         )
-        monkeypatch.setattr(inbox, "fetch_unseen", lambda box, limit=20: [stray])
-        assert (await mail_loop.tick(store))["unmatched"] == 1
-        log = (await admin.get(f"/api/noc/customers/{acme}/mail")).json()["messages"]
-        assert {"sent", "posted", "refused", "unmatched"} <= {m["outcome"] for m in log}
-        del globex
+        assert back.status_code == 200, back.text
+        assert back.json()["to"] == ["ops@acme.example"] and back.json()["cc"] == [
+            "boss@acme.example"
+        ]
+        threaded, _env = sent[-1]
+        assert threaded["Subject"] == f"Re: [NetCoreNOC #{sid}] Field visit"
+        assert threaded["In-Reply-To"] == answer_id(answer)
+        assert str(message["Message-ID"]) in str(threaded["References"])
+        audit = [r for r in await _audit(store) if r["action"] == "noc.case.email"]
+        assert len(audit) == 2 and all(r["outcome"] == "ok" for r in audit), audit
+        # A message of another case is not one a reply may answer.
+        other = await _case(store, device="192.168.50.1")
+        refused = await admin.post(
+            f"/api/noc/cases/{other}/email",
+            json={"reply_to": received["mail"]["id"], "text": "x"},
+        )
+        assert refused.status_code == 400
     finally:
         await admin.aclose()
 
 
-async def test_without_a_mail_server_the_update_says_it_was_not_emailed(store: Store) -> None:
+def answer_id(raw: bytes) -> str:
+    return str(custmail.parse(raw).message_id)
+
+
+async def _audit(store: Store) -> list[dict[str, Any]]:
+    async with store.reading():
+        return await store.audit_all()
+
+
+async def test_without_a_mail_server_the_email_is_kept_as_not_sent(store: Store) -> None:
     _engine, _queue, app = await authutil.make_env(store)
-    ids = await _estate(store)
+    await _estate(store)
     admin = await authutil.client_as(app, "admin")
     try:
-        await admin.post(
-            f"/api/noc/customers/{ids['acme']}/mail",
-            json={"recipients": "ops@acme.example", "version": 0},
-        )
         sid = await _case(store)
         assert (await admin.post(f"/api/noc/cases/{sid}/take")).status_code == 200
-        full = {**COMPLETE, "next_update_at": time.time() + 3600}
-        assert (await admin.post(f"/api/noc/cases/{sid}", json=full)).status_code == 200
-        answer = (await admin.post(f"/api/noc/cases/{sid}/customer-update")).json()
-        assert answer["sent"] is True
-        assert answer["email"] == [
-            "The customer update was not emailed to Acme: no SMTP server is set up."
-        ]
+        out = await admin.post(
+            f"/api/noc/cases/{sid}/email", json={"to": ["ops@acme.example"], "text": "Hello"}
+        )
+        assert out.status_code == 200, out.text
+        assert out.json()["outcome"] == "failed" and "no SMTP server" in out.json()["detail"]
+        feed = (await admin.get(f"/api/noc/cases/{sid}/feed")).json()["posts"]
+        failed = next(p for p in feed if p["kind"] == "email")
+        assert failed["mail"]["outcome"] == "failed" and "Not sent" in failed["body"]
+        for body, status in (
+            ({"to": ["not-an-address"], "text": "x"}, 400),
+            ({"to": [], "text": "x"}, 400),
+            ({"to": ["a@b.example"], "doc": [{"script": [{"t": "x"}]}]}, 400),
+            (
+                {
+                    "to": ["a@b.example"],
+                    "doc": [{"p": [{"t": "x", "href": "javascript:alert(1)"}]}],
+                },
+                400,
+            ),
+        ):
+            resp = await admin.post(f"/api/noc/cases/{sid}/email", json=body)
+            assert resp.status_code == status, (body, resp.text)
+        viewer = await authutil.client_as(app, "viewer")
+        denied = await viewer.post(
+            f"/api/noc/cases/{sid}/email", json={"to": ["ops@acme.example"], "text": "x"}
+        )
+        assert denied.status_code == 403
+        await viewer.aclose()
     finally:
         await admin.aclose()
 
@@ -442,3 +516,95 @@ def test_a_reply_is_read_as_the_customers_words() -> None:
     assert "Line one" in text and "Line & two" in text and "alert" not in text
     no_id = custmail.parse(b"From: a@b.example\r\nSubject: hi\r\n\r\nbody")
     assert no_id.message_id.endswith("@netcorenoc.invalid>")
+
+
+def test_the_body_is_a_document_and_its_html_is_written_here() -> None:
+    """ADR #500: no HTML a browser produced is relayed. Every text is escaped, a link must be
+    http(s) or mailto, and anything that is not a paragraph, a list or a quote is refused."""
+    from netcorenoc.engine.noc import richtext
+
+    doc = richtext.validate(
+        [
+            {"p": [{"t": "<script>alert(1)</script>", "b": True}, {"t": "big", "size": "large"}]},
+            {"p": [{"t": "site", "href": "https://acme.example/a?b=1&c=2"}]},
+            {"ol": [[{"t": "one"}], [{"t": "two", "i": True}]]},
+        ]
+    )
+    out = richtext.to_html(doc)
+    assert "<script>" not in out and "&lt;script&gt;alert(1)&lt;/script&gt;" in out
+    assert "<strong>&lt;script&gt;" in out and "font-size:18px" in out
+    assert 'href="https://acme.example/a?b=1&amp;c=2"' in out
+    assert "<ol><li>one</li><li><em>two</em></li></ol>" in out
+    assert richtext.to_text(doc).endswith("1. one\n\n2. two")
+    bad: list[dict[str, Any]]
+    for bad in (
+        [{"p": [{"t": "x", "href": "javascript:alert(1)"}]}],
+        [{"p": [{"t": "x", "href": 'https://a.example/"onmouseover="x'}]}],
+        [{"p": [{"t": "x", "size": "999px"}]}],
+        [{"img": [{"t": "x"}]}],
+        [{"p": []}],
+        [],
+    ):
+        with pytest.raises(richtext.RichTextError):
+            richtext.validate(bad)
+    assert richtext.from_text("Hello\n\n- a\n- b") == [
+        {"p": [{"t": "Hello"}]},
+        {"ul": [[{"t": "a"}], [{"t": "b"}]]},
+    ]
+
+
+def test_reply_all_goes_to_everyone_on_it_but_us() -> None:
+    inbound = {
+        "direction": "in",
+        "sender": "ops@acme.example",
+        "recipients": "noc@acme.example",
+        "cc": "boss@acme.example, NOC@acme.example",
+    }
+    assert custmail.reply_recipients(inbound, ["noc@acme.example"], everyone=False) == (
+        ["ops@acme.example"],
+        [],
+    )
+    assert custmail.reply_recipients(inbound, ["noc@acme.example"], everyone=True) == (
+        ["ops@acme.example"],
+        ["boss@acme.example"],
+    )
+    outbound = {
+        "direction": "out",
+        "sender": "noc@acme.example",
+        "recipients": "a@x.example",
+        "cc": "b@x.example",
+    }
+    assert custmail.reply_recipients(outbound, ["noc@acme.example"], everyone=True) == (
+        ["a@x.example"],
+        ["b@x.example"],
+    )
+    case = 7  # a case number, spelled through a name: the docs guard reads `#` and digits
+    nested = custmail.reply_subject(case, f"RE: Fw: [NetCoreNOC #{case}] Visit")
+    assert nested == f"Re: [NetCoreNOC #{case}] Visit", "Re: once, the tag kept"
+
+
+def test_a_reply_chain_names_each_message_once_and_its_parent_last() -> None:
+    """ADR #505: the lab's reply to a customer listed the first message twice in `References` —
+    the customer's client named it in both `References` and `In-Reply-To`, and each was added."""
+    raw = (
+        b"From: campo@claro.lab\r\nTo: noc@claro.lab\r\nSubject: Re: Visit\r\n"
+        b"Message-ID: <b@claro.lab>\r\nIn-Reply-To: <a@claro.lab>\r\n"
+        b"References: <a@claro.lab>\r\n\r\nThe 10th or the 15th.\r\n"
+    )
+    reply = custmail.parse(raw)
+    assert reply.refs == ("<a@claro.lab>",), reply.refs
+    sent = custmail.compose(
+        42,
+        sender="noc@claro.lab",
+        sender_name="NOC",
+        to=["campo@claro.lab"],
+        cc=[],
+        bcc=[],
+        subject="Re: Visit",
+        text="The 10th.",
+        html_body="<p>The 10th.</p>",
+        in_reply_to=reply.message_id,
+        refs=(*reply.refs, *reply.refs),
+    )
+    assert sent["References"] == "<a@claro.lab> <b@claro.lab>"
+    assert sent["In-Reply-To"] == "<b@claro.lab>"

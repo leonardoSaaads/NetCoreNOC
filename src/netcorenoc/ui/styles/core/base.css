@@ -1,0 +1,193 @@
+/* ADR #479: Inter, self-hosted — the CSP's `font-src 'self'` allows exactly this file. */
+@font-face {
+  font-family: "InterVariable";
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: swap;
+  src: url("/vendor/inter-5.3.0.latin.woff2") format("woff2");
+}
+
+html, body {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+  background: var(--bg);
+  color: var(--fg);
+  font: var(--fs-md)/1.5 var(--sans);
+  /* Inter's tabular figures and its open digits: numbers line up in every column and tile. */
+  font-feature-settings: "cv11", "ss01", "tnum";
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Visible focus everywhere, on every interactive thing, in both themes. */
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: var(--radius-1);
+}
+
+a { color: var(--accent); text-decoration: none; }
+a:hover { text-decoration: underline; }
+code, .mono, pre { font-family: var(--mono); font-size: var(--fs-sm); }
+h1, h2, h3, h4 { margin: 0 0 var(--space-2); font-weight: 600; line-height: 1.25; letter-spacing: -0.011em; }
+h1 { font-size: var(--fs-xl); letter-spacing: -0.02em; }
+h2 { font-size: var(--fs-lg); }
+/* A panel's title, in sentence case as Paperclip writes them (ADR #479): the shouting capitals
+   are kept for the one place they help scanning — the sidebar's group labels. */
+h3 { font-size: 14px; color: var(--fg); }
+p { margin: 0 0 var(--space-2); }
+
+.visually-hidden {
+  position: absolute; width: 1px; height: 1px; margin: -1px;
+  padding: 0; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0;
+}
+.hidden-visually { display: none; }
+.muted { color: var(--fg-muted); }
+.hint { color: var(--fg-muted); font-size: var(--fs-sm); margin: 0 0 var(--space-2); }
+.err { color: var(--alarm); font-size: var(--fs-sm); }
+.ok-note { color: var(--quiet); font-size: var(--fs-sm); }
+
+button, select, input, textarea {
+  font: inherit;
+  color: var(--fg);
+  background: var(--bg-raised);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-1);
+  padding: var(--space-1) 10px;
+  transition: background-color 120ms ease, border-color 120ms ease, color 120ms ease;
+}
+select:hover, input:hover:not([type="checkbox"]):not([type="radio"]), textarea:hover { border-color: var(--fg-dim); }
+input:focus, select:focus, textarea:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+/* The pointer floor (F81), applied where controls are made rather than per call site.
+ *
+ * **v0.16.4 (F103): the exclusion is gone, and it was the whole defect.** This read
+ * `input:not([type="checkbox"]):not([type="radio"])`, so the floor covered every control except
+ * the two an operator taps with a fingertip. Measured in Chromium as an editor at 390, 820 and
+ * 1440 px: 72 member checkboxes, every one **13x13 px** — less than a quarter of the floor's area,
+ * in the column that decides which pairs a partial split asserts negative.
+ *
+ * A checkbox cannot simply take `min-height`: its box is its glyph, so growing it grows the tick.
+ * `width`/`height` at the floor and a matching `accent-color` give a real 28x28 target that still
+ * draws as a checkbox, and `flex: none` keeps it from being compressed inside the flex row a
+ * member cell becomes — the half-repair `.permalink` already taught this stylesheet (see `a.tap`).
+ */
+button, select, input { min-height: var(--tap); }
+/* **The tick got smaller and the target did not** (v0.16.5, DECISIONS #302).
+ *
+ * F103 took the member checkbox from 13x13 to 28x28 by setting `width`/`height` to `--tap`. That
+ * fixed the target and overshot the glyph: 28 px of drawn checkbox in a 43 px table row reads as a
+ * form control that thinks it is a button, and the maintainer said so.
+ *
+ * **The first attempt at separating the two did not work, and the reason is worth keeping.**
+ * `box-sizing: content-box` with `width: 18px; padding: 5px` should give an 18 px glyph in a 28 px
+ * border box. Measured in Chromium: padding **`0px`**, hit area **18x28**, below the floor. A
+ * native control still at `appearance: auto` is laid out by the engine's own widget code and
+ * **ignores padding entirely** — the declaration is not overridden, it is discarded. So the box is
+ * drawn here instead, which is what every design system that needed this arrived at:
+ *
+ *   * the `input` keeps `--tap` on both edges and is the **hit area**, transparent and borderless;
+ *   * `::before` is the **box**, `--glyph` on a side, centred by the grid;
+ *   * `::after` is the **tick**, two borders rotated 45 degrees — not a `data:` URI, because
+ *     `img-src 'self'` in this appliance's CSP does not permit one and a silently blocked
+ *     background is a checkbox with no tick.
+ *
+ * `--glyph` is 18 px where there is a mouse and the full 28 px where there is not: a fingertip has
+ * no pixel-accurate centre to aim with, so on touch the tick should be as large as its target.
+ *
+ * F103's guard reads the floor's *selector* and refuses negations; it cannot see a glyph drawn in a
+ * pseudo-element. So this is measured instead, in both places: `test_ui_invariants` asserts the
+ * rule keeps `--tap` on the input, and the browser pass asserts the hit box at every width. */
+:root { --glyph: var(--tap); }
+@media (hover: hover) and (pointer: fine) { :root { --glyph: 18px; } }
+
+input[type="checkbox"], input[type="radio"] {
+  appearance: none; -webkit-appearance: none;
+  width: var(--tap); height: var(--tap); min-width: var(--tap); flex: none;
+  display: inline-grid; place-content: center; position: relative;
+  margin: 0; padding: 0; border: 0; background: none; cursor: pointer;
+}
+input[type="checkbox"]::before, input[type="radio"]::before {
+  content: ""; display: block;
+  width: var(--glyph); height: var(--glyph);
+  border: 1.5px solid var(--line-strong); border-radius: var(--radius-1);
+  background: var(--bg-raised);
+  transition: background 120ms ease, border-color 120ms ease;
+}
+input[type="radio"]::before { border-radius: 50%; }
+input[type="checkbox"]:checked::before, input[type="radio"]:checked::before {
+  background: var(--accent); border-color: var(--accent);
+}
+/* `left`/`top` at 50 % and a translate, **not** a bare `position: absolute`. Without offsets an
+   absolutely positioned pseudo-element falls back to its static position, and the static position
+   of a grid item inside `place-content: center` is not the centre of the box — measured: the tick
+   rendered somewhere with no offsets at all and the checked box drew as a solid square with no
+   mark on it. `-58%` rather than `-50%` on Y because a checkmark's optical centre sits below its
+   bounding box's centre, and the difference is visible at 18 px. */
+input[type="checkbox"]:checked::after {
+  content: ""; position: absolute; left: 50%; top: 50%;
+  width: calc(var(--glyph) * 0.3); height: calc(var(--glyph) * 0.56);
+  border: solid var(--bg); border-width: 0 2px 2px 0;
+  transform: translate(-50%, -58%) rotate(45deg);
+}
+input[type="radio"]:checked::after {
+  content: ""; position: absolute; left: 50%; top: 50%;
+  width: calc(var(--glyph) * 0.4); height: calc(var(--glyph) * 0.4);
+  border-radius: 50%; background: var(--bg);
+  transform: translate(-50%, -50%);
+}
+input[type="checkbox"]:disabled, input[type="radio"]:disabled { cursor: not-allowed; opacity: 0.5; }
+input[type="checkbox"]:focus-visible::before, input[type="radio"]:focus-visible::before {
+  outline: 2px solid var(--accent); outline-offset: 2px;
+}
+/* An indeterminate box is neither on nor off, and the select-all header is in that state whenever
+   some but not all members are marked. Without this it draws as unchecked, which says "nothing is
+   marked" over a table where something is. */
+input[type="checkbox"]:indeterminate::before {
+  background: var(--accent); border-color: var(--accent);
+}
+input[type="checkbox"]:indeterminate::after {
+  content: ""; position: absolute; left: 50%; top: 50%;
+  width: calc(var(--glyph) * 0.5); height: 2px; background: var(--bg);
+  border-radius: 1px; transform: translate(-50%, -50%);
+}
+button { cursor: pointer; font-weight: 500; }
+button:hover:not(:disabled) { background: var(--bg-hover); border-color: var(--fg-dim); }
+button:disabled { opacity: 0.5; cursor: not-allowed; }
+
+/* ---- action affordances: one primary per screen, secondaries visibly secondary ----
+ *
+ * The GitHub half of the brief, and it is about SHAPE rather than palette. Until now every
+ * button in this console was the same button: "Add user", "Cancel" and "Delete" were one
+ * grey rectangle, so a screen offered no answer to "what am I here to do".
+ *
+ * `.primary` is the one action a screen exists for. `.warn` names what it will destroy and
+ * is the only one that borrows the alarm colour. Everything else stays the default, which
+ * is what makes the primary readable — a screen where three buttons are primary has none. */
+button.primary {
+  background: var(--primary); color: var(--primary-fg);
+  border-color: var(--primary); font-weight: 600;
+}
+/* The fill is restated: `button:hover:not(:disabled)` outranks `button.primary` and painted the hover
+   background under the primary's own ink, so a hovered primary read as an empty box. */
+button.primary:hover:not(:disabled) { background: var(--primary); border-color: var(--primary); filter: brightness(0.9); }
+button.warn { border-color: var(--alarm); color: var(--alarm); }
+button.warn:hover:not(:disabled) { background: var(--alarm-bg); }
+button.icon {
+  padding: var(--space-1); line-height: 1; min-width: var(--tap);
+  display: inline-flex; align-items: center; justify-content: center;
+}
+/* A link that acts like a button gets the target size too — the `#1` permalink measured 18x17
+   and the identity link 32x19, which are pointer targets nobody on a phone can hit reliably.
+   Applied to the classes rather than to every `a`: a link inside a sentence is not a control,
+   and forcing 28 px on one would open gaps in running text for no gain. */
+a.tap, .who, .permalink, .mini-list a {
+  display: inline-flex; align-items: center; justify-content: center;
+  min-height: var(--tap); min-width: var(--tap); padding: 0 var(--space-1);
+  /* `flex: none` because these sit inside flex rows that would otherwise compress them: the
+     situation permalink measured 19 px wide with `min-height` already applied, so the height
+     was fixed and the width was not — half a repair reads as a whole one until it is measured. */
+  flex: none;
+}
+textarea { width: 100%; font-family: var(--mono); }
+label { display: block; font-size: var(--fs-sm); color: var(--fg-muted); margin-bottom: var(--space-1); }

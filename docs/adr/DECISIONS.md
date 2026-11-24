@@ -7417,3 +7417,171 @@ From this release an entry is about six lines: decision, reason, release.*
   on the client: asyncpg cancelled mid-pipeline stops sending, and every later statement waited.
   The runner's steps are each bounded (§A.5) only if the writer answers; the watchdog keeps the
   promise for whatever else may not, and its dump names it.
+
+## 499. A person may be limited to customers: their brokers and their side of the NOC (unreleased)
+
+- **Context**: one appliance serves several customers, each with brokers and a NOC book. A person
+  made for one of them — "Claro - viewer", or an editor who works Claro's cases — must see Claro
+  and nothing of any other customer, in the Broker plane and in the NOC alike, and an admin must be
+  able to say so when the person is made.
+- **Decision**: the visibility policy takes a sixth selector, **`org:<id>`**: every element the
+  customer owns (`ne.organization_id`), in every broker. A resolved scope now carries the
+  customers it reaches — those it names and the owners of the elements it sees (`Scope.orgs`) —
+  and those it names (`named_orgs`), whose every broker it lists even before the first trap.
+- **Decision**: the NOC's customer records follow `Scope.orgs`: the customer list and book, its
+  documents, circuits and email settings; its **routines** (a shared routine stays everyone's, its
+  runs on other customers' cases are hidden); its **credentials** — a limited custodian holds its
+  customers' and never a shared one (an AI provider's key), files new ones under one of them, and
+  an agent token limited the same way leases only those; an **agent's runs and cases** are shown
+  for the caller's cases only. A record out of reach is the same 404 as one that does not exist.
+- **Decision**: People & access gains a **Customers** tab — every customer, or only these — written
+  as `org:` selectors in that person's entry of the visibility policy (`POST /api/scope/subject`,
+  admin): a new version of the whole policy, audited, reversible. A new account is limited **in the
+  same commit** that makes it, so "Claro - viewer" never exists unlimited. An admin is never
+  limited, so narrowing one is refused; the list shows each person's customers.
+- **Reason (F35)**: every input the resolver reads stays admin- or engine-written:
+  `ne.organization_id` is set by the engine on discovery (the broker's customer) and by admin-only
+  routes (`organizations.write`, `brokers.write`). A selector a viewer could influence would make
+  them the author of their own scope.
+- **Not tenant isolation**: correlation still learns per broker; the policy decides what a person
+  is shown, as it did (ADR #366).
+
+## 500. A case's email is written and answered on its feed (unreleased)
+
+- **Context**: the NOC emails a customer about a case — a technician must visit, which day suits
+  you? — the customer answers with two dates, and whoever picks the case up next answers that
+  message. A customer's Email tab held default recipients and emailed every customer update to
+  them; the owner asked for the recipients on each email instead, a reply that goes to the right
+  people without retyping them, and the agents able to do all of it through MCP.
+- **Decision**: the customer's **Email tab is the server side only** — which SMTP credential sends
+  and as whom, which IMAP mailbox replies are read from, a test to any address, and the log.
+- **Decision**: a case's feed has two modes, **Feed post** and **Send email**. An email has its own
+  To, Cc and Bcc, a subject that always keeps the case's tag, and a body written in an editor
+  (bold, italic, underline, size, lists, links). It leaves through the customer's SMTP credential
+  (else the appliance's server), threaded under the message it answers, and is kept whole
+  (`noc_case_mail`, migration 0048) and shown on the feed (`kind` ``email``) — sent or not. Blind
+  copies go on the envelope only and are shown to who works cases.
+- **Decision**: **Reply** and **Reply all** on an email of the feed ask the server for the draft:
+  the sender (or, for ours, the same To), everyone else on it but our own address, `Re:` once, and
+  the original quoted. A customer's email lands on the feed as theirs and, on a pending case, puts
+  it back in the queue (ADR #481, unchanged); the addresses the NOC has written to on a customer's
+  cases are now among those a reply may come from.
+- **Decision**: **sending the customer update no longer emails it**: posting the update and
+  emailing it are two steps (*Email the customer update* drafts it, to whom the case's last message
+  went), so nobody is emailed by a side effect.
+- **Decision (MCP)**: `noc_case_email_draft` and `noc_send_case_email` (with `reply_to` and
+  `reply_all`, `to` left empty) — and the agents' guide says when to use them.
+- **Reason (security)**: the editor sends a **document**, never HTML: `engine/noc/richtext.py`
+  validates it (a link is `http(s)` or `mailto`, a size one of three) and writes the email's HTML
+  with every text escaped, and the console draws the same document as elements, so the console
+  still has no `innerHTML` (ADR #175). A customer's email is shown as text, quotes cut, as before.
+
+
+## 501. Routines on each customer's page, and every version a routine had (unreleased)
+
+- **Context**: routines (ADR #492) are each customer's troubleshooting — the checks an agent runs
+  in one call (`noc_run_playbook`) instead of leasing a credential and typing commands. The owner
+  asked for them beside the customer's book (Instructions, Workbook, Additional docs, Circuits,
+  Access, Email), and for trees "the models improve over time". An edit overwrote the tree: only a
+  counter said it had changed, so nobody could tell what an agent changed, why, or whether the
+  change helped.
+- **Decision**: a customer's page gains **Routines**: its own routines and the shared ones that
+  also run on its cases, each opened as its tree, its runs and its versions; a lead writes a new
+  one for that customer from there. The screen is a lead's, as Routines is (ADR #470).
+- **Decision**: **every version is kept whole** (`noc_playbook_version`, migration 0049) with who
+  wrote it, when, and a one-line `note` — what changed and why ("ping before SSH: case 41 was a
+  dead path"). A routine's page lists its versions with how each one's runs ended (runs already
+  record the version they ran), and opens an earlier one's tree; *Start an edit from it* is how a
+  version is restored — as a new version, so the history only grows.
+- **Decision (MCP)**: `noc_update_playbook` takes `note`; `noc_get_playbook` returns the versions
+  and how each fared; `noc_get_playbook_version` reads an earlier tree. The agents' guide: a routine
+  that ran on your case and missed — wrong advice, or a check it lacked found the cause — is
+  improved with the whole tree and a note naming the case.
+- **Reason (security)**: an earlier version is read under the same rules as the routine itself, and
+  under its own: a version above the caller's tier, or for a customer the caller does not serve, is
+  the 404 of one that does not exist — a routine moved from Claro to every customer does not show
+  Claro's old tree to Vivo. Versions are append-only, like the runs they explain.
+
+## 502. The NOC's Overview is its set-up pictures until the first case (unreleased)
+
+- **Context**: the Broker's Overview is three pictures of what to do until its first trap, and the
+  overview itself from then on (ADR #483). The NOC's showed its three set-up panels (ADR #490)
+  above an overview of empty tiles, and the panels left as soon as every step was done — so a NOC
+  set up but without a case showed zeros, and one with a case but not set up showed both. The owner
+  asked for the Broker's behaviour.
+- **Decision**: until the first case reaches the NOC, the three panels are the whole screen, set
+  up or not; set up, they say so ("Ready — waiting for the first case") and the third step is the
+  one to do. From the first case, the overview alone. A reader who is not shown people and agents
+  (below editor) sees "No case yet" instead of the panels.
+- **Reason**: the same first case ends the panels for everyone (ADR #491), so the screen never
+  shows a set-up checklist and live counts together.
+
+## 503. Maintenance opens on a board of every broker's planned work (unreleased)
+
+- **Context**: the Maintenance tab holds every broker's windows (ADR #496) but showed one list of
+  the next 5, 10 or 20: nothing said how much planned work there is, where, or whether any of it
+  needs someone now. The owner asked for an overview, with more detail, that still lets a window be
+  made for one broker.
+- **Decision**: the screen opens on a **board** above the list: four tiles — what runs now and over
+  how many hosts, what starts in the next 24 hours (and the week), what waits for a confirmation
+  and when the first one lapses, what the last 7 days ended with (and how many expired
+  unconfirmed); **by broker**, one row per network with its own **Schedule**, which opens the form
+  fixed to that broker; and **the next seven days** as one bar per window with a line at now.
+  Inside a broker, the same board for that broker alone. The list below is D7's, unchanged.
+- **Decision**: the board reads the list route the rows read — every live window by status, and
+  what ended or expired since a week ago (on the hour) — so no route is added, a viewer sees a
+  redacted window's existence and timing as on the rows, and a failed read is a dash and a line,
+  never a screen that does not load (the list is read on its own).
+- **Reason**: the counts a lead acts on — something running, something to confirm before it
+  lapses, two windows on one network the same night — are seen before the list is read.
+
+## 505. What a Gemini agent found in the lab: busy providers, keys, the live list (unreleased)
+
+- **Context**: the owner asked for the NOC to be worked by an agent of another make, supervised in
+  a real browser, on the free tier of Google AI Studio (`gemini-flash-lite-latest`). The lab's
+  owner connected the key, hired the agent and opened a case from the Broker as a person would.
+- **Finding → decision (resilience)**: halfway through its first case the provider answered
+  **HTTP 503 "high demand"** and the run ended with the case taken and nothing written to the
+  customer. A chat turn the provider refuses because it is busy — 429 and 5xx — is now asked
+  again after 2, 6 and 15 seconds (the provider's own `Retry-After` wins, capped at 30 s); a
+  refusal of the request itself (4xx) is raised at once, as before. The refusal Gemini sends as a
+  list of one error now reads as its sentence, not as a Python structure.
+- **Finding → decision (keys)**: AI Studio's newer keys begin with `AQ.`; the form said a working
+  key "does not" look like Google's. A provider's key hint may name alternatives ("AIza or AQ.").
+  And with one key for the chosen provider, the hiring form now chooses it instead of asking.
+- **Finding → decision (the live list)**: on an appliance that resolves a lot, the header counted
+  49 new situations and the New tab said the network was quiet: the stream carried the 50 latest
+  situations of every state, and the resolved ones had pushed the older new ones out. It now
+  carries the 50 latest of **each** live state (new, pending, open) and the 50 latest of all; and
+  a link to a situation outside that window shows its card from the detail it opened (F97).
+- **Finding → decision (the email editor)**: a bulleted list typed in the feed's editor reached
+  the customer as one paragraph, its items run together: Chromium makes a list inside the line's
+  `<div>`, and the editor's reader flattened every `<div>`. A block container is now walked, so a
+  list stays a list (the DOM harness learned `nodeName` and `nodeValue` to test it).
+- **Finding → decision (threading)**: the agent's Reply all named the first message twice in
+  `References` — the customer's client named it in both `References` and `In-Reply-To`, and both
+  were kept. A reply's chain is read oldest first, each message once, its parent last.
+- **Reason**: each was met by doing the owner's work in the owner's way; each is a test now.
+
+## 504. The console's files by plane: the stylesheet in parts, the screens in folders (unreleased)
+
+- **Context**: `ui/style.css` had grown to five thousand lines in one file, and `ui/app/views/`
+  held every screen of the Broker, the NOC and the console's administration side by side, with a
+  hundred of their parts in one `parts/` folder. The owner asked for the UI folder organised by
+  good practice.
+- **Decision (styles)**: `ui/styles/<area>/<topic>.css` — `core/` (tokens and themes, base, the
+  shell, charts, shared components, panels, sign-in, the three widths, section marks), `broker/`,
+  `noc/` and `admin/` — cut from the old file **at its own section marks**, so each sheet is a
+  contiguous run of it. `index.html` links them in the old order, which keeps the cascade byte for
+  byte what it was: a rule wins or loses to exactly the rules it did. Each sheet is in
+  `STATIC_ASSETS` (nothing is served from a directory, ADR #175). The guards that read "the
+  stylesheet" read all of them in that order (`tests/support/uicss.py`).
+- **Decision (screens)**: `ui/app/views/{broker,noc,admin}/` hold each plane's screens, and each
+  plane's `parts/` its components; a part two planes use lives with the one that owns it and is
+  imported across. Every relative import was re-resolved by a script, the files moved with
+  `git mv` (history kept), and every literal path naming one — the static allowlist, the public
+  paths, the tests, the living docs — rewritten; the historical records (this log, the findings,
+  the changelog) keep the paths they cited. The core modules (`app/*.js`: the DOM, the API client,
+  the router, the widgets) stay where every screen reaches them.
+- **Not done, deliberately**: no `@import` (it chains requests and a guard refuses it), no build
+  step (ADR #175), no module renamed: a path moved, a name did not.

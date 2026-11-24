@@ -575,7 +575,7 @@ def test_f32_scoping_is_not_tenant_isolation_is_documented() -> None:
         # module that renders the Governance screen, which is where an operator reads it — and
         # that is what this control is about, not which file it lives in.
         # v0.25.0: the Visibility tab of People & access (ADR #403).
-        "src/netcorenoc/ui/app/views/parts/visibility.js",
+        "src/netcorenoc/ui/app/views/admin/parts/visibility.js",
         "src/netcorenoc/crosscutting/shaping/__init__.py",
     ):
         # Normalise typesetting before matching: strip Markdown/HTML emphasis and collapse
@@ -1491,6 +1491,8 @@ def test_f34_every_mutating_route_below_admin_resolves_scope() -> None:
         ("POST", "/api/noc/cases/{sid}/feed"): "async def post_to_case(",
         # ADR #478: sending the customer update names one case, scoped as every case act is.
         ("POST", "/api/noc/cases/{sid}/customer-update"): "async def send_update(",
+        # ADR #500: an email written from one case, scoped as every case act is.
+        ("POST", "/api/noc/cases/{sid}/email"): "async def send_email(",
         # ADR #467: routing and escalating a case, scoped as every case act is.
         ("POST", "/api/noc/cases/{sid}/assign"): "async def assign_case(",
         ("POST", "/api/noc/cases/{sid}/escalate"): "async def escalate_case(",

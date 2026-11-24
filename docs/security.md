@@ -487,6 +487,27 @@ it, so its authentication is the proxy's token, in the handler.
 Every broker change is admin-only (`brokers.write`), and so the inputs of the visibility selector
 `broker:<id>` stay admin- or engine-written (F35).
 
+## A person limited to customers (ADR #499)
+
+People & access → a person → **Customers**: *every customer*, or *only these*. "Claro - viewer"
+made with Claro alone sees, from its first sign-in (the limit is written in the commit that makes
+the account):
+
+* **Broker**: Claro's brokers — every element Claro owns, in every broker (`org:<id>`), and a
+  broker of Claro's with no element yet — and the situations, map, Timeline and windows over them;
+* **NOC**: Claro's book (instructions, workbook, documents, circuits, email settings), its cases
+  and feeds, its routines (a shared routine too, without its runs on other customers' cases), an
+  agent's runs and cases on Claro's cases only — and, if an admin names it a custodian, Claro's
+  credentials alone: never another customer's, never a shared one such as an AI provider's key, and
+  a new one is filed under Claro.
+
+Anything else answers the same 404 as a record that does not exist. An admin is never limited.
+The limit is the `org:` selectors in that person's entry of the visibility policy — versioned,
+audited, reversible from Visibility like any change — and every input the resolver reads stays
+admin- or engine-written: `ne.organization_id` is set on discovery from the broker's customer and
+moved only by `organizations.write` and `brokers.write`, both admin (F35). Visibility is still not
+tenant isolation: correlation learns per broker.
+
 ## A new route declares itself, or the process does not start
 
 Adding an HTTP route means adding its capability to `rbac.ROUTE_PERMISSIONS` **and** its visibility

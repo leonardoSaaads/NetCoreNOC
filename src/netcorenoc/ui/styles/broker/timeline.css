@@ -1,0 +1,121 @@
+/* ---------- the timeline (v0.22.0, F155, #381) ----------------------------------------------
+   The lanes are a matrix of equal slices of the chosen window, so a cell's position is its time.
+   One hue at a varying opacity carries a magnitude, never a category, and every cell has its count
+   as a `<title>`. The name column is fixed, so rows align at every width; at 390 px the name
+   column narrows and truncates with the full name in its `title`. */
+.lanes { margin: 0 0 var(--space-4); }
+.lanes-grid { display: grid; gap: 2px; }
+.lane {
+  display: grid; grid-template-columns: minmax(0, 11rem) minmax(0, 1fr) 4.5rem;
+  align-items: center; gap: var(--space-2); font-size: var(--fs-xs);
+}
+.lane-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--fg-muted); }
+.lane-cells {
+  display: block; width: 100%; height: 18px;
+  background: var(--bg-sunken); border-radius: var(--radius-1);
+}
+.lane-cells rect { fill: var(--alarm); }
+.lane-total { text-align: right; font-variant-numeric: tabular-nums; }
+.lanes-axis {
+  display: flex; justify-content: space-between; margin: 2px 4.5rem 0 11rem;
+  padding-left: var(--space-2); padding-right: var(--space-2);
+  font-family: var(--mono); font-size: var(--fs-xs); color: var(--fg-dim);
+}
+@media (max-width: 460px) {
+  .lane { grid-template-columns: minmax(0, 6.5rem) minmax(0, 1fr) 3rem; }
+  .lanes-axis { margin-left: 6.5rem; margin-right: 3rem; }
+}
+.bursts .burst-when { display: block; }
+.bursts .burst-abs, .bursts .burst-oid {
+  display: block; font-size: var(--fs-xs); color: var(--fg-dim); font-family: var(--mono);
+  overflow-wrap: anywhere;
+}
+.bursts .burst-name { overflow-wrap: break-word; }
+.bursts .burst-vendor { color: var(--fg-muted); }
+.kind { white-space: nowrap; }
+.kind-raise { color: var(--alarm); }
+.kind-clear { color: var(--quiet); }
+.pager {
+  display: flex; align-items: center; justify-content: flex-end; gap: var(--space-2);
+  font-size: var(--fs-sm); color: var(--fg-muted);
+}
+.pager span { margin-right: auto; }
+@media (max-width: 460px) {
+  /* A phone keeps when, where, which trap, the mark and the count; the OID stays in the cell's
+     title and the word "raise"/"clear" in the accessibility tree. */
+  .bursts .burst-abs, .bursts .burst-oid { display: none; }
+  .bursts .kind-word {
+    position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0);
+  }
+}
+
+/* ---------- the info icon (v0.22.0) ---------------------------------------------------------
+   One component (`app/info.js`). The text is ALWAYS rendered and only clipped while closed, so a
+   screen reader reaches it through `aria-describedby` without the popover ever opening. The
+   opener meets the tap floor through its padding while drawing a small circle. */
+.info { position: relative; display: inline-flex; vertical-align: middle; margin-left: var(--space-1); }
+.info-open {
+  min-width: var(--tap); min-height: var(--tap); padding: 0; border: 0; background: none;
+  display: inline-flex; align-items: center; justify-content: center; cursor: pointer;
+  color: var(--fg-dim);
+}
+.info-open span {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 16px; height: 16px; border-radius: 50%; border: 1px solid currentColor;
+  font: italic 600 11px/1 var(--serif, Georgia, serif); text-transform: none; letter-spacing: 0;
+}
+.info-open:hover, .info-open[aria-expanded="true"] { color: var(--accent); }
+.info-open:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; border-radius: 50%; }
+.info-text {
+  position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0);
+  white-space: normal;
+}
+.info-text.info-shown {
+  width: min(22rem, calc(100vw - 2 * var(--space-4))); height: auto; clip: auto; overflow: visible;
+  top: calc(100% + 2px); left: 50%; transform: translateX(-50%); z-index: 40;
+  padding: var(--space-2) var(--space-3); border: 1px solid var(--line-strong);
+  border-radius: var(--radius-2); background: var(--bg-raised); color: var(--fg);
+  box-shadow: 0 6px 20px rgb(0 0 0 / 25%);
+  font: 400 var(--fs-sm)/1.5 var(--sans); text-transform: none; letter-spacing: 0;
+}
+@media (max-width: 460px) {
+  .info { position: static; }
+  .info-text.info-shown { left: var(--space-4); right: var(--space-4); transform: none; width: auto; }
+}
+
+/* ---------- severity over time (v0.22.0, item 4) --------------------------------------------
+   One line per band, told apart by DASH as well as colour, and the legend carries the band's
+   shape and word: three encodings, none of them colour alone. `unplaced` is a band like the others
+   and is drawn, labelled, in the muted ink. */
+.chart-sev-critical { color: var(--sev-critical-fill); }
+.chart-sev-major { color: var(--sev-major-fill); }
+.chart-sev-minor { color: var(--sev-minor-line); }
+.chart-sev-warning { color: var(--sev-warning-line); }
+.chart-sev-indeterminate { color: var(--fg-muted); }
+.chart-sev-unplaced { color: var(--fg-dim); }
+.chart-sev-vendor { color: var(--accent); }
+.chart-line[class*="chart-sev-"] polyline { stroke: currentColor; stroke-width: 1.8; }
+.chart-sev-major polyline, .chart-sev-major .chart-dash-sample line { stroke-dasharray: 7 3; }
+.chart-sev-minor polyline, .chart-sev-minor .chart-dash-sample line { stroke-dasharray: 2 2.5; }
+.chart-sev-warning polyline, .chart-sev-warning .chart-dash-sample line { stroke-dasharray: 8 2 2 2; }
+.chart-sev-indeterminate polyline, .chart-sev-indeterminate .chart-dash-sample line {
+  stroke-dasharray: 1 3;
+}
+.chart-sev-unplaced polyline, .chart-sev-unplaced .chart-dash-sample line { stroke-dasharray: 4 4; }
+.chart-legend .sev-glyph { width: 10px; height: 10px; opacity: 0.8; }
+.chart-dash-sample { width: 14px; height: 4px; flex: none; overflow: visible; }
+.chart-dash-sample line { stroke: currentColor; stroke-width: 2.4; stroke-linecap: round; }
+
+/* ---------- the "outlived a maintenance window" marker (v0.22.0, item 8, #388) --------------
+   A small badge, not a sentence in the row; the sentence is its accessible name and title. */
+.mw-outlived { display: inline-flex; align-items: center; gap: 2px; margin-left: var(--space-1); }
+.mw-outlived-badge {
+  font-size: var(--fs-xs); font-weight: 600; padding: 0 var(--space-1); border-radius: var(--radius-1);
+  border: 1px solid var(--alarm); color: var(--alarm); white-space: nowrap;
+}
+.mw-outlived-ack {
+  min-width: var(--tap); min-height: var(--tap); padding: 0; border: 0; background: none;
+  color: var(--fg-dim); cursor: pointer;
+}
+.mw-outlived-ack:hover { color: var(--accent); }
+.disclosure-badge:has(.notice-muted-count) { background: var(--fg-dim); }

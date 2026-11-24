@@ -89,6 +89,8 @@ CLIENT_GETS: list[tuple[str, str]] = [
     # driven against a 404 renders its error state, and a test that read that as the screen's
     # behaviour would be measuring the fixture.
     ("mw.read", "/api/maintenance-windows?limit=5"),
+    # ADR #503: the board above the list reads every live window.
+    ("mw.read", "/api/maintenance-windows?status=pending_confirmation,scheduled,active&limit=200"),
     ("organizations.read", "/api/organizations"),
     ("timezones.read", "/api/timezones?q="),
     # v0.22.0: the persisted host series and the activity reads the Overview and the Timeline

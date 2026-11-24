@@ -33,14 +33,18 @@ __all__ = [
     "MAX_REPLY",
     "Reply",
     "addresses",
+    "compose",
     "compose_update",
     "mailbox",
     "match",
     "parse",
     "post_body",
+    "reply_recipients",
+    "reply_subject",
     "smtp_config",
     "strip_quoted",
     "subject_for",
+    "tagged",
 ]
 
 #: The most of a reply that reaches the feed (a post holds 8 000 characters).
@@ -102,6 +106,76 @@ def compose_update(
     return message
 
 
+def tagged(sid: int, subject: str) -> str:
+    """The subject with the case's tag, added once: how a reply finds its case without headers."""
+    subject = " ".join((subject or "").split())[:180]
+    return subject if _TAG.search(subject) else f"[NetCoreNOC #{sid}] {subject or 'Case update'}"
+
+
+def reply_subject(sid: int, subject: str) -> str:
+    """``Re: …`` once, whatever the original said."""
+    bare = re.sub(r"^\s*((re|res|aw|sv|fw|fwd|enc)\s*:\s*)+", "", subject or "", flags=re.I)
+    return tagged(sid, f"Re: {bare.strip()}")
+
+
+def reply_recipients(
+    original: Mapping[str, Any], ours: Iterable[str], *, everyone: bool
+) -> tuple[list[str], list[str]]:
+    """(To, Cc) for answering a message. Reply: who wrote it — or, for one the NOC sent, the
+    same To. Reply all adds everyone else it went to and was copied to, never our own address."""
+    mine = {a.lower() for a in ours}
+    sender = str(original.get("sender") or "").lower()
+    sent_to = addresses(str(original.get("recipients") or ""))
+    copied = addresses(str(original.get("cc") or ""))
+    if original.get("direction") == "in" and sender:
+        to = [sender]
+        rest = sent_to + copied
+    else:
+        to, rest = sent_to, copied
+    to = [a for a in to if a.lower() not in mine]
+    cc = [a for a in rest if a.lower() not in mine and a.lower() not in map(str.lower, to)]
+    return to, (cc if everyone else [])
+
+
+def compose(
+    sid: int,
+    *,
+    sender: str,
+    sender_name: str,
+    to: Iterable[str],
+    cc: Iterable[str] = (),
+    bcc: Iterable[str] = (),
+    subject: str,
+    text: str,
+    html_body: str,
+    in_reply_to: str = "",
+    refs: Iterable[str] = (),
+) -> EmailMessage:
+    """An email written on a case (ADR #500): text and HTML parts, the case's tag in the subject,
+    threaded under the message it answers. Bcc is an envelope recipient only: it is passed to the
+    send, never written into a header anyone receives."""
+    message = EmailMessage()
+    message["From"] = formataddr((sender_name or "NetCoreNOC", sender))
+    message["To"] = ", ".join(to)
+    copies = list(cc)
+    if copies:
+        message["Cc"] = ", ".join(copies)
+    message["Subject"] = tagged(sid, subject)
+    message["Date"] = formatdate(localtime=False)
+    message["Message-ID"] = make_msgid(domain=sender.rsplit("@", 1)[-1])
+    message["X-NetCoreNOC-Case"] = str(sid)
+    chain = list(dict.fromkeys(r for r in refs if r))[-20:]
+    if in_reply_to:
+        message["In-Reply-To"] = in_reply_to
+        chain = [*chain, in_reply_to] if in_reply_to not in chain else chain
+    if chain:
+        message["References"] = " ".join(chain)
+    del bcc  # the caller hands blind copies to the envelope (`mail.send(..., extra=...)`)
+    message.set_content(text)
+    message.add_alternative(html_body, subtype="html")
+    return message
+
+
 @dataclass(frozen=True)
 class Reply:
     message_id: str
@@ -110,6 +184,9 @@ class Reply:
     refs: tuple[str, ...]
     text: str
     automatic: bool
+    to: str = ""
+    cc: str = ""
+    sender_name: str = ""
 
 
 def _text_of(message: Any) -> str:
@@ -133,19 +210,30 @@ def parse(raw: bytes) -> Reply:
     message = message_from_bytes(raw, policy=policy.default)
     found = _REF.findall(str(message.get("Message-ID", "") or ""))
     message_id = found[0] if found else f"<{hashlib.sha256(raw).hexdigest()}@netcorenoc.invalid>"
-    refs = _REF.findall(
-        f"{message.get('In-Reply-To', '') or ''} {message.get('References', '') or ''}"
+    # The chain oldest first, each once (ADR #505: the lab's reply listed its parent twice, as
+    # `References` names it and `In-Reply-To` repeats it); the parent last, as a reply reads it.
+    refs = list(
+        dict.fromkeys(
+            [
+                *_REF.findall(str(message.get("References", "") or "")),
+                *_REF.findall(str(message.get("In-Reply-To", "") or "")),
+            ]
+        )
     )
     auto = str(message.get("Auto-Submitted", "no") or "no").strip().lower() != "no"
     auto = auto or bool(message.get("X-Autoreply") or message.get("X-Autorespond"))
     auto = auto or str(message.get("Precedence", "")).strip().lower() in ("auto_reply", "bulk")
+    name, address = parseaddr(str(message.get("From", "") or ""))
     return Reply(
         message_id=message_id,
-        sender=parseaddr(str(message.get("From", "") or ""))[1].strip().lower(),
+        sender=address.strip().lower(),
         subject=str(message.get("Subject", "") or "")[:998],
         refs=tuple(refs[-20:]),
         text=strip_quoted(_text_of(message))[:MAX_REPLY],
         automatic=auto,
+        to=", ".join(addresses(str(message.get("To", "") or "")))[:4000],
+        cc=", ".join(addresses(str(message.get("Cc", "") or "")))[:4000],
+        sender_name=" ".join(str(name).split())[:200],
     )
 
 

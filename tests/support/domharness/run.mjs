@@ -329,7 +329,7 @@ const scenarios = {
    * makes this a fact about the shipped UI rather than about a copy of it.
    */
   /**
-   * **Drive `views/parts/correlation.js`'s verdict rule directly** (v0.18.0).
+   * **Drive `views/broker/parts/correlation.js`'s verdict rule directly** (v0.18.0).
    *
    * The collapsed line is a *derived grade*, and the one thing that must hold of it is that it
    * states the number it judged. Asserting that through a render would test the payload the
@@ -339,12 +339,12 @@ const scenarios = {
   async correlationverdict(params) {
     const env = await boot(params);
     const found = [...env.modules.entries()].find(([file]) =>
-      file.endsWith("views/parts/correlation.js"),
+      file.endsWith("views/broker/parts/correlation.js"),
     );
-    if (!found) throw new Error("views/parts/correlation.js was not in the module graph");
+    if (!found) throw new Error("views/broker/parts/correlation.js was not in the module graph");
     const summarise = found[1].namespace.summarise;
     if (typeof summarise !== "function") {
-      throw new Error("views/parts/correlation.js exports no summarise()");
+      throw new Error("views/broker/parts/correlation.js exports no summarise()");
     }
     const out = {};
     for (const [name, data] of Object.entries(params.cases ?? {})) {
@@ -402,6 +402,23 @@ const scenarios = {
       out[name] = isSet ? [...value].sort((a, b) => a - b) : value;
     }
     return { out, proof: proofOf(env) };
+  },
+
+  /** ADR #505: the email editor's content, built as Chromium builds it, read by `readDoc`.
+   * `tree` is nested arrays — `[tag, ...children]`, a string a text node. */
+  async editorDoc(params) {
+    const env = await boot(params);
+    const found = [...env.modules.entries()].find(([file]) => file.endsWith("caseemail.js"));
+    if (!found) throw new Error("caseemail.js was not in the evaluated module graph");
+    const doc = env.document;
+    const build = (spec) => {
+      if (typeof spec === "string") return doc.createTextNode(spec);
+      const [tag, ...kids] = spec;
+      const el = doc.createElement(tag);
+      for (const kid of kids) el.append(build(kid));
+      return el;
+    };
+    return { doc: found[1].namespace.readDoc(build(params.tree)), proof: proofOf(env) };
   },
 
   /** Boot, optionally navigate, and dump the DOM. The gate documents quote `dump`. */

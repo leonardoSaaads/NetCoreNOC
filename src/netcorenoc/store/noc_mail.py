@@ -31,6 +31,27 @@ EDITABLE = (
 )
 
 
+#: A message's own columns beyond its key, each with its bound (0: not text).
+MAIL_FIELDS: dict[str, int] = {
+    "subject": 998,
+    "sender": 254,
+    "sender_name": 200,
+    "recipients": 4000,
+    "cc": 4000,
+    "bcc": 4000,
+    "in_reply_to": 998,
+    "refs": 8000,
+    "body_text": 20000,
+    "body_doc": 100000,
+    "sent_by": 200,
+    "post_id": 0,
+    "detail": 500,
+}
+_MAIL = "id, organization_id, situation_id, direction, outcome, message_id, at, " + ", ".join(
+    MAIL_FIELDS
+)
+
+
 class NocMailMixin(StoreBase):
     async def noc_customer_mail(self, organization_id: int) -> dict[str, Any] | None:
         cur = await self.conn.execute(
@@ -75,8 +96,8 @@ class NocMailMixin(StoreBase):
         )
 
     async def noc_customer_addresses(self, organization_id: int) -> set[str]:
-        """Every address the customer registered: the update's recipients and copies, and the
-        email of each person in its workbook — whom a reply may come from (lower-cased)."""
+        """Every address a reply may come from (lower-cased): the customer's old recipients and
+        copies, each person in its workbook, and everyone the NOC emailed on its cases."""
         out: set[str] = set()
         mail = await self.noc_customer_mail(organization_id)
         if mail is not None:
@@ -87,6 +108,15 @@ class NocMailMixin(StoreBase):
             (organization_id,),
         )
         out.update(str(r[0]) for r in await cur.fetchall())
+        # ADR #500: and everyone the NOC wrote to or copied on this customer's cases.
+        cur = await self.conn.execute(
+            "SELECT recipients, cc FROM noc_case_mail WHERE organization_id = ? "
+            "AND direction = 'out' AND outcome = 'sent'",
+            (organization_id,),
+        )
+        for row in await cur.fetchall():
+            for text in (row["recipients"], row["cc"]):
+                out.update(a.strip().lower() for a in str(text).replace(";", ",").split(","))
         out.discard("")
         return out
 
@@ -100,18 +130,38 @@ class NocMailMixin(StoreBase):
         outcome: str,
         message_id: str,
         now: float,
-        *,
-        subject: str = "",
-        sender: str = "",
-        recipients: str = "",
-        post_id: int | None = None,
-        detail: str = "",
+        **fields: Any,
     ) -> bool:
         """One message, once: False when this message (by its Message-ID) is already recorded."""
+        found = await self.noc_mail_add(
+            organization_id, situation_id, direction, outcome, message_id, now, **fields
+        )
+        return found is not None
+
+    async def noc_mail_add(
+        self,
+        organization_id: int,
+        situation_id: int | None,
+        direction: str,
+        outcome: str,
+        message_id: str,
+        now: float,
+        **fields: Any,
+    ) -> int | None:
+        """Record one message and return its id; None when it (by Message-ID) is already kept.
+        ``fields`` are the columns :data:`MAIL_FIELDS` names, each bounded to its column."""
+        unknown = set(fields) - set(MAIL_FIELDS)
+        if unknown:
+            raise ValueError(f"not a message's column: {sorted(unknown)}")
+        values = {k: fields.get(k, None if k == "post_id" else "") for k in MAIL_FIELDS}
+        for key, size in MAIL_FIELDS.items():
+            if size and values[key] is not None:
+                values[key] = str(values[key])[:size]
+        names = ", ".join(MAIL_FIELDS)
+        marks = ", ".join("?" for _ in MAIL_FIELDS)
         cur = await self.conn.execute(
-            "INSERT INTO noc_case_mail (organization_id, situation_id, direction, outcome, "
-            "message_id, subject, sender, recipients, post_id, detail, at) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) "
+            "INSERT INTO noc_case_mail (organization_id, situation_id, direction, outcome, "  # nosec B608
+            f"message_id, at, {names}) VALUES (?, ?, ?, ?, ?, ?, {marks}) "
             "ON CONFLICT (organization_id, direction, message_id) DO NOTHING RETURNING id",
             (
                 organization_id,
@@ -119,15 +169,63 @@ class NocMailMixin(StoreBase):
                 direction,
                 outcome,
                 message_id[:998],
-                subject[:998],
-                sender[:254],
-                recipients[:4000],
-                post_id,
-                detail[:500],
                 now,
+                *values.values(),
             ),
         )
-        return await cur.fetchone() is not None
+        row = await cur.fetchone()
+        return int(row[0]) if row else None
+
+    async def noc_mail_attach(self, mail_id: int, post_id: int) -> None:
+        """The feed post that shows a message (a post is append-only; the message points at it)."""
+        await self.conn.execute(
+            "UPDATE noc_case_mail SET post_id = ? WHERE id = ?", (post_id, mail_id)
+        )
+
+    async def noc_mail(self, mail_id: int) -> dict[str, Any] | None:
+        cur = await self.conn.execute(
+            f"SELECT {_MAIL} FROM noc_case_mail WHERE id = ?",  # nosec B608 - a literal
+            (mail_id,),
+        )
+        row = await cur.fetchone()
+        return dict(row) if row else None
+
+    async def noc_mails_for_posts(self, post_ids: Iterable[int]) -> dict[int, dict[str, Any]]:
+        """The message each of these feed posts shows, by post id."""
+        wanted = sorted({int(p) for p in post_ids})
+        if not wanted:
+            return {}
+        cur = await self.conn.execute(
+            f"SELECT {_MAIL} FROM noc_case_mail WHERE post_id = ANY(?)",  # nosec B608
+            (wanted,),
+        )
+        return {int(r["post_id"]): dict(r) for r in await cur.fetchall()}
+
+    async def noc_case_last_mail(self, situation_id: int) -> dict[str, Any] | None:
+        """The case's newest message the NOC sent or read: what an update is emailed in reply to."""
+        cur = await self.conn.execute(
+            f"SELECT {_MAIL} FROM noc_case_mail WHERE situation_id = ? "  # nosec B608
+            "AND outcome IN ('sent', 'posted') ORDER BY at DESC, id DESC LIMIT 1",
+            (situation_id,),
+        )
+        row = await cur.fetchone()
+        return dict(row) if row else None
+
+    async def noc_case_mail_addresses(self, situation_id: int) -> list[str]:
+        """Every address on this case's messages, newest first: whom an email is usually for."""
+        cur = await self.conn.execute(
+            "SELECT sender, recipients, cc FROM noc_case_mail WHERE situation_id = ? "
+            "AND outcome IN ('sent', 'posted') ORDER BY at DESC, id DESC LIMIT 50",
+            (situation_id,),
+        )
+        out: list[str] = []
+        for row in await cur.fetchall():
+            for text in (row["sender"], row["recipients"], row["cc"]):
+                for part in str(text or "").replace(";", ",").split(","):
+                    address = part.strip().lower()
+                    if address and address not in out:
+                        out.append(address)
+        return out
 
     async def noc_mail_known(self, organization_id: int, message_id: str) -> bool:
         cur = await self.conn.execute(

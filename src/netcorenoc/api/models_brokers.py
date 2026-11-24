@@ -7,7 +7,7 @@ rather than an old one whose elements change meaning under it.
 
 from __future__ import annotations
 
-from typing import Literal
+from typing import Annotated, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
@@ -126,3 +126,13 @@ def _check(intake: str, udp_port: int | None, networks: list[str]) -> None:
 def check_update(intake: str, body: BrokerUpdateIn) -> None:
     """The intake's rules for a change, which only the stored broker can say. ValueError if not."""
     _check(intake, body.udp_port, body.networks)
+
+
+class ScopeSubjectIn(BaseModel):
+    """Which customers one person or token serves (ADR #499): `org:<id>` selectors in the
+    visibility policy. ``organizations`` None removes them, so the subject sees every customer
+    again (unless its other selectors or its role's say otherwise)."""
+
+    subject: str = Field(max_length=20, pattern=r"^(user|token):[1-9][0-9]{0,9}$")
+    organizations: list[Annotated[int, Field(ge=1)]] | None = Field(default=None, max_length=200)
+    note: str = Field(default="", max_length=500)

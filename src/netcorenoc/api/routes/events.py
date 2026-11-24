@@ -31,6 +31,26 @@ SSE_HEARTBEAT_S = 15.0
 SSE_UPDATE_S = 2.0
 
 
+#: How many situations of each live state the stream carries, and of every state together.
+LIVE_PER_STATE = 50
+
+
+async def live_situations(store: Any, ne_ids: frozenset[int] | None) -> list[dict[str, Any]]:
+    """The stream's list: the latest of **each** live state, and the latest of every state.
+
+    The 50 latest of every state alone was the list until the lab found it wrong: an appliance that
+    resolves a lot pushed its older *new* situations out of the window, so the header counted 49
+    new and the New tab — filtered from this list — said the network was quiet. Each live state
+    now brings its own 50 (`new`, `pending`, `open`), and the latest of every state brings the
+    recently resolved ones the Resolved tab shows; a row in two answers is listed once.
+    """
+    seen: dict[int, dict[str, Any]] = {}
+    for status in (None, "new", "pending", "open"):
+        for row in await store.list_situations(status, LIVE_PER_STATE, ne_ids):
+            seen.setdefault(int(row["id"]), row)
+    return sorted(seen.values(), key=lambda r: (r["updated_at"], r["id"]), reverse=True)
+
+
 def register(app: FastAPI, ctx: AppContext) -> None:
     """Register the events routes on `app`."""
     store, engine, security, governance = ctx.store, ctx.engine, ctx.security, ctx.governance
@@ -93,9 +113,7 @@ def register(app: FastAPI, ctx: AppContext) -> None:
                 # The resolved ones are dropped where the tabs are, not here: the console's three
                 # tabs need all three states, and a filter in the transport would make one of them
                 # unreachable for a reason no reader of `situations.js` could see.
-                sits = await store.list_situations(
-                    None, 50, None if scope.unrestricted else scope.ne_ids
-                )
+                sits = await live_situations(store, None if scope.unrestricted else scope.ne_ids)
                 # v0.16.2: the same `stale` mark `GET /api/situations` adds, from the same
                 # expression (DECISIONS #274). The console refreshes the polled list from this
                 # stream, so a badge that appeared on one and not the other would read as the

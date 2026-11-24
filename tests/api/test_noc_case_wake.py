@@ -242,7 +242,8 @@ async def test_the_customer_update_is_sent_to_the_customer(store: Store) -> None
         assert stale.status_code == 409 and "changed since you read it" in stale.json()["detail"]
         sent = await editor.post(send, json={"version": saved.json()["version"]})
         assert sent.status_code == 200, sent.text
-        assert sent.json() == {"id": sent.json()["id"], "sent": True, "email": []}
+        # ADR #500: posting the update emails no one; an email is written from the feed.
+        assert sent.json() == {"id": sent.json()["id"], "sent": True}
         feed = (await viewer.get(f"/api/noc/cases/{sid}/feed")).json()["posts"]
         update = next(p for p in feed if p["id"] == sent.json()["id"])
         assert update["visibility"] == "all"

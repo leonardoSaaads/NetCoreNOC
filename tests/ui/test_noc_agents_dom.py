@@ -140,7 +140,7 @@ async def test_an_admin_moves_an_agent_by_dragging_it_and_no_loop_is_offered(sto
     }
     out = domdriver.run_scenario(
         "moduleCalls",
-        {"routes": tables["admin"], "module": "app/views/parts/orgmove.js", "calls": calls},
+        {"routes": tables["admin"], "module": "app/views/noc/parts/orgmove.js", "calls": calls},
     )["out"]
     assert out["below_atlas"] == sorted([vega, 99])
     assert out["atlas_onto_its_report"] is False, "a manager onto its own report is a loop"

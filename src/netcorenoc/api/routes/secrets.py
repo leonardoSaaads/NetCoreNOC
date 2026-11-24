@@ -94,12 +94,12 @@ def register(app: FastAPI, ctx: AppContext) -> None:
     audit_row, write_txn = ctx.perimeter.audit_row, ctx.write_txn
     route = DeclaredRoutes(app)
 
-    async def secret_or_404(secret_id: int, *, sealed: bool = False) -> dict[str, Any]:
+    async def secret_or_404(
+        secret_id: int, principal: auth.Principal, *, sealed: bool = False
+    ) -> dict[str, Any]:
         async with store.reading():
             row = await store.noc_get_secret(secret_id, sealed=sealed)
-        if row is None:
-            raise HTTPException(status_code=404, detail=NO_SUCH)
-        return row
+        return await gate.require_reach(ctx, principal, row)
 
     async def customer_exists(customer_id: int | None) -> None:
         """ADR #481: a credential belongs to a customer the NOC serves, or to none."""
@@ -132,8 +132,10 @@ def register(app: FastAPI, ctx: AppContext) -> None:
                 "warnings": [],
                 "second_factor": "not-enrolled",
             }
+        scope = await ctx.scope_for(principal)
         async with store.reading():
             rows = await store.noc_list_secrets(organization_id=customer_id, unassigned=unassigned)
+            rows = [r for r in rows if scope.allows_org(r.get("organization_id"))]
             checks = await store.noc_checks([int(r["id"]) for r in rows])
         return {
             "custodian": True,
@@ -153,6 +155,7 @@ def register(app: FastAPI, ctx: AppContext) -> None:
         meta, fields = _bound(body, body.fields)
         assert fields is not None
         await customer_exists(meta["organization_id"])
+        await gate.require_customer(ctx, principal, meta["organization_id"])
         ref = token_hex(16)
         sealed = secretbox.current().seal(_binding(ref, meta), fields)
         now = time.time()
@@ -180,9 +183,7 @@ def register(app: FastAPI, ctx: AppContext) -> None:
         """One credential: metadata, status, recent checks, leases, and its own audit history."""
         await gate.require_custodian(ctx, request, principal)
         async with store.reading():
-            row = await store.noc_get_secret(secret_id)
-            if row is None:
-                raise HTTPException(status_code=404, detail=NO_SUCH)
+            row = await gate.require_reach(ctx, principal, await store.noc_get_secret(secret_id))
             checks = (await store.noc_checks([secret_id], per=10))[secret_id]
             leases = await store.noc_leases(secret_id=secret_id, limit=20)
             history = await store.noc_history(secret_id)
@@ -196,9 +197,10 @@ def register(app: FastAPI, ctx: AppContext) -> None:
         principal: auth.Principal = Depends(security),
     ) -> dict[str, Any]:
         await gate.require_custodian(ctx, request, principal)
-        current = await secret_or_404(secret_id, sealed=True)
+        current = await secret_or_404(secret_id, principal, sealed=True)
         meta, fields = _bound(body, body.fields)
         await customer_exists(meta["organization_id"])
+        await gate.require_customer(ctx, principal, meta["organization_id"])
         outcome = await gate.confirm(
             ctx,
             request,
@@ -267,7 +269,7 @@ def register(app: FastAPI, ctx: AppContext) -> None:
         principal: auth.Principal = Depends(security),
     ) -> dict[str, str]:
         await gate.require_custodian(ctx, request, principal)
-        row = await secret_or_404(secret_id)
+        row = await secret_or_404(secret_id, principal)
         outcome = await gate.confirm(
             ctx,
             request,
@@ -301,7 +303,7 @@ def register(app: FastAPI, ctx: AppContext) -> None:
         """The credential itself, to a custodian who just stepped up — the only response that
         carries one, and every one of them is in the audit log with the person who asked."""
         await gate.require_custodian(ctx, request, principal)
-        row = await secret_or_404(secret_id, sealed=True)
+        row = await secret_or_404(secret_id, principal, sealed=True)
         outcome = await gate.confirm(
             ctx,
             request,
@@ -349,7 +351,7 @@ def register(app: FastAPI, ctx: AppContext) -> None:
         """Agents on (stepped up) or off (never stepped up: the off switch must always be
         reachable). Off ends every lease on the credential at once."""
         await gate.require_custodian(ctx, request, principal)
-        row = await secret_or_404(secret_id)
+        row = await secret_or_404(secret_id, principal)
         detail: dict[str, Any] = {"enabled": body.enabled}
         if body.enabled:
             outcome = await gate.confirm(
@@ -392,7 +394,7 @@ def register(app: FastAPI, ctx: AppContext) -> None:
     ) -> dict[str, Any]:
         """One reachability check now, with nothing held while it waits on the network."""
         await gate.require_custodian(ctx, request, principal)
-        row = await secret_or_404(secret_id)
+        row = await secret_or_404(secret_id, principal)
         result = await probe.check_secret(row)
         if result is not None:
             async with write_txn():

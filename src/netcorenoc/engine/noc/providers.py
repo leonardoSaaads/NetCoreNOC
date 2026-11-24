@@ -68,7 +68,7 @@ class Provider:
     #: Where its OpenAI-compatible API lives below the host (Anthropic: its own API's root).
     base_path: str
     key_required: bool
-    #: How its keys begin, to recognise a paste (shown, never enforced).
+    #: How its keys begin, to recognise a paste (shown, never enforced); alternatives "A or B".
     key_hint: str
     #: Where its owner creates a key.
     key_url: str
@@ -126,7 +126,9 @@ PROVIDERS: dict[str, Provider] = {
             "HTTPS",
             "/v1beta/openai",
             True,
-            "AIza",
+            # The lab found it: AI Studio's newer keys begin with `AQ.`, and the form called a
+            # working key wrong. Alternatives are written "A or B" (`aiproviders.js` splits them).
+            "AIza or AQ.",
             "https://aistudio.google.com/apikey",
             "gemini-2.5-flash",
         ),

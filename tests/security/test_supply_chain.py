@@ -69,7 +69,8 @@ def test_all_ui_assets_are_covered_by_package_data_globs() -> None:
     style.css / the vendored library (which left the shipped container UI broken).
 
     **This test asserted the wrong thing for three releases (F85).** It matched with `fnmatch`,
-    whose `*` crosses `/`, so `fnmatch("ui/app/views/parts/why.js", "ui/*.js")` is **True** and
+    whose `*` crosses `/`, so `fnmatch("ui/app/views/broker/parts/why.js", "ui/*.js")` is **True**
+    and
     every file was "covered" at any depth. Setuptools expands package-data with `glob`, whose `*`
     stops at a separator, and it shipped none of them. A guard that is more permissive than the
     thing it guards reports success for exactly the defect it exists to catch.
@@ -102,13 +103,15 @@ def test_the_glob_matcher_is_the_one_setuptools_uses_not_a_looser_one() -> None:
     """
     from fnmatch import fnmatch
 
-    nested = "ui/app/views/parts/why.js"
+    nested = "ui/app/views/broker/parts/why.js"
     parent_glob = "ui/app/*.js"
 
     assert fnmatch(nested, parent_glob), (
         "fnmatch no longer crosses '/', so the premise of this guard has changed; re-derive it"
     )
-    assert (UI / "app/views/parts/why.js").is_file(), "the case this guard is built on has moved"
+    assert (UI / "app/views/broker/parts/why.js").is_file(), (
+        "the case this guard is built on has moved"
+    )
     covered = _covered_by([parent_glob], UI.parent)
     assert covered, f"{parent_glob} matched nothing at all, so this asserts nothing"
     assert nested not in covered, (

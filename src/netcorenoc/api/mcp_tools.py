@@ -109,6 +109,21 @@ TOOLS: tuple[Tool, ...] = (
         "/api/noc/cases/{sid}/customer-update",
         "Send the saved customer update to the customer",
     ),
+    # ADR #500: email the customer from the case, and answer its replies (Reply / Reply all).
+    _t(
+        "noc_case_email_draft",
+        "GET",
+        "/api/noc/cases/{sid}/email/draft",
+        "Draft an email or a reply",
+        **_READ,
+    ),
+    _t(
+        "noc_send_case_email",
+        "POST",
+        "/api/noc/cases/{sid}/email",
+        "Email the customer, or reply to a message",
+        open_world=True,
+    ),
     _t("noc_set_case_pending", "POST", "/api/noc/cases/{sid}/status", "Set a case pending"),
     _t("noc_release_case", "POST", "/api/noc/cases/{sid}/release", "Release a case"),
     _t(
@@ -156,6 +171,13 @@ TOOLS: tuple[Tool, ...] = (
     # ADR #492: routines (formerly playbooks) — a customer's troubleshooting, run in one call.
     _t("noc_list_playbooks", "GET", "/api/noc/playbooks", "List routines", **_READ),
     _t("noc_get_playbook", "GET", "/api/noc/playbooks/{playbook_id}", "Get a routine", **_READ),
+    _t(
+        "noc_get_playbook_version",
+        "GET",
+        "/api/noc/playbooks/{playbook_id}/versions/{version}",
+        "Get an earlier version of a routine",
+        **_READ,
+    ),
     _t("noc_create_playbook", "POST", "/api/noc/playbooks", "Write a routine"),
     _t(
         "noc_update_playbook",

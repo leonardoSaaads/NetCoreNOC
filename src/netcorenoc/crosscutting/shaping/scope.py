@@ -72,11 +72,23 @@ class Scope:
     unrestricted: bool
     ne_ids: frozenset[int] = frozenset()
     ips: frozenset[str] = frozenset()
+    #: The organizations (customers) whose NOC records this principal sees: those its policy names
+    #: with ``org:<id>``, and the owner of every element it sees (ADR #499).
+    orgs: frozenset[int] = frozenset()
+    #: Only those its policy names: whose every broker it sees, even one with no element yet.
+    named_orgs: frozenset[int] = frozenset()
 
     def allows_ne(self, ne_id: int | None) -> bool:
         if self.unrestricted:
             return True
         return ne_id is not None and ne_id in self.ne_ids
+
+    def allows_org(self, org_id: int | None) -> bool:
+        """A customer's own records — its book, routines, credentials. A record that belongs to no
+        customer (a shared routine, a provider key) is not one a scoped principal sees."""
+        if self.unrestricted:
+            return True
+        return org_id is not None and int(org_id) in self.orgs
 
 
 UNRESTRICTED = Scope(unrestricted=True)
@@ -140,14 +152,21 @@ def parse_scope_policy(document: str) -> ScopePolicy:
     return ScopePolicy(roles, principals)
 
 
-def _matches(selector: str, ne_id: int, ip: str | None, broker_id: int | None = None) -> bool:
+def _matches(
+    selector: str,
+    ne_id: int,
+    ip: str | None,
+    broker_id: int | None = None,
+    org_id: int | None = None,
+) -> bool:
     """Does one selector name this NE? **Identity, broker and address only** (v0.7.1, F35).
 
-    Five forms, tried in order of specificity: ``ne:<id>``, ``broker:<id>`` (every element of one
-    monitored network, ADR #496), an exact address, a CIDR, and a glob over the address
-    (``10.0.*``). An unparseable selector matches nothing — a typo hides NEs rather than revealing
-    them. An address selector matches that address **in every broker**: two customers may reuse
-    one range, and ``broker:<id>`` is how a policy names one of them.
+    Six forms, tried in order of specificity: ``ne:<id>``, ``broker:<id>`` (every element of one
+    monitored network, ADR #496), ``org:<id>`` (every element one customer owns, ADR #499), an
+    exact address, a CIDR, and a glob over the address (``10.0.*``). An unparseable selector
+    matches nothing — a typo hides NEs rather than revealing them. An address selector matches that
+    address **in every broker**: two customers may reuse one range, and ``broker:<id>`` is how a
+    policy names one of them.
 
     v0.7.0 also matched the glob against the **operator label**, and the operator label is written
     by ``POST /api/labels``, an `editor` route. That made the scoped role an author of its own
@@ -166,6 +185,8 @@ def _matches(selector: str, ne_id: int, ip: str | None, broker_id: int | None = 
         return selector[3:].strip() == str(ne_id)
     if selector.startswith("broker:"):
         return broker_id is not None and selector[7:].strip() == str(broker_id)
+    if selector.startswith("org:"):  # ADR #499: every element a customer owns, in every broker
+        return org_id is not None and selector[4:].strip() == str(org_id)
     if ip:
         try:
             address = ipaddress.ip_address(ip)
@@ -237,16 +258,28 @@ def visible_nes(
     selectors = {selector for layer in layers for selector in layer}
     ne_ids: set[int] = set()
     ips: set[str] = set()
+    named = frozenset(
+        int(s[4:].strip()) for s in selectors if s.startswith("org:") and s[4:].strip().isdigit()
+    )
+    orgs: set[int] = set(named)
     for ne in nes:
         ne_id = int(ne["id"])
         ip = ne.get("ip")
-        broker_id = ne.get("broker_id")
-        broker = None if broker_id is None else int(broker_id)
-        if any(_matches(selector, ne_id, ip, broker) for selector in selectors):
+        broker = None if ne.get("broker_id") is None else int(ne["broker_id"])
+        org = None if ne.get("organization_id") is None else int(ne["organization_id"])
+        if any(_matches(selector, ne_id, ip, broker, org) for selector in selectors):
             ne_ids.add(ne_id)
             if ip:
                 ips.add(str(ip))
-    return Scope(unrestricted=False, ne_ids=frozenset(ne_ids), ips=frozenset(ips))
+            if org is not None:
+                orgs.add(org)
+    return Scope(
+        unrestricted=False,
+        ne_ids=frozenset(ne_ids),
+        ips=frozenset(ips),
+        orgs=frozenset(orgs),
+        named_orgs=named,
+    )
 
 
 def within(scope: Scope, nes: list[dict[str, Any]]) -> Scope:
@@ -258,7 +291,13 @@ def within(scope: Scope, nes: list[dict[str, Any]]) -> Scope:
     """
     ne_ids = {int(ne["id"]) for ne in nes if scope.allows_ne(int(ne["id"]))}
     ips = {str(ne["ip"]) for ne in nes if int(ne["id"]) in ne_ids and ne.get("ip")}
-    return Scope(unrestricted=False, ne_ids=frozenset(ne_ids), ips=frozenset(ips))
+    return Scope(
+        unrestricted=False,
+        ne_ids=frozenset(ne_ids),
+        ips=frozenset(ips),
+        orgs=scope.orgs,
+        named_orgs=scope.named_orgs,
+    )
 
 
 # Characters that can appear in a textual IP address: hex digits, the IPv4 dot, the IPv6 colon,
@@ -281,6 +320,8 @@ def _can_never_match(selector: str) -> bool:
     """
     if selector.startswith("broker:"):
         return not selector[7:].strip().isdigit()  # a broker is named by its id, as on its page
+    if selector.startswith("org:"):
+        return not selector[4:].strip().isdigit()  # a customer is named by its id too
     if selector.startswith("ne:"):
         return False
     literal = "".join(c for c in selector if c not in _GLOB_CHARS)
@@ -303,8 +344,8 @@ def scope_policy_errors(policy: ScopePolicy) -> list[str]:
                     f"selector {selector!r} for {subject!r} can never match a network element. "
                     "Since v0.7.1 a selector resolves against NE id and address only — never the "
                     "operator label, which the role being scoped can write (F35) — so a label glob "
-                    "selects nothing. Use an address, a CIDR, 'ne:<id>' or 'broker:<id>' (see "
-                    "MIGRATION.md)."
+                    "selects nothing. Use an address, a CIDR, 'ne:<id>', 'broker:<id>' or "
+                    "'org:<id>' (see MIGRATION.md)."
                 )
     for role in policy.roles:
         if role not in ROLE_RANK:

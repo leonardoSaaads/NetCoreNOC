@@ -22,7 +22,8 @@ fiber-cut corpus, logs in as each real role, and captures what the real routes r
 URLs the console requests.
 
 **The one substitution that matters**: d3 is a recording double, so the force-directed graph and
-the timeline SVG are not executed. `src/netcorenoc/ui/app/views/graph.js` says so at the top and
+the timeline SVG are not executed. `src/netcorenoc/ui/app/views/broker/graph.js` says so at the top
+and
 `docs/security/SECURITY-REVIEW-0.13.0.md` records it as this release's largest uncovered surface.
 """
 
@@ -35,6 +36,7 @@ from typing import Any
 
 import pytest
 
+import uicss
 from netcorenoc.crosscutting import rbac
 from netcorenoc.store import Store
 
@@ -68,7 +70,7 @@ ALL_VIEWS = [
 ADMIN_VIEWS = ["users", "tokens", "settings", "scorer", "governance", "quarantine", "audit"]
 
 
-def tap_floor_tags(stylesheet: Path) -> set[str]:
+def tap_floor_tags(css: str) -> set[str]:
     """Which element types the stylesheet's tap-target floor actually reaches.
 
     **This is where F103 hid, and the reason it is a function now.** The v0.16.2 version of this
@@ -85,7 +87,6 @@ def tap_floor_tags(stylesheet: Path) -> set[str]:
     that genuinely needs to exclude something should say so where a reader sees it, not inside a
     selector a normaliser flattens.
     """
-    css = stylesheet.read_text(encoding="utf-8")
     floor = re.search(r"^([^\n{]*)\{\s*min-height: var\(--tap\);", css, re.M)
     assert floor is not None, "the stylesheet no longer states a tap-target floor at all"
     covered: set[str] = set()
@@ -1303,7 +1304,8 @@ async def test_the_grouping_summary_is_computed_from_every_link_not_from_thirty(
     the figures behind them are one press away.
 
     What this does NOT cover: whether the arithmetic is the right arithmetic. It is min, max and a
-    mean per term, and it is checked by reading `views/parts/why.js` — a test that recomputed it
+    mean per term, and it is checked by reading `views/broker/parts/why.js` — a test that
+    recomputed it
     here would be a second implementation of the thing under test.
     """
     sid, count = uifixtures.largest_situation(routes["editor"])
@@ -1749,7 +1751,7 @@ async def test_every_declaration_control_clears_the_tap_floor_at_all_three_width
     import netcorenoc
 
     ui = Path(netcorenoc.__file__).resolve().parent / "ui"
-    covered = tap_floor_tags(ui / "style.css")
+    covered = tap_floor_tags(uicss.stylesheet())
     assert {"button", "select", "input"} <= covered, (
         f"the tap floor covers {sorted(covered)}; the declaration controls are buttons, a select "
         f"and text inputs, and a control the floor's selector excludes is exactly F103"
@@ -1758,7 +1760,7 @@ async def test_every_declaration_control_clears_the_tap_floor_at_all_three_width
     # Every element in `declare.js` that carries a handler — which is what "interactive" means at
     # the DOM, and what a `<div onClick>` would fail. Derived from the source rather than listed,
     # so a control added later is measured rather than assumed.
-    source = (ui / "app" / "views" / "parts" / "declare.js").read_text(encoding="utf-8")
+    source = (ui / "app" / "views" / "broker" / "parts" / "declare.js").read_text(encoding="utf-8")
     #
     # `onSubmit` is deliberately not in the set: a form is a container, and the event is raised by
     # a control inside it that this same scan already covers. Every other handler here is one a
@@ -1840,7 +1842,7 @@ def test_every_age_badge_sits_in_a_flex_context_or_its_auto_margin_does_nothing(
     import netcorenoc
 
     ui = Path(netcorenoc.__file__).resolve().parent / "ui"
-    css = (ui / "style.css").read_text(encoding="utf-8")
+    css = uicss.stylesheet()
     assert re.search(r"\.age\s*\{[^}]*margin-left:\s*auto", css), (
         "`.age` no longer right-aligns with an auto margin; this guard is about that rule"
     )
@@ -2690,7 +2692,7 @@ def test_no_template_glues_a_word_to_the_inline_element_after_it() -> None:
     nests them constantly — `${cond ? html`…` : null}` is its commonest shape — and **two open
     templates give even parity**, so the guard skipped the site silently.
 
-    Measured on `views/parts/evidence.js` when this release's live pass found
+    Measured on `views/broker/parts/evidence.js` when this release's live pass found
     `verdict isINSUFFICIENT_EVIDENCE` on a screen: ten backticks before the defect, **even**, with
     the outer `html`` still open and an inner one just opened. The first repair attempted here
     blanked comments on the theory that their backticks were the cause; that was **wrong** and the
@@ -2780,9 +2782,8 @@ def test_the_disclosure_panel_is_anchored_to_the_bar_and_not_to_its_own_opener()
     assertion is on the **rule** rather than the rendered width: whatever `.disclosure-panel` is
     anchored to, no element between it and `.topbar` may be positioned.
     """
-    import netcorenoc
 
-    css = (Path(netcorenoc.__file__).resolve().parent / "ui" / "style.css").read_text("utf-8")
+    css = uicss.stylesheet()
 
     def position_of(selector: str) -> str | None:
         """The `position` a selector's own rule sets, or None if it sets none."""
@@ -2824,9 +2825,8 @@ def test_the_checkbox_hit_area_stays_at_the_tap_floor_while_the_glyph_shrinks() 
     out by the engine and discards padding. So what must hold is: the input carries `--tap` on both
     edges, `--glyph` never exceeds `--tap`, and the shrink is inside a pointer query.
     """
-    import netcorenoc
 
-    css = (Path(netcorenoc.__file__).resolve().parent / "ui" / "style.css").read_text("utf-8")
+    css = uicss.stylesheet()
 
     checkbox_rule = r'(?m)^input\[type="checkbox"\], input\[type="radio"\] \{([^}]*)\}'
     rule = re.search(checkbox_rule, css)
@@ -3439,11 +3439,8 @@ def test_the_urgency_animation_is_css_and_therefore_reducible() -> None:
     Two things are asserted, and the second is the one that matters: that the urgency marks are
     animated **in this stylesheet**, and that urgency is carried by something that is not motion.
     """
-    import netcorenoc
 
-    css = (Path(netcorenoc.__file__).resolve().parent / "ui" / "style.css").read_text(
-        encoding="utf-8"
-    )
+    css = uicss.stylesheet()
     # The blanket reduction exists and reaches animations with `!important`.
     reduce_block = re.search(
         r"@media \(prefers-reduced-motion: reduce\)\s*\{(.*?)\}\s*\}", css, re.S
@@ -3762,7 +3759,8 @@ async def test_a_quantity_that_was_not_computable_breaks_the_line_rather_than_re
     routes: dict[str, Any],
 ) -> None:
     """`promotion_metrics.measure` returns `[0, 0, 0]` **with a stated reason** when the input is
-    genuinely absent, and `views/parts/verdict.js` has rendered that as "not computable" since
+    genuinely absent, and `views/broker/parts/verdict.js` has rendered that as "not computable"
+    since
     v0.14.0. A chart has to make the same distinction.
 
     Driven with two decisions: the older has every quantity degenerate, the newer has real numbers.
@@ -3893,7 +3891,8 @@ def test_the_console_may_only_chart_a_registered_quantity() -> None:
 
     So the set of keys a chart may plot is asserted **equal** to the server's own
     `promotion.QUANTITY_NAMES`. Equal in both directions: a fifth key of any name fails, and a
-    missing one fails too, which is the same reason `views/parts/verdict.js` transcribes the four
+    missing one fails too, which is the same reason `views/broker/parts/verdict.js` transcribes the
+    four
     rather than iterating whatever the document happens to hold.
     """
     import netcorenoc
@@ -3903,7 +3902,8 @@ def test_the_console_may_only_chart_a_registered_quantity() -> None:
 
     # **Every module that declares one, found by looking** (F114's second half, v0.16.7).
     #
-    # This guard read `views/parts/evidence.js` and nothing else, while `views/parts/verdict.js`
+    # This guard read `views/broker/parts/evidence.js` and nothing else, while
+    # `views/broker/parts/verdict.js`
     # declares its own `QUANTITIES` with the same four — a fact this docstring already cited. A
     # fifth entry added to `verdict.js` was caught by **nothing but the byte-identity pin**, which
     # is re-pinned every release by construction, so it is not a guard.
@@ -3929,7 +3929,8 @@ def test_the_console_may_only_chart_a_registered_quantity() -> None:
     # **And no console module READS `incumbent_linked`.**
     #
     # The distinction is the whole difficulty, and the first version of this guard got it wrong: it
-    # matched the string anywhere outside a comment and fired on `views/parts/evidence.js`, which
+    # matched the string anywhere outside a comment and fired on `views/broker/parts/evidence.js`,
+    # which
     # **renders the prohibition to the operator** — "`incumbent_linked` is a comparison basis and
     # never a target" is on the Evidence screen, inside a `<code>`. A guard that forbids explaining
     # a rule is a guard that gets the explanation deleted.
@@ -4005,7 +4006,7 @@ def test_no_chart_is_drawn_from_a_sampled_table_without_naming_its_rate() -> Non
 
     # The positive half: the screen where such a chart WOULD go states the rate and the column it
     # would have to be read from, so a later release inherits the rule rather than the prose.
-    evidence = (ui / "views" / "parts" / "evidence.js").read_text(encoding="utf-8")
+    evidence = (ui / "views" / "broker" / "parts" / "evidence.js").read_text(encoding="utf-8")
     assert str(DEFAULT_SAMPLE_RATE) in evidence, (
         f"the Evidence screen does not name the shadow sampler's default rate "
         f"({DEFAULT_SAMPLE_RATE}); a later release adding a sampled chart would have no anchor."
@@ -4417,12 +4418,13 @@ def test_the_quantity_scan_reaches_every_module_that_declares_one() -> None:
     third the moment one exists.
     """
     found = _quantity_declarations()
-    assert "views/parts/evidence.js" in found, (
+    assert "views/broker/parts/evidence.js" in found, (
         f"the scan no longer reaches the Evidence screen, which is the module the guard was "
         f"originally written against. It found: {sorted(found)}"
     )
-    assert "views/parts/verdict.js" in found, (
-        f"the scan does not reach `views/parts/verdict.js`, which declares its own QUANTITIES "
+    assert "views/broker/parts/verdict.js" in found, (
+        f"the scan does not reach `views/broker/parts/verdict.js`, which declares its own "
+        f"QUANTITIES "
         f"with the same four keys. That omission IS F114's second half: a fifth entry added there "
         f"was caught by nothing but the byte-identity pin. It found: {sorted(found)}"
     )
@@ -4672,3 +4674,22 @@ async def test_a_situation_opens_as_its_sequence_of_events_first_step_marked(
     assert sum(".seq-first" in row for row in rows) == 1, rows
     # The situation is named in the filter chips, so the narrowing is on screen and removable.
     assert f"Situation #{sid}" in dump
+
+
+def test_no_component_method_shadows_a_preact_instance_field() -> None:
+    """A Component's own method named ``base`` is replaced by the DOM node Preact assigns to
+    ``this.base`` after the first render, so the next call throws. That is how a broker's Network
+    graph stopped opening an element's panel on a click, and its Timeline stopped filtering:
+    ``TypeError: this.base is not a function`` (both screens' ``base()``, ADR #496). The fields
+    Preact writes on an instance are not names a component may define."""
+    import netcorenoc
+
+    ui = Path(netcorenoc.__file__).resolve().parent / "ui" / "app"
+    reserved = ("base", "props", "state", "context")
+    shape = re.compile(rf"^\s+(?:async\s+)?({'|'.join(reserved)})\s*\([^)]*\)\s*\{{", re.MULTILINE)
+    found = [
+        f"{path.relative_to(ui)}: {match.group(1)}()"
+        for path in sorted(ui.rglob("*.js"))
+        for match in shape.finditer(path.read_text(encoding="utf-8"))
+    ]
+    assert not found, f"a component method shadows a field Preact sets on the instance: {found}"

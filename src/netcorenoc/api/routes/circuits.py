@@ -102,9 +102,7 @@ def register(app: FastAPI, ctx: AppContext) -> None:
             raise HTTPException(status_code=400, detail="q: at most 200 characters")
         scope = await scope_for(principal)
         async with store.reading():
-            ids = None
-            if not scope.unrestricted:
-                ids = [int(c["id"]) for c in await store.noc_customers(scope.ne_ids)]
+            ids = None if scope.unrestricted else sorted(scope.orgs)
             rows, total = await store.noc_circuits(ids, query=q, limit=min(max(limit, 1), MAX_LIST))
         return {
             "circuits": [circuit_view(r, principal.role, whole=False) for r in rows],

@@ -13,7 +13,8 @@ Two quantities, and each says something a score alone does not:
 
 * **the weakest link's margin over the threshold.** A grouping whose weakest pair cleared by 0.01
   is one scorer nudge from falling apart; one whose weakest cleared by 0.3 is not.
-  `ui/app/views/parts/why.js` has shown an operator this number since #245; this is the server's own
+  `ui/app/views/broker/parts/why.js` has shown an operator this number since #245; this is the
+  server's own
   reading of it, taken at the instant of the gesture.
 * **the bridge.** Situations are **connected components** while scoring is **pairwise**: A links B,
   B links C, and A and C share a situation even though A-C scored below the threshold. One weak

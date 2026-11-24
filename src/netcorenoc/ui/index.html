@@ -5,7 +5,38 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>NetCoreNOC</title>
 <link rel="icon" href="/favicon.svg" type="image/svg+xml">
-<link rel="stylesheet" href="/style.css">
+<link rel="stylesheet" href="/styles/core/tokens.css">
+<link rel="stylesheet" href="/styles/core/base.css">
+<link rel="stylesheet" href="/styles/core/shell.css">
+<link rel="stylesheet" href="/styles/core/charts.css">
+<link rel="stylesheet" href="/styles/core/components.css">
+<link rel="stylesheet" href="/styles/broker/situations.css">
+<link rel="stylesheet" href="/styles/broker/graph.css">
+<link rel="stylesheet" href="/styles/core/panels.css">
+<link rel="stylesheet" href="/styles/core/sign-in.css">
+<link rel="stylesheet" href="/styles/core/widths.css">
+<link rel="stylesheet" href="/styles/broker/health.css">
+<link rel="stylesheet" href="/styles/broker/maintenance.css">
+<link rel="stylesheet" href="/styles/broker/timeline.css">
+<link rel="stylesheet" href="/styles/broker/catalogue.css">
+<link rel="stylesheet" href="/styles/broker/overview.css">
+<link rel="stylesheet" href="/styles/broker/entities.css">
+<link rel="stylesheet" href="/styles/admin/people.css">
+<link rel="stylesheet" href="/styles/broker/learning.css">
+<link rel="stylesheet" href="/styles/admin/settings.css">
+<link rel="stylesheet" href="/styles/noc/plane.css">
+<link rel="stylesheet" href="/styles/noc/secrets.css">
+<link rel="stylesheet" href="/styles/noc/cases.css">
+<link rel="stylesheet" href="/styles/noc/overview.css">
+<link rel="stylesheet" href="/styles/noc/routines.css">
+<link rel="stylesheet" href="/styles/noc/agents.css">
+<link rel="stylesheet" href="/styles/noc/customers.css">
+<link rel="stylesheet" href="/styles/core/marks.css">
+<link rel="stylesheet" href="/styles/broker/first-run.css">
+<link rel="stylesheet" href="/styles/broker/learning-screens.css">
+<link rel="stylesheet" href="/styles/admin/audit.css">
+<link rel="stylesheet" href="/styles/noc/ollama.css">
+<link rel="stylesheet" href="/styles/broker/brokers.css">
 </head>
 <body>
 
@@ -21,7 +52,8 @@
   resolved its capability and decided to render it, so absence is the default and presence is the
   decision — which is the shape a deny-by-default authorisation surface has to have.
 
-  No inline script, no inline style, no import map. Two script tags and a stylesheet, all
+  No inline script, no inline style, no import map. A script tag and the stylesheets — in
+  cascade order, `styles/` cut from one file at its section marks (ADR #504) — all
   same-origin, all files that exist on disk byte-for-byte as served.
 -->
 <div id="root"></div>

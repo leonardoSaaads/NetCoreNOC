@@ -62,6 +62,7 @@ MODULE_ORDER: tuple[str, ...] = (
     "broker_view.py",  # ADR #496: a read narrowed to one broker's network, for the read routes
     "noc_gate.py",  # the vault's custody and step-up gates, which both NOC route modules import
     "case_view.py",  # how a case and its feed read, shared by both case route modules
+    "routine_access.py",  # ADR #501: who may read which routine, and how one reads
     "case_close.py",  # the broker's half of resolving a case
     "customer_view.py",  # ADR #473: how a customer's book reads, shared by its three route modules
     # ADRs #465-#467: an agent's identity and views, the in-process call, the MCP protocol and
@@ -77,6 +78,7 @@ MODULE_ORDER: tuple[str, ...] = (
     "agent_runtime.py",
     "app.py",
     "routes/__init__.py",
+    "stylesheets.py",  # ADR #504: the console's stylesheets, in cascade order
     "routes/static.py",
     "routes/auth.py",
     # ADR #482: the sign-in's second step, registered right after the first.
@@ -90,6 +92,7 @@ MODULE_ORDER: tuple[str, ...] = (
     "routes/related.py",  # ADR #489: the merge picker's candidates
     "routes/annotate.py",
     "routes/operate.py",
+    "scope_subject.py",  # ADR #499: one person's customers, written by `users` and `governance`
     "routes/users.py",  # ADR #453: the account routes, split from `admin` in the same order
     "routes/admin.py",
     "routes/people.py",
@@ -124,6 +127,7 @@ MODULE_ORDER: tuple[str, ...] = (
     "routes/cases.py",
     "routes/noc_overview.py",
     "routes/case_feed.py",
+    "routes/case_email.py",  # ADR #500
     "routes/noc_exec.py",
     "routes/playbooks.py",
     "routes/agents.py",

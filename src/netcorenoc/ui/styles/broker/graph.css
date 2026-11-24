@@ -1,0 +1,165 @@
+/* ---------- the network graph (v0.22.0, #383; items 6, 11) ----------------------------------
+   `app/netgraph.js`: a box of a fixed aspect, an SVG layer of edges stretched to it, and nodes and
+   labels as HTML positioned by percentage, so a node is the same size and a label the same type at
+   every width. The container query picks which labels show: `layout.labels` decided, for three
+   reference widths, which fit without overlapping a label or a node. */
+.graph-bar { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); margin-bottom: var(--space-2); }
+.netgraph {
+  position: relative; width: 100%; container: netgraph / inline-size;
+  border: 1px solid var(--line); border-radius: var(--radius-2); background-color: var(--bg-sunken);
+  /* ADR #480: Paperclip's canvas — a quiet dot grid, so a sparse estate still reads as a map. */
+  background-image: radial-gradient(var(--grid) 1px, transparent 1.2px);
+  background-size: 22px 22px; background-position: 11px 11px;
+  margin-bottom: var(--space-4); overflow: hidden;
+}
+.netgraph-edges { position: absolute; inset: 0; width: 100%; height: 100%; }
+.gedge { stroke: var(--fg-dim); stroke-opacity: 0.45; vector-effect: non-scaling-stroke; stroke-linecap: round; }
+.gedge-lit { stroke: var(--accent); stroke-opacity: 1; }
+.gnode {
+  position: absolute; width: calc(2 * var(--r)); height: calc(2 * var(--r));
+  min-width: 0; min-height: 0; padding: 0; transform: translate(-50%, -50%);
+  border-radius: 50%; border: 1.5px solid var(--bg-raised); cursor: pointer;
+}
+/* The hit area meets the tap floor even where the dot is small: an invisible ring around it. */
+.gnode::after {
+  content: ""; position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%);
+  width: max(var(--tap), 100%); height: max(var(--tap), 100%); border-radius: 50%;
+}
+/* ADR #480: a node is a ring on a tint of its state, with a soft halo — Paperclip's dots, not
+   solid discs; the state colour is the ring, so a node still reads at a glance. */
+.gnode-alarm {
+  background: color-mix(in srgb, var(--alarm) 28%, var(--bg-raised)); border: 2px solid var(--alarm);
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--alarm) 14%, transparent);
+}
+.gnode-quiet {
+  background: color-mix(in srgb, var(--quiet) 24%, var(--bg-raised)); border: 2px solid var(--quiet);
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--quiet) 12%, transparent);
+}
+/* Urgent: a static ring (what reduced motion leaves) and a pulse (what draws an eye) — #309. */
+.gnode-urgent {
+  box-shadow: 0 0 0 2px var(--bg-sunken), 0 0 0 5px var(--alarm);
+  animation: ncn-urgent 1.8s ease-in-out infinite;
+}
+.gnode-on, .gnode:focus-visible { outline: 3px solid var(--accent); outline-offset: 3px; }
+.glabel {
+  position: absolute; display: none; transform: translateY(-50%); white-space: nowrap;
+  font-size: 11px; line-height: 14px; color: var(--fg-muted); pointer-events: none;
+  padding: 0 3px; border-radius: 3px; background: color-mix(in srgb, var(--bg-sunken) 80%, transparent);
+}
+.glabel-r { margin-left: calc(var(--r) + 3px); }
+.glabel-l { margin-left: calc(-1 * var(--r) - 3px); transform: translate(-100%, -50%); }
+.glabel-b { margin-top: calc(var(--r) + 1px); transform: translate(-50%, 0); }
+@container netgraph (max-width: 520px) { .gl-s { display: block; } }
+@container netgraph (min-width: 521px) and (max-width: 900px) { .gl-m { display: block; } }
+@container netgraph (min-width: 901px) { .gl-l { display: block; } }
+.gnode:hover + .glabel, .gnode:focus-visible + .glabel, .glabel.gl-on {
+  display: block; z-index: 3; color: var(--fg); background: var(--bg-raised);
+  box-shadow: 0 1px 4px rgb(0 0 0 / 25%);
+}
+.netgraph-compact { margin-bottom: var(--space-2); }
+/* Zoom (v0.23.0, #394): all labels once the estate is spread out; the controls float top-right.
+   At 1x a one-finger vertical swipe still scrolls the page; zoomed in, the drawing takes the drag. */
+.netgraph-zoomed .glabel { display: block; }
+.netgraph-home { touch-action: pan-y; cursor: grab; }
+.netgraph-pan { touch-action: none; cursor: grab; }
+.netgraph-home:active, .netgraph-pan:active { cursor: grabbing; }
+.netgraph:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.netgraph-zoom {
+  position: absolute; top: var(--space-2); right: var(--space-2); z-index: 4;
+  display: flex; flex-direction: column; align-items: center; gap: 2px;
+  background: var(--bg-raised); border: 1px solid var(--line); border-radius: var(--radius-2); padding: 2px;
+}
+.netgraph-zoom button {
+  width: 32px; height: 32px; border: 0; border-radius: 6px; background: transparent;
+  color: var(--fg); font-size: 18px; line-height: 1; cursor: pointer;
+}
+.netgraph-zoom button:hover { background: var(--bg-sunken); }
+.netgraph-k { font-size: var(--fs-xs); color: var(--fg-muted); font-variant-numeric: tabular-nums; padding: 0 0 2px; }
+
+/* The selected element's panel (v0.23.0, #394): beside the map and exactly its height — the panel
+   scrolls inside itself, so a long list never pushes the two out of line — and beneath it on a
+   narrow screen. */
+.graph-split, .graph-solo { margin-bottom: var(--space-4); }
+.graph-split .netgraph, .graph-solo .netgraph { margin-bottom: 0; }
+.graph-split { display: grid; grid-template-columns: minmax(0, 1fr) 22rem; gap: var(--space-3); align-items: stretch; }
+.elpanel-wrap { position: relative; min-width: 0; }
+.elpanel {
+  position: absolute; inset: 0; overflow: auto; display: flex; flex-direction: column;
+  border: 1px solid var(--line); border-radius: var(--radius-2); background: var(--bg-raised);
+  font-size: var(--fs-sm);
+}
+@media (max-width: 900px) {
+  .graph-split { grid-template-columns: minmax(0, 1fr); }
+  .elpanel { position: static; }
+}
+.elp-head {
+  display: flex; align-items: flex-start; justify-content: space-between; gap: var(--space-2);
+  padding: var(--space-3); border-bottom: 1px solid var(--line);
+  position: sticky; top: 0; background: var(--bg-raised); z-index: 1;
+}
+.elp-id { min-width: 0; }
+.elp-name { margin: 0; font-size: var(--fs-lg); font-family: var(--mono); overflow-wrap: anywhere; }
+.elp-meta { margin: 2px 0 0; display: flex; flex-wrap: wrap; gap: var(--space-2); color: var(--fg-muted); align-items: center; }
+.elp-close {
+  flex: none; width: 32px; height: 32px; border: 1px solid var(--line); border-radius: 6px;
+  background: transparent; color: var(--fg-muted); font-size: 18px; line-height: 1; cursor: pointer;
+}
+.elp-close:hover { color: var(--fg); background: var(--bg-sunken); }
+.elp-kpi { display: flex; flex-direction: column; gap: var(--space-2); padding: var(--space-3); border-bottom: 1px solid var(--line); }
+.elp-total { display: flex; align-items: baseline; gap: var(--space-2); }
+.elp-total b { font-size: 28px; line-height: 1; font-variant-numeric: tabular-nums; }
+.elp-total span { font-size: var(--fs-xs); font-weight: 500; color: var(--fg-muted); }
+.elp-bands { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: var(--space-1); }
+.elp-sec { padding: var(--space-3); border-bottom: 1px solid var(--line); }
+.elp-sec h3 {
+  margin: 0 0 var(--space-2); font-size: var(--fs-xs); text-transform: uppercase;
+  letter-spacing: 0.06em; color: var(--fg-muted); display: flex; gap: var(--space-2); align-items: center;
+}
+.elp-n { background: var(--bg-sunken); border-radius: 999px; padding: 0 7px; color: var(--fg); letter-spacing: 0; }
+.elp-list { list-style: none; margin: 0; padding: 0; }
+.elp-row {
+  display: grid; grid-template-columns: 2.2rem minmax(0, 1fr); gap: var(--space-2);
+  align-items: start; padding: var(--space-1) 0; color: var(--fg); text-decoration: none;
+  border-bottom: 1px solid color-mix(in srgb, var(--line) 60%, transparent);
+}
+.elp-body { display: flex; flex-direction: column; min-width: 0; }
+.elp-sub { color: var(--fg-muted); font-size: var(--fs-xs); display: flex; gap: var(--space-1); align-items: center; flex-wrap: wrap; }
+a.elp-row:hover .elp-text { text-decoration: underline; }
+.elp-sid { font-family: var(--mono); color: var(--accent); }
+.elp-text { overflow-wrap: anywhere; }
+.elp-foot { margin: var(--space-1) 0 0; font-size: var(--fs-xs); }
+.elp-acts { display: flex; gap: var(--space-2); padding: var(--space-3); margin-top: auto; }
+.graph-find { display: flex; gap: var(--space-2); align-items: center; flex-wrap: wrap; }
+.graph-find input { min-width: 12rem; }
+.load-bar {
+  display: block; width: 100%; min-width: 4rem; height: 6px; margin-top: 0.5em;
+  border-radius: 999px; background: var(--bg-sunken); overflow: hidden;
+}
+.load-fill { display: block; height: 100%; background: var(--alarm); }
+
+/* ---------- v0.16.1: the search note and the inline name form ---------- */
+
+/* A search result is a snapshot, and the note that says so is the whole of the mitigation for
+   that trade — the same role the held card's marker plays one level down. It reads as an aside
+   rather than as an alarm, because nothing is wrong: the operator asked for it. */
+.search-note {
+  border-left: 3px solid var(--line-strong);
+  padding-left: var(--space-2);
+  margin-bottom: var(--space-3);
+}
+
+/* Naming a thing, in the row it names. Wraps rather than overflows: this sits in a column of a
+   table that already scrolls horizontally, and a control that pushed the scroll further would be
+   unreachable exactly where it is needed. */
+.inline-form { display: inline-flex; align-items: center; gap: var(--space-1); flex-wrap: wrap; }
+.inline-form input { min-width: 7rem; max-width: 14rem; }
+.inline-form .err { flex-basis: 100%; font-size: var(--fs-xs); }
+
+/* The three declarations (v0.16.3). Narrower than the class-name form they share a component with,
+   because three of these sit in one member row beside a checkbox, a severity pill and a clear. */
+.declare input, .declare select { min-width: 5.5rem; max-width: 9rem; }
+/* The disagreement, **as an element on the page** rather than a native dialog: it is styleable at
+   390 px, reachable by the keyboard, and visible to the DOM harness — which a `confirm()` is not,
+   and that is how eight consecutive releases shipped a control no test could see. It takes the
+   whole row so the evidence is read before the button beside it is pressed again. */
+.declare-warn { flex-basis: 100%; margin: var(--space-1) 0 0; font-size: var(--fs-xs); }

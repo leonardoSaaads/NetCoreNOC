@@ -146,6 +146,10 @@ class PlaybookIn(BaseModel):
     source_case: int | None = Field(default=None, ge=1)
     customer_id: int | None = Field(default=None, ge=1)
     tier: int = Field(default=1, ge=1, le=4)
+    #: ADR #501: what changed and why, kept with the version this write makes ("ping before SSH:
+    #: case 41 was a dead path, not a dead port"). A routine improves case after case; the note is
+    #: how the next reader knows what each version learned.
+    note: str = Field(default="", max_length=300)
 
 
 class RoutineRunIn(BaseModel):

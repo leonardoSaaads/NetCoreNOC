@@ -33,31 +33,31 @@
  * refuse.
  */
 
-import { Overview } from "./views/overview.js";
-import { Situations } from "./views/situations.js";
-import { Classes } from "./views/classes.js";
-import { Maintenance } from "./views/maintenance.js";
-import { Access } from "./views/access.js";
+import { Overview } from "./views/broker/overview.js";
+import { Situations } from "./views/broker/situations.js";
+import { Classes } from "./views/broker/classes.js";
+import { Maintenance } from "./views/broker/maintenance.js";
+import { Access } from "./views/admin/access.js";
 import { html } from "./dom.js";
-import { Settings } from "./views/settings.js";
-import { Quarantine } from "./views/quarantine.js";
-import { Audit } from "./views/audit.js";
-import { Account } from "./views/account.js";
-import { Secrets } from "./views/secrets.js";
-import { Cases } from "./views/cases.js";
-import { NocOverview } from "./views/nocoverview.js";
-import { NocKpis } from "./views/nockpis.js";
-import { Routines, PlaybooksAlias } from "./views/routines.js";
-import { Agents } from "./views/agents.js";
-import { Org } from "./views/org.js";
-import { Customers } from "./views/customers.js";
-import { GraphView } from "./views/graph.js";
-import { Timeline } from "./views/timeline.js";
-import { Entities } from "./views/entities.js";
-import { Learning, LabellingAlias, CorpusAlias } from "./views/learning.js";
-import { Promotion } from "./views/promotion.js";
-import { Brokers, brokerAlias, brokerHeading } from "./views/brokers.js";
-import { OverviewBroker } from "./views/parts/brokerpick.js";
+import { Settings } from "./views/admin/settings.js";
+import { Quarantine } from "./views/broker/quarantine.js";
+import { Audit } from "./views/admin/audit.js";
+import { Account } from "./views/admin/account.js";
+import { Secrets } from "./views/noc/secrets.js";
+import { Cases } from "./views/noc/cases.js";
+import { NocOverview } from "./views/noc/nocoverview.js";
+import { NocKpis } from "./views/noc/nockpis.js";
+import { Routines, PlaybooksAlias } from "./views/noc/routines.js";
+import { Agents } from "./views/noc/agents.js";
+import { Org } from "./views/noc/org.js";
+import { Customers } from "./views/noc/customers.js";
+import { GraphView } from "./views/broker/graph.js";
+import { Timeline } from "./views/broker/timeline.js";
+import { Entities } from "./views/broker/entities.js";
+import { Learning, LabellingAlias, CorpusAlias } from "./views/broker/learning.js";
+import { Promotion } from "./views/broker/promotion.js";
+import { Brokers, brokerAlias, brokerHeading } from "./views/broker/brokers.js";
+import { OverviewBroker } from "./views/broker/parts/brokerpick.js";
 
 /**
  * `id`         the URL fragment and the DOM's `data-view`

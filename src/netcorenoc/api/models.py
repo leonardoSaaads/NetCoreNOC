@@ -275,6 +275,8 @@ class UserIn(BaseModel):
     role: Literal["viewer", "editor", "admin"]
     # v0.25.0 (ADR #401): what the console shows beside the photo; the username stays the login.
     display_name: str | None = Field(default=None, max_length=MAX_DISPLAY_NAME)
+    # ADR #499: the customers this person serves, set in the same commit as the account.
+    organizations: list[Annotated[int, Field(ge=1)]] | None = Field(default=None, max_length=200)
 
     _clean = field_validator("display_name")(_printable)
 

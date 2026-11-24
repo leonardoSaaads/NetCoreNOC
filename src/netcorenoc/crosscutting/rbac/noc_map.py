@@ -59,6 +59,8 @@ NOC_ROUTE_PERMISSIONS: dict[tuple[str, str], str] = {
     ("GET", "/api/noc/cases/{sid}/feed"): "cases.read",
     ("POST", "/api/noc/cases/{sid}/feed"): "cases.post",
     ("POST", "/api/noc/cases/{sid}/customer-update"): "cases.work",
+    ("POST", "/api/noc/cases/{sid}/email"): "cases.work",  # ADR #500
+    ("GET", "/api/noc/cases/{sid}/email/draft"): "cases.work",
     ("GET", "/api/noc/people"): "cases.work",
     # -- the executor and playbooks (ADRs #462, #463) --
     # An act on a device is a use of a lease; the handler checks the lease as introspection does.
@@ -67,6 +69,8 @@ NOC_ROUTE_PERMISSIONS: dict[tuple[str, str], str] = {
     ("GET", "/api/noc/playbooks"): "playbooks.read",
     ("POST", "/api/noc/playbooks"): "playbooks.write",
     ("GET", "/api/noc/playbooks/{playbook_id}"): "playbooks.read",
+    # ADR #501: one earlier version of a routine.
+    ("GET", "/api/noc/playbooks/{playbook_id}/versions/{version}"): "playbooks.read",
     ("POST", "/api/noc/playbooks/{playbook_id}"): "playbooks.write",
     ("POST", "/api/noc/playbooks/{playbook_id}/enabled"): "playbooks.write",
     # ADR #492: running a routine on a case reads the device the way the automation does.
@@ -171,6 +175,8 @@ NOC_ROUTE_SCOPE: dict[tuple[str, str], Literal["scoped", "unscoped", "admin_only
     ("GET", "/api/noc/cases/{sid}/feed"): "scoped",
     ("POST", "/api/noc/cases/{sid}/feed"): "scoped",
     ("POST", "/api/noc/cases/{sid}/customer-update"): "scoped",
+    ("POST", "/api/noc/cases/{sid}/email"): "scoped",
+    ("GET", "/api/noc/cases/{sid}/email/draft"): "scoped",
     # The accounts a `specified` post may name: people, not elements; every scope reads the same.
     ("GET", "/api/noc/people"): "unscoped",
     # Acting on a device with a lease: decided by the lease, its agent grant and the credential's
@@ -186,6 +192,8 @@ NOC_ROUTE_SCOPE: dict[tuple[str, str], Literal["scoped", "unscoped", "admin_only
     ("POST", "/api/noc/playbooks"): "unscoped",
     # One playbook and its runs: the runs name cases, each a number the reader may not open.
     ("GET", "/api/noc/playbooks/{playbook_id}"): "unscoped",
+    # ADR #501: an earlier version, under its own tier and customer as well as the routine's.
+    ("GET", "/api/noc/playbooks/{playbook_id}/versions/{version}"): "unscoped",
     # Replacing one: the same gate as writing it.
     ("POST", "/api/noc/playbooks/{playbook_id}"): "unscoped",
     # Switching one off is a kill switch; on, the same gate as writing it.

@@ -1,0 +1,254 @@
+/* NetCoreNOC console — the stylesheets, no build step, no external origin (ADR #504).
+ *
+ * `styles/` holds one sheet per part of the console — `core/` (tokens, base, the shell, the
+ * shared components), `broker/`, `noc/` and `admin/` — and `index.html` links them in ONE
+ * order, which is the cascade: the sheets are the old single file cut at its own section
+ * marks, so a rule still wins or loses to exactly the rules it did. A new rule goes in the
+ * sheet of the screen it styles; a new sheet goes into `index.html` where its rules belong
+ * in that order, and into `STATIC_ASSETS` (the appliance serves nothing it does not list).
+ *
+ * ## Themes: three states, two mechanisms
+ *
+ * `data-theme="dark"` / `data-theme="light"` on <html> is an explicit choice and wins.
+ * No attribute means "system", and `@media (prefers-color-scheme: light)` decides — which is
+ * exactly what shipped before this release and is not broken.
+ *
+ * Every colour is a token defined on bare `:root`. The media query and the attribute selector
+ * only ever REDEFINE tokens; no rule below them names a literal colour, so a theme cannot be half
+ * applied.
+ *
+ * ## Severity is never colour alone
+ *
+ * Every severity carries a glyph and its text as well as its colour. A rule that set only a
+ * colour would fail for a colour-blind operator and on a bad monitor at 3 a.m., which is the
+ * user this product is for.
+ */
+
+:root {
+  /* ---- the type scale (DECISIONS #243) ----------------------------------------------
+   *
+   * A 1.2 ratio from a 13 px body, rounded to whole pixels, five steps. It replaces five
+   * numbers each chosen for one thing, whose ratios were 1.09, 1.08, 1.23 and 1.31 — a
+   * body a pixel from the caption above it, and a jump to the heading three times larger.
+   *
+   * 13 px stays the body because that is the density this product is for: Zabbix-dense
+   * tables an operator scans hundreds of rows in. The scale is what changed, not the size.
+   *
+   * Ratios, measured: 11/13 = 0.85, 13/16 = 1.23, 16/19 = 1.19, 19/23 = 1.21. */
+  --fs-xs: 11px;   /* captions, table headers, badges — never a sentence */
+  /* `sm` and `md` are the SAME STEP, deliberately. Five steps is what a 1.2 ratio gives between
+   * 11 and 23 px, and secondary text does not get a sixth invented for it — a hint is separated
+   * from body by colour (`--fg-muted`), which is a stronger signal than one pixel ever was. The
+   * name is kept because call sites should say which ROLE they mean, not which number. */
+  --fs-sm: 13px;   /* secondary text: hints, notes, the summary under a heading */
+  --fs-md: 13px;   /* body, and every table cell */
+  --fs-lg: 16px;   /* section headings (h2) */
+  --fs-xl: 19px;   /* screen headings (h1) and the figures on a stat tile */
+  --fs-2xl: 23px;  /* the one number a screen is about */
+
+  /* ---- spacing: a 4 px grid, every step a multiple of it -----------------------------
+   *
+   * Was 4, 8, 12, 18, 28 — the last two off the grid, which is why nothing lined up with
+   * anything at two removes. Now 4, 8, 12, 16, 24, 32: every gap is a multiple of the
+   * smallest, so a stack of three components sits on the same rhythm as one. */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 24px;
+  --space-6: 32px;
+
+  --radius-1: 6px;
+  --radius-2: 10px;
+  --shadow-1: 0 1px 2px rgba(0, 0, 0, 0.28);
+  --row-h: 28px;
+  /* The pointer floor. Every interactive control is at least this on its short edge —
+   * the theme button measured 29x23 and the situation permalink 18x17 (F81). Not the
+   * 44 px iOS figure: this is a dense operations console and a 44 px row would halve
+   * what fits on a screen. 28 is the row height, so a control is a row. */
+  --tap: 28px;
+  --nav-w: 232px;
+  /* **The one height the wordmark and the top bar share** (v0.30.0). Each used to size itself from
+     its own padding and contents — 48 px beside 55 px — so the sidebar's rule under the wordmark
+     ran 7 px above the bar's, a step the eye reads as a defect on every screen. One token, and
+     both rules sit on the same line by construction rather than by two numbers agreeing. */
+  --bar-h: 56px;
+  /* Collapsed: one 28 px control plus the item's own padding on each side. Derived from `--tap`
+     rather than chosen, so the day the touch floor moves the collapsed rail moves with it. */
+  --nav-w-collapsed: calc(var(--tap) + 2 * var(--space-3));
+  --mono: "JetBrains Mono", ui-monospace, "SFMono-Regular", "Cascadia Mono", Menlo, Consolas, monospace;
+  /* ADR #479: Inter, vendored (`vendor/inter-5.3.0.latin.woff2`), as Paperclip ships it: one face at
+     every size on every platform, rather than whatever the desktop calls `system-ui`. */
+  --sans: "InterVariable", "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+
+  /* palette — dark is the default because a NOC wall is dark */
+  --bg: #0c0c0e;
+  --bg-raised: #141417;
+  --bg-sunken: #0f0f12;
+  --bg-hover: #1c1c20;
+  --line: #232328;
+  --line-strong: #34343b;
+  --fg: #ececf1;
+  --fg-muted: #a1a1ab;
+  --fg-dim: #6b6b76;
+  --accent: #5b93ff;
+  --accent-fg: #ffffff;
+  --alarm: #ff5f57;
+  --alarm-bg: #2a1413;
+  --major: #ff9a3c;
+  --minor: #f2c94c;
+  --low: #6aa9e8;
+  --quiet: #34d07a;
+  --quiet-bg: #0f2117;
+  --warn: #f5a524;
+  --warn-bg: #2a1f0c;
+  --unknown: #8a8a96;
+  --term-t: #4a9eff;
+  --term-a: #b57bff;
+  --term-e: #4cc38a;
+
+  /* ---- ADR #479: the console's identity, after Paperclip ------------------------------
+   * Neutral surfaces (no blue cast), hairline borders, a NEUTRAL primary action (light on dark,
+   * dark on light) and the accent kept for what is selected, linked or live. */
+  --primary: #ececf1;
+  --primary-fg: #0c0c0e;
+  --grid: rgba(255, 255, 255, 0.06);
+  --nav-active: rgba(255, 255, 255, 0.07);
+  --accent-soft: rgba(91, 147, 255, 0.14);
+
+  /* ---- the severity pills (DECISIONS #277) -------------------------------------------
+   *
+   * A FILL and an INK per band, not a text colour: `--alarm` and the four beside it were
+   * chosen to be legible ON the page background, and reusing one as a fill would put text on
+   * a colour nobody picked to hold it.
+   *
+   * **Ordered by luminosity, not only by hue.** `critical` and `major` sit two steps apart on
+   * the red-orange axis and are the pair that collides under deuteranopia, so the ladder
+   * descends in weight from a deep saturated red to a light neutral — an operator who cannot
+   * separate the hues still reads the order, and the glyph and the word carry the rest. */
+  --sev-critical-fill: #b42318;
+  --sev-critical-ink: #fff1ef;
+  --sev-major-fill: #d2620c;
+  --sev-major-ink: #fff6ea;
+  --sev-minor-fill: #e2b23a;
+  --sev-minor-ink: #231a00;
+  --sev-warning-fill: #2c5a85;
+  --sev-warning-ink: #e8f2fc;
+  --sev-minor-line: #d8b02a;
+  --sev-warning-line: #6fa8d6;
+  --sev-unplaced-fill: #26262c;
+  --sev-unplaced-ink: #a1a1ab;
+
+  /* ---- the sign-in artwork (v0.30.0) ------------------------------------------------
+   * `login-bg.svg` is dark in both themes — a NOC wall at night — so the words written straight
+   * on it have their own ink, defined once here and deliberately NOT redefined by the light theme.
+   * The card on top of it follows the theme like every other surface. */
+  --art-ink: #e8f0fc;
+  --art-ink-muted: #a9bad3;
+  --art-base: #050b16;
+  --art-scrim: rgba(5, 11, 22, 0.62);
+  --art-accent: #6fb3ff;
+  --shadow-2: 0 18px 50px rgba(0, 0, 0, 0.45), 0 2px 8px rgba(0, 0, 0, 0.3);
+}
+
+/* System preference decides only when no explicit choice is stamped. */
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme="dark"]) {
+    --bg: #fbfbfc;
+    --bg-raised: #ffffff;
+    --bg-sunken: #f4f4f6;
+    --bg-hover: #efeff2;
+    --line: #e6e6ea;
+    --line-strong: #d0d0d7;
+    --fg: #0a0a0c;
+    --fg-muted: #62626c;
+    --fg-dim: #9696a0;
+    --accent: #2563eb;
+    --accent-fg: #ffffff;
+    --alarm: #c8261b;
+    --alarm-bg: #fdeeec;
+    --major: #b45309;
+    --minor: #8a6d00;
+    --low: #2b6a94;
+    --quiet: #15803d;
+    --quiet-bg: #ecf8f0;
+    --warn: #a16207;
+    --warn-bg: #fdf4e3;
+    --unknown: #6b6b76;
+    --term-t: #0b62d0;
+    --term-a: #6b34c2;
+    --term-e: #1a7a4c;
+    --primary: #18181b;
+    --primary-fg: #ffffff;
+    --grid: rgba(10, 10, 12, 0.06);
+    --nav-active: rgba(10, 10, 12, 0.06);
+    --accent-soft: rgba(37, 99, 235, 0.10);
+    --shadow-1: 0 1px 2px rgba(20, 28, 40, 0.10), 0 2px 8px rgba(20, 28, 40, 0.08);
+
+    /* The same ladder, re-derived for a light ground: the fills darken and the inks invert
+     * where they must, so the luminosity ORDER is preserved rather than the literal colours. */
+    --sev-critical-fill: #b42318;
+    --sev-critical-ink: #fff1ef;
+    --sev-major-fill: #c2570a;
+    --sev-major-ink: #fff6ea;
+    --sev-minor-fill: #f2d264;
+    --sev-minor-ink: #2e2400;
+    --sev-warning-fill: #d6e6f5;
+    --sev-warning-ink: #123c58;
+    --sev-minor-line: #8a6d00;
+    --sev-warning-line: #35617f;
+    --sev-minor-line: #8a6d00;
+  --sev-warning-line: #35617f;
+  --sev-unplaced-fill: #ececf0;
+    --sev-unplaced-ink: #62626c;
+  }
+}
+
+/* The explicit choice, in both directions, so the toggle wins over the system setting. */
+:root[data-theme="light"] {
+  --bg: #fbfbfc;
+  --bg-raised: #ffffff;
+  --bg-sunken: #f4f4f6;
+  --bg-hover: #efeff2;
+  --line: #e6e6ea;
+  --line-strong: #d0d0d7;
+  --fg: #0a0a0c;
+  --fg-muted: #62626c;
+  --fg-dim: #9696a0;
+  --accent: #2563eb;
+  --accent-fg: #ffffff;
+  --alarm: #c8261b;
+  --alarm-bg: #fdeeec;
+  --major: #b45309;
+  --minor: #8a6d00;
+  --low: #2b6a94;
+  --quiet: #15803d;
+  --quiet-bg: #ecf8f0;
+  --warn: #a16207;
+  --warn-bg: #fdf4e3;
+  --unknown: #6b6b76;
+  --term-t: #0b62d0;
+  --term-a: #6b34c2;
+  --term-e: #1a7a4c;
+  --primary: #18181b;
+  --primary-fg: #ffffff;
+  --grid: rgba(10, 10, 12, 0.06);
+  --nav-active: rgba(10, 10, 12, 0.06);
+  --accent-soft: rgba(37, 99, 235, 0.10);
+  --shadow-1: 0 1px 2px rgba(20, 28, 40, 0.10), 0 2px 8px rgba(20, 28, 40, 0.08);
+
+  /* The light ladder again, so the explicit choice wins over the system setting in BOTH
+   * directions — the rule this stylesheet's header states, applied to the pills. */
+  --sev-critical-fill: #b42318;
+  --sev-critical-ink: #fff1ef;
+  --sev-major-fill: #c2570a;
+  --sev-major-ink: #fff6ea;
+  --sev-minor-fill: #f2d264;
+  --sev-minor-ink: #2e2400;
+  --sev-warning-fill: #d6e6f5;
+  --sev-warning-ink: #123c58;
+  --sev-unplaced-fill: #ececf0;
+  --sev-unplaced-ink: #62626c;
+}
+
+* { box-sizing: border-box; }

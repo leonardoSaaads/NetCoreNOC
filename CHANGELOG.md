@@ -33,9 +33,10 @@ on request (#480), each customer's credentials and email (#481), **two-factor si
 person** (#482), a first-run Overview in pictures (#483), Learning (#484), the Judge in tabs
 (#485), the audit log by filters (#486), a local Ollama that works (#487), routines (#492) and
 **brokers** — one appliance, many networks, each correlating, mapping and learning on its own, its
-traps arriving on its own port, through a remote proxy or by range (#494-#498). The schema is
-PostgreSQL's baseline, **migration 0031**, which includes SQLite's 0030, **0032** to **0047**
-(schema 47). See
+traps arriving on its own port, through a remote proxy or by range (#494-#498), a person limited to
+customers (#499), email written and answered on the case's feed (#500) and routines that keep
+their versions, on each customer's page (#501). The schema is PostgreSQL's baseline, **migration
+0031**, which includes SQLite's 0030, **0032** to **0049** (schema 49). See
 [`MIGRATION.md`](MIGRATION.md): the SQLite file is **imported once**, before the first start; the
 appliance is three processes and a spool on disk, and a container needs two CPUs. No grouping
 decision changes (`make eval` is byte-identical).
@@ -45,6 +46,94 @@ imports the file. Backups are `pg_dump` archives — and **the secret key file**
 data directory), without which sealed values and every password are unreadable (#453) — and **the
 secrets key file** (`secrets.key`; the image keeps it on a volume of its own), without which every
 stored device credential is unreadable (#455).
+
+### Changed — the console's files by plane (#504)
+
+- `ui/style.css` (5 100 lines) is now `ui/styles/{core,broker,noc,admin}/*.css`, 32 sheets cut at
+  its own section marks and linked by `index.html` in the same order — the cascade is unchanged.
+- `ui/app/views/` is now `views/broker/`, `views/noc/` and `views/admin/`, each with its `parts/`;
+  no module was renamed and every import was re-resolved (#504).
+
+### Fixed — what a Gemini agent found in the lab (#505)
+
+- A busy AI provider (429, 5xx — Gemini's free tier answered 503 "high demand" mid-case) is asked
+  again after 2, 6 and 15 s, its own `Retry-After` first; a wrong request is not. A refusal sent as
+  a list reads as its sentence (#505).
+- Google AI Studio keys beginning `AQ.` are no longer called wrong; hiring an agent chooses the
+  provider's only key itself (#505).
+- Situations: the New tab no longer says the network is quiet while the header counts new ones —
+  the live list carries every live state, however much was resolved since; a link to an older
+  situation shows its card (#505).
+- The email editor sends a bulleted or numbered list as a list (Chromium nests it in the line's
+  `<div>`) (#505).
+- A reply's `References` names each earlier message once, its parent last (#505).
+
+### Added — Maintenance opens on a board of every broker's planned work (#503)
+
+- **Broker → Maintenance**: *Running now* (and the hosts under maintenance), *Next 24 hours*, *To
+  confirm* (and when the first lapses), *Last 7 days*; a row per broker with its own **Schedule**,
+  which opens the form for that broker; and the next seven days as bars. Inside a broker, the same
+  board for that network. No new route: the board reads the list route the rows read (#503).
+
+### Added — routines on each customer's page, and every version a routine had (#501, #502)
+
+- **Customers → Routines**, beside Instructions, Workbook, Additional docs, Circuits, Access and
+  Email: the customer's routines and the shared ones that also run on its cases, opened as their
+  tree and runs, and **New routine for …** with the customer already chosen (#501).
+- **A routine keeps every version** (migration **0049**): who wrote it, when, a one-line note on
+  what changed and why, and how that version's runs ended — *How it improved* on the routine. An
+  earlier version opens as its tree, and *Start an edit from* it restores it as a new version.
+- **MCP**: `noc_update_playbook` takes a `note`, `noc_get_playbook` returns the versions and how
+  each fared, `noc_get_playbook_version` reads an earlier tree; the agents' guide says to improve a
+  routine that missed on their case, naming the case. An earlier version is read under its own
+  tier and customer (#501).
+- **The NOC's Overview** is its three set-up panels until the first case reaches the NOC — set up
+  or not — and the overview alone from then on, as the Broker's is before its first trap (#502).
+
+### Added — email written and answered from the case's feed (#500)
+
+- **Cases → Feed → Send email**, beside *Feed post*: a small editor with To, Cc and Bcc (the
+  addresses this case's emails went to are suggested), a subject that keeps the case's tag
+  `[NetCoreNOC #…]`, and a body with paragraphs, lists, quotes, bold, italic, underline, links and
+  a size from small to huge. The body is a document, never HTML: the server renders it, so nothing
+  typed can reach the customer's mail client as markup. *Customer update* fills the editor with the saved
+  update and whom the case's last message went to.
+- **Every message is on the feed** — the NOC's and the customer's — with its From, To, Cc, subject
+  and body; Bcc is shown to who works cases only. Each one has **Reply** and **Reply all**: the
+  recipients and the `Re:` subject are worked out, the original is quoted, and the reply is
+  threaded (`In-Reply-To`, `References`) so the customer's mail client keeps one conversation.
+- **A customer's reply** lands on the case (an `email` post by the customer) and puts a pending case
+  back in the queue with its clocks running, for whichever agent is free.
+- **MCP**: `noc_send_case_email` (to, cc, bcc, subject, `text` or a document, `reply_to`,
+  `reply_all`) and `noc_case_email_draft` (a reply's recipients and quote, or the customer update
+  to send); the agents' guide says when to email and to answer the customer's last message with
+  Reply all (#500).
+
+### Changed
+
+- **Customers → Email** is the mail server alone: which SMTP and IMAP credentials, and the sender.
+  Recipients and copies are chosen on each email; *Send customer update* posts the update on the
+  feed and emails no one (#500).
+- Migration **0048** (schema 48): `noc_case_mail` keeps each message whole — sender's name, Cc,
+  Bcc, the message it answers, its chain, its text and the editor's document — and a feed post may
+  be of kind `email` (#500).
+
+### Added — a person limited to customers (#499)
+
+- **People & access → Customers**: *every customer*, or *only these*. "Claro - viewer" sees Claro's
+  brokers (every element Claro owns, in every broker) and Claro's side of the NOC — its book,
+  cases, routines and, for a custodian, its credentials — and nothing of any other customer. The
+  limit is written in the commit that makes the account. The visibility policy's new selector is
+  `org:<id>`; `POST /api/scope/subject` sets one person's customers (#499).
+- A shared credential (an AI provider's key) and a shared routine's runs on other customers' cases
+  are no longer shown to a person limited to customers; an agent's page shows its work on the
+  caller's cases only (#499).
+
+### Fixed
+
+- A broker's Network graph opens an element's panel on a click again, and a broker's Timeline
+  filters again: both screens' `base()` method was replaced by the DOM node Preact keeps in
+  `this.base` (#496).
 
 ### Added — brokers: one appliance, many networks (#494-#498)
 

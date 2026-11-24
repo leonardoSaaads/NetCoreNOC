@@ -287,3 +287,69 @@ async def test_a_refused_confirm_is_said_on_its_row_and_the_list_is_read_again(
     result = domdriver.run_scenario("maintenance", {"routes": routes, "clickConfirm": True})
     assert result["rowError"] and "expired" in result["rowError"], result["rowError"]
     assert result["reads"] >= 2, "the list was not read again after the refusal"
+
+
+LIVE = "/api/maintenance-windows?status=pending_confirmation,scheduled,active&limit=200"
+
+
+@dom_test
+async def test_the_board_counts_every_brokers_planned_work_and_schedules_for_one(
+    store: Store,
+) -> None:
+    """ADR #503: above the list, what runs now and over how many hosts, what starts within a day,
+    what waits for a confirmation, and the week as bars; with more than one broker, each broker's
+    row and its own *Schedule*, which opens the form for that broker."""
+    routes = await uifixtures.all_routes(store)
+    editor = dict(routes["editor"])
+    windows = [
+        _window(1, "active", target_count=3, broker_id=None, starts_at=_NOW - 600),
+        _window(2, "pending_confirmation", broker_id=None),
+        _window(3, "scheduled", broker_id=None, starts_at=_NOW + 3 * 86400),
+    ]
+    staged = _with_windows(editor, windows)
+    staged[LIVE] = {
+        "status": 200,
+        "json": {"windows": windows, "total": 3, "limit": 200, "offset": 0, "now": _NOW},
+    }
+    seen = domdriver.run_scenario("render", {"routes": staged, "navigate": "#/maintenance"})
+    dump = seen["dump"]
+    for words in (
+        "Running now",
+        "Next 24 hours",
+        "To confirm",
+        "Last 7 days",
+        "The next seven days",
+        "3 hosts under maintenance",
+    ):
+        assert f'"{words}"' in dump, words
+    assert any(
+        r.startswith("GET /api/maintenance-windows?status=ended,expired&since=")
+        for r in seen["requestPaths"]
+    ), "the last week is read too"
+    assert '"Could not read the last week"' in dump, "a read that failed is said, not hidden"
+    assert dump.count(".mwb-bar.mwb-bar-") == 3, "each live window is a bar on the week"
+    assert ".mw-row" in dump, "the list is still below the board"
+
+    # Two brokers: each its own row, and Schedule on one opens the form for it.
+    two = dict(staged)
+    two["/api/brokers"] = {
+        "status": 200,
+        "json": {"brokers": [{"id": 1, "name": "Default broker"}, {"id": 2, "name": "Claro NE"}]},
+    }
+    rows = domdriver.run_scenario("render", {"routes": two, "navigate": "#/maintenance"})
+    assert '"By broker"' in rows["dump"] and '"Claro NE"' in rows["dump"]
+    assert 'aria-label="Schedule on Default broker"' in rows["dump"], "a Schedule per broker"
+    assert 'aria-label="Schedule on Claro NE"' in rows["dump"]
+    opened = domdriver.run_scenario(
+        "submitForm",
+        {"routes": two, "navigate": "#/maintenance", "click": ["Schedule"]},
+    )
+    assert "New maintenance window — Default broker" in opened["dump"], (
+        "Schedule on a broker's row opens the form for that broker"
+    )
+
+    broken = dict(staged)
+    broken[LIVE] = {"status": 500, "json": {"detail": "boom"}}
+    still = domdriver.run_scenario("render", {"routes": broken, "navigate": "#/maintenance"})
+    assert ".mw-row" in still["dump"], "the board's failure never costs the list"
+    assert '"The live windows could not be read; the list below is current."' in still["dump"]

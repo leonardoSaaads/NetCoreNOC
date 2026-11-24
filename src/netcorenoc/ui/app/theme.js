@@ -145,7 +145,7 @@ export function nextNavState(from = navState()) {
  * author remembers it is not an absolute; this one is enforced by a test, which is why it
  * caught a preference added four years after it was written.
  *
- * **The closed set is passed in, not restated here.** `views/parts/pulse.js` owns the list of
+ * **The closed set is passed in, not restated here.** `views/broker/parts/pulse.js` owns the list of
  * ranges because the chart's axis and the picker's labels have to mean the same thing, and its
  * own header says that two lists of durations is how they come to differ by one entry. This
  * file owns the *mechanism* — a cookie, validated on read — and the caller owns the vocabulary.

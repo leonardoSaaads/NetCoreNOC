@@ -100,6 +100,7 @@ REFERENCE: dict[tuple[str, str], Entry] = {
     ("POST", "/api/rbac/subject"): Entry(ACCESS, "Narrow one role, person or token"),
     ("GET", "/api/scope"): Entry(ACCESS, "The visibility policy and what each role sees"),
     ("POST", "/api/scope"): Entry(ACCESS, "Apply, restore or clear the visibility policy"),
+    ("POST", "/api/scope/subject"): Entry(ACCESS, "Set which customers one person serves"),
     ("GET", "/api/config"): Entry(SETTINGS, "Live configuration and where each value comes from"),
     ("POST", "/api/config"): Entry(SETTINGS, "Set the trap allowlist and operational retention"),
     ("GET", "/api/dataset/retention"): Entry(SETTINGS, "The feedback dataset's retention tiers"),
@@ -219,12 +220,17 @@ REFERENCE: dict[tuple[str, str], Entry] = {
     ("POST", "/api/noc/cases/{sid}/customer-update"): Entry(
         CASES, "Send the customer update to the customer"
     ),
+    ("POST", "/api/noc/cases/{sid}/email"): Entry(CASES, "Email the customer, or reply"),
+    ("GET", "/api/noc/cases/{sid}/email/draft"): Entry(CASES, "What a reply or an email starts as"),
     ("GET", "/api/noc/people"): Entry(CASES, "People a specified post may name"),
     ("POST", "/api/noc/exec"): Entry(AUTOMATION, "Act on a device with a lease (read only)"),
     ("POST", "/api/noc/secrets/{secret_id}/hostkey"): Entry(VAULT, "Forget a pinned host key"),
     ("GET", "/api/noc/playbooks"): Entry(AUTOMATION, "Routines: customer, tier, match, runs"),
     ("POST", "/api/noc/playbooks"): Entry(AUTOMATION, "Store a routine (read-only steps)"),
     ("GET", "/api/noc/playbooks/{playbook_id}"): Entry(AUTOMATION, "One routine, tree and runs"),
+    ("GET", "/api/noc/playbooks/{playbook_id}/versions/{version}"): Entry(
+        AUTOMATION, "An earlier version of a routine"
+    ),
     ("POST", "/api/noc/playbooks/{playbook_id}"): Entry(AUTOMATION, "Replace a routine's tree"),
     ("POST", "/api/noc/playbooks/{playbook_id}/enabled"): Entry(AUTOMATION, "Switch it on or off"),
     ("POST", "/api/noc/playbooks/{playbook_id}/run"): Entry(

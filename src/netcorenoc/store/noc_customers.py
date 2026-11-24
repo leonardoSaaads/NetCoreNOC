@@ -2,10 +2,9 @@
 
 Storage only; what may be written is `api/routes/customers.py`'s, what a circuit or a document is
 `engine/noc/circuits.py` and `engine/noc/doctext.py`'s. A customer is an organization other than
-the default one, and **who may see it is decided by its elements**: a caller whose scope reaches
-none of a customer's elements is answered as if it did not exist (:data:`VISIBLE`). That narrows,
-and never widens: the organization column decides which customer's book a scoped caller reads,
-never which element (ADR #473 records why this is not the isolation ADR #366 refuses).
+the default one, and **who may see it is decided by the caller's scope**: the organizations it
+names (`org:<id>`, ADR #499) and the owners of the elements it reaches (`Scope.orgs`). A customer
+outside them is answered as if it did not exist. That narrows, and never widens.
 """
 
 from __future__ import annotations
@@ -15,8 +14,6 @@ from typing import Any
 
 from netcorenoc.store.base import StoreBase
 
-#: A customer the caller's elements reach; the caller binds its visible element ids.
-VISIBLE = "EXISTS (SELECT 1 FROM ne WHERE ne.organization_id = o.id AND ne.id = ANY(?))"
 #: Its open cases: one of its elements is a member of a case not yet resolved.
 _OPEN_CASES = (
     "(SELECT COUNT(DISTINCT c.situation_id) FROM noc_case c "
@@ -35,9 +32,10 @@ CONTACT_FIELDS = ("party", "party_kind", "escalation_level", "name", "role", "em
 class NocCustomerMixin(StoreBase):
     # -- customers -----------------------------------------------------------------------------
 
-    async def noc_customers(self, ne_ids: frozenset[int] | None = None) -> list[dict[str, Any]]:
-        """Every customer the caller may see, with what its book holds."""
-        where, args = (f" AND {VISIBLE}", (sorted(ne_ids),)) if ne_ids is not None else ("", ())
+    async def noc_customers(self, org_ids: frozenset[int] | None = None) -> list[dict[str, Any]]:
+        """Every customer the caller may see (``org_ids``: its scope's; None: every one), with
+        what its book holds."""
+        where, args = ("", ()) if org_ids is None else (" AND o.id = ANY(?)", (sorted(org_ids),))
         cur = await self.conn.execute(
             "SELECT o.id, o.name, o.slug, "  # nosec B608 - fixed fragments, values bound
             "(SELECT COUNT(*) FROM ne WHERE ne.organization_id = o.id) AS elements, "
@@ -70,17 +68,6 @@ class NocCustomerMixin(StoreBase):
         )
         row = await cur.fetchone()
         return dict(row) if row else None
-
-    async def noc_customer_visible(
-        self, organization_id: int, ne_ids: frozenset[int] | None
-    ) -> bool:
-        if ne_ids is None:
-            return True
-        cur = await self.conn.execute(
-            f"SELECT 1 FROM organization o WHERE o.id = ? AND {VISIBLE}",  # nosec B608
-            (organization_id, sorted(ne_ids)),
-        )
-        return await cur.fetchone() is not None
 
     async def noc_customer_elements(
         self, organization_id: int, limit: int = 200

@@ -11,10 +11,12 @@ from __future__ import annotations
 
 import asyncio
 from collections.abc import AsyncIterator
+from pathlib import Path
 
 import httpx
 import pytest
 
+import uicss
 from netcorenoc.api import CSP, UI_DIR, create_app
 from netcorenoc.ingest.events import Varbind
 from netcorenoc.ingest.receiver import QueueItem
@@ -94,7 +96,9 @@ async def test_f1_hostile_strings_survive_the_ingest_path_as_json(
     assert not resp.text.lstrip().lower().startswith("<!doctype")
 
 
-@pytest.mark.parametrize("path", ["/", "/app.js", "/style.css", "/healthz", "/api/stats"])
+@pytest.mark.parametrize(
+    "path", ["/", "/app.js", "/styles/core/tokens.css", "/healthz", "/api/stats"]
+)
 async def test_security_headers_on_every_route_class(client: httpx.AsyncClient, path: str) -> None:
     resp = await client.get(path)
     assert resp.headers["content-security-policy"] == CSP
@@ -109,7 +113,7 @@ async def test_api_responses_are_no_store(client: httpx.AsyncClient) -> None:
     assert (await client.get("/app.js")).headers.get("cache-control") != "no-store"
 
 
-@pytest.mark.parametrize("path", ["/", "/app.js", "/style.css", "/app/widgets.js"])
+@pytest.mark.parametrize("path", ["/", "/app.js", "/styles/core/tokens.css", "/app/widgets.js"])
 async def test_console_files_are_revalidated_so_an_upgrade_is_seen(
     client: httpx.AsyncClient, path: str
 ) -> None:
@@ -135,7 +139,7 @@ async def test_static_assets_served_with_correct_types(client: httpx.AsyncClient
         response = await client.get(f"/{asset}")
         assert response.status_code == 200, f"/{asset} returned {response.status_code}"
         assert media_type.split(";")[0] in response.headers["content-type"], asset
-    css = await client.get("/style.css")
+    css = await client.get("/styles/core/tokens.css")
     assert "text/css" in css.headers["content-type"]
     # d3 left in v0.22.0 (ADR #383); what it served is now a 404 like any undeclared path.
     assert (await client.get("/vendor/d3.v7.min.js")).status_code == 404
@@ -368,17 +372,28 @@ def test_capability_is_resolved_before_anything_is_constructed() -> None:
     )
     # And no view module may resolve its own capability — that would be the 17-checks design the
     # ADR rejected, and the one that is forgotten is invisible until it is exploited.
-    for path in sorted((UI_DIR / "app" / "views").glob("*.js")):
+    # ADR #504: the screens are in their plane's folder, `views/<plane>/<screen>.js`.
+    for path in sorted((UI_DIR / "app" / "views").glob("*/*.js")):
         source = path.read_text(encoding="utf-8")
         assert "reachableViews" not in source, path.name
         assert "resolve(" not in source, path.name
+
+
+def view_path(view_id: str) -> str:
+    """Where a screen lives: `app/views/<plane>/<id>.js` since ADR #504 put each plane's screens
+    in a folder of their own. One file per id, or none (an id that names no module)."""
+    found = sorted(
+        str(p.relative_to(UI_DIR)) for p in (UI_DIR / "app" / "views").glob(f"*/{view_id}.js")
+    )
+    assert len(found) <= 1, f"two screens are called {view_id}: {found}"
+    return found[0] if found else f"app/views/{view_id}.js"
 
 
 def _local_imports(name: str, source: str) -> set[str]:
     """The console modules `name` imports, as paths relative to `UI_DIR`.
 
     Resolved by **path** rather than by basename. v0.16.1 is what made the difference matter:
-    `views/situations.js` imports `./parts/card.js` and `views/parts/card.js` imports
+    `views/broker/situations.js` imports `./parts/card.js` and `views/broker/parts/card.js` imports
     `./lifecycle.js`, so a one-level `from "./{stem}.js"` scan attributed `lifecycle.js` to a
     module that is not a registry view and concluded that nothing owned its writes.
     """
@@ -396,7 +411,8 @@ def _local_imports(name: str, source: str) -> set[str]:
 def component_owners() -> dict[str, set[str]]:
     """`{module: {registry view ids that reach it}}` — **transitively, within `app/views/`**.
 
-    A module that is not itself a view (`parts/retention.js`, `parts/card.js`) is a component of
+    A module that is not itself a view (`views/admin/parts/retention.js`,
+    `views/broker/parts/card.js`) is a component of
     whichever screens import it, directly or through another component, and its writes are
     attributed to every one of them. **Skipping it would be how a write escapes a guard that looks
     total** — the section that deletes the feedback corpus lives in exactly such a module, and the
@@ -413,7 +429,7 @@ def component_owners() -> dict[str, set[str]]:
     modules = ui_modules()
     reachable: dict[str, set[str]] = {name: set() for name in modules}
     for view_id in _registry_ids():
-        entry = f"app/views/{view_id}.js"
+        entry = view_path(view_id)
         if entry not in modules:
             continue
         seen: set[str] = set()
@@ -433,14 +449,15 @@ def composed_source(view_id: str) -> str:
     """A screen's source **plus every module it composes**, transitively.
 
     Three source-shape guards below read "the situations screen". Until v0.16.1 that was one file;
-    the card, the held payload and the labelling contract now live in `views/parts/card.js`, and a
+    the card, the held payload and the labelling contract now live in `views/broker/parts/card.js`,
+    and a
     guard keyed on a filename would have gone green on a file that no longer contains what it is
     asserting about. Derived from the same import graph `component_owners` walks, so a further
     split moves nothing here either.
     """
     modules = ui_modules()
     owners = component_owners()
-    parts = [modules.get(f"app/views/{view_id}.js", "")]
+    parts = [modules.get(view_path(view_id), "")]
     parts.extend(source for name, source in modules.items() if view_id in owners.get(name, set()))
     return "".join(parts)
 
@@ -463,7 +480,8 @@ def view_writes() -> dict[str, set[tuple[str, str]]]:
     for name, source in modules.items():
         if not name.startswith("app/views/"):
             continue
-        view_id = name.removeprefix("app/views/").removesuffix(".js")
+        # ADR #504: a screen is `views/<plane>/<id>.js`; a part, under its plane's `parts/`.
+        view_id = name if "/parts/" in name else Path(name).stem
         found: set[tuple[str, str]] = set()
         calls = re.findall(r"\b(post|del)\(\s*[`\"']([^`\"']*)", source)
         # A path looked up in a module-level literal table (`POLICY_PATH[kind]`) is still a
@@ -620,7 +638,8 @@ def test_the_held_card_freezes_the_payload_and_says_so() -> None:
     something false for as long as the card stayed shut.
     """
     store = (UI_DIR / "app" / "store.js").read_text(encoding="utf-8")
-    # The screen AND everything it composes: v0.16.1 moved the card to `views/parts/card.js`, and
+    # The screen AND everything it composes: v0.16.1 moved the card to
+    # `views/broker/parts/card.js`, and
     # a guard keyed on a filename would have gone green on a file that no longer holds the marker.
     situations = composed_source("situations")
     assert "export function expand(" in store and "export function collapse(" in store
@@ -668,7 +687,7 @@ def test_the_labelling_payload_contract_is_unchanged() -> None:
 def test_the_scorer_screen_states_the_preview_caveat() -> None:
     """SECURITY-REVIEW-0.6 §4 treats the wording as a control: a preview that presented itself as
     authoritative would be worse than none. The API supplies the sentence; the screen shows it."""
-    scorer = (UI_DIR / "app" / "views" / "scorer.js").read_text(encoding="utf-8")
+    scorer = (UI_DIR / view_path("scorer")).read_text(encoding="utf-8")
     assert "delta.caveat" in scorer
     source = apisource.api_source()
     assert "Directional, not exhaustive" in source
@@ -687,13 +706,13 @@ def test_every_destructive_control_goes_through_one_component() -> None:
     assert 'stage === "previewed" || stage === "applying"' in destructive
     # v0.23.0 (#395): the Entities screen's two resets moved into the element it opens.
     for name in (
-        "audit",
-        "settings",
-        "parts/people",
-        "parts/tokenspanel",
-        "parts/nedetail",
-        "promotion",
-        "scorer",
+        "admin/audit",
+        "admin/settings",
+        "admin/parts/people",
+        "admin/parts/tokenspanel",
+        "broker/parts/nedetail",
+        "broker/promotion",
+        "broker/scorer",
     ):
         source = (UI_DIR / "app" / "views" / f"{name}.js").read_text(encoding="utf-8")
         assert "Destructive" in source, f"{name}.js has no destructive-preview machinery"
@@ -705,7 +724,7 @@ def test_every_destructive_control_goes_through_one_component() -> None:
 def test_style_uses_design_tokens_both_themes_and_focus_states() -> None:
     import re
 
-    css = (UI_DIR / "style.css").read_text()
+    css = uicss.stylesheet()
     for token in ("--space-1:", "--radius-1:", "--shadow-1:", "--fs-md:", "--tap:"):
         assert token in css, token
     assert "@media (prefers-color-scheme: light)" in css  # the system preference still decides…
@@ -755,7 +774,7 @@ def test_no_card_styles_a_bare_element_it_does_not_own() -> None:
     """
     import re
 
-    css = (UI_DIR / "style.css").read_text()
+    css = uicss.stylesheet()
     owners = ("login-card", "card")
     offenders = []
     for line in css.splitlines():
@@ -823,7 +842,7 @@ def test_the_ui_tree_is_exactly_what_is_declared() -> None:
     assert top_level == {
         "index.html",
         "app.js",
-        "style.css",
+        "styles",
         "favicon.svg",
         "login-bg.svg",
         "app",

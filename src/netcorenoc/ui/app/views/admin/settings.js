@@ -1,0 +1,322 @@
+/* Settings — **the screen where principle 9 either lives or dies quietly** (draft §6, §7).
+ *
+ * Three things this screen owes an operator, and each is structural rather than stylistic:
+ *
+ *   1. **Three columns, always** (§7.1): environment default, database override, effective value.
+ *      An operator's real question during an incident is *"why is this value what it is?"*, and
+ *      two sources with one displayed number cannot answer it. A two-source configuration that
+ *      hides its precedence is more dangerous than a one-source one.
+ *   2. **An impact statement per setting** (§7.2), following the retention precedent — *lowering
+ *      retention deletes rows and there is no rollback* — and a preview before anything
+ *      destructive.
+ *   3. **What needs a restart, said honestly** (§7.3). `Settings` is read once at startup and
+ *      never mutated, so most of it does. A settings page that accepted a new `trap_port` and
+ *      appeared to succeed, while the receiver kept listening on the old one, is worse than no
+ *      settings page: the operator believes traps are arriving.
+ *
+ * The three classes are *visibly* different, not differently styled: a structural value is a
+ * fact with no control, never a greyed-out input. A greyed input says "you may not"; a fact says
+ * "this is what is true", and they are different sentences (§6.1).
+ *
+ * ## Six tabs (v0.26.0, ADR #414; renamed in v0.27.0; two added in v0.30.0)
+ *
+ * **Models** (who decides links: the league's champion, chosen by the judge or pinned by an admin;
+ * the fail-safe formula, folded), **Autonomy** (four grades and the self-suspension trigger),
+ * **Site training** (the in-product search that adapts the GAM to this site's labels), **SNMP**
+ * (what the trap receiver accepts — versions, communities, SNMPv3 users; ADR #444), **Email** (the
+ * SMTP server recovery links go through; ADR #445) and **System** (the three classes above). Each
+ * tab opens with what it is for, reads only what it shows, and keeps its place in the address
+ * (`?tab=`).
+ */
+
+import { html, Component, cx } from "../../dom.js";
+import { get, post, readAll } from "../../api.js";
+import { Loading, Failed, Partial, DataTable, SectionHeading } from "../../widgets.js";
+import { can } from "../../session.js";
+import { Destructive } from "../../destructive.js";
+import { SETTINGS, MECHANISM, HARDENING, STRUCTURAL } from "../../parameters.js";
+import { DatasetRetention } from "./parts/retention.js";
+import { Hardening, Structural, RestartRequired } from "./parts/facts.js";
+import { Autonomy } from "./parts/autonomy.js";
+import { SnmpPanel } from "./parts/snmp.js";
+import { EmailPanel } from "./parts/email.js";
+import { Icon } from "../../icons.js";
+import { Correlation } from "../broker/parts/decider.js";
+import { SearchPanel } from "../broker/parts/searchpanel.js";
+import { brokerList } from "../../brokers.js";
+
+// The key stays `correlation` so every address written since v0.26.0 (and `#/scorer`) still lands
+// here; the label says what the tab is about now (v0.27.0): the models and how one is chosen.
+// ADR #495: where networks are separated, Models and Site training are each broker's own — Brokers
+// → a broker → Learning — and these two tabs are not offered here (`separated`).
+const TABS = [
+  ["correlation", "Models", "scorer.read", Correlation, "scorer", true],
+  ["autonomy", "Autonomy", "scorer.read", Autonomy, "auto"],
+  ["search", "Site training", "model.read", SearchPanel, "cpu", true],
+  ["snmp", "SNMP", "config.read", SnmpPanel, "signal"],
+  ["email", "Email", "config.read", EmailPanel, "mail"],
+  ["system", "System", "config.read", null, "settings"],
+];
+
+export function Settings(props) {
+  const asked = (props.query && props.query.get("tab")) || props.tab || "correlation";
+  const separated = can("brokers.read") && (brokerList() || []).length > 1;
+  const allowed = TABS.filter(([, , cap, , , perBroker]) => can(cap) && !(perBroker && separated));
+  const tab = allowed.find(([key]) => key === asked) || allowed[0];
+  if (!tab) return null;
+  const Body = tab[3] || SystemSettings;
+  return html`<div class="settings">
+    <div class="access-tabs" role="tablist" aria-label="Settings">
+      ${allowed.map(([key, label, , , icon]) => html`<button type="button" key=${key} role="tab"
+        aria-selected=${tab[0] === key} class=${cx("access-tab", tab[0] === key && "on")}
+        onClick=${() => props.navigate(`#/settings?tab=${key}`)}><${Icon} name=${icon} /> ${label}</button>`)}
+    </div>
+    ${separated ? html`<p class="hint">Which model decides, and site training, are each broker's own:${" "}
+      <a href="#/brokers">Brokers</a> → a broker → Learning.</p>` : null}
+    <${Body} key=${tab[0]} />
+  </div>`;
+}
+
+class SystemSettings extends Component {
+  constructor(props) {
+    super(props);
+    this.state = { status: "loading", results: null, error: null };
+    this.reload = this.reload.bind(this);
+  }
+
+  componentDidMount() { this.reload(); }
+
+  async reload() {
+    this.setState({ status: "loading" });
+    try {
+      const results = await readAll({
+        config: "/api/config",
+        retention: "/api/dataset/retention",
+        scorer: "/api/scorer",
+      });
+      if (!results.config.ok) {
+        this.setState({ status: "error", error: results.config.error });
+        return;
+      }
+      this.setState({ status: "ready", results });
+    } catch (error) {
+      this.setState({ status: "error", error });
+    }
+  }
+
+  render(_props, { status, results, error }) {
+    if (status === "loading") return html`<${Loading} label="Reading configuration" />`;
+    if (status === "error") {
+      return html`<${Failed} error=${error} retry=${this.reload} what="the configuration" />`;
+    }
+    const config = results.config.value;
+    return html`<div class="settingsview">
+      <div class="settings-intro">
+        <p><b>The appliance itself:</b> which sources may send traps, how long history is kept,
+          and the limits it enforces. Each value shows where it comes from — the environment, an
+          override saved here, and the one in effect.</p>
+      </div>
+      <${Partial} results=${results} />
+      <${ClassLegend} />
+      ${can("config.write")
+        ? html`<${Mechanism} config=${config} onSaved=${this.reload} />`
+        : html`<${ReadOnlyMechanism} config=${config} />`}
+      ${results.retention.ok && can("config.write")
+        ? html`<${DatasetRetention} data=${results.retention.value} onSaved=${this.reload} />`
+        : null}
+      <${Hardening} scorer=${results.scorer.ok ? results.scorer.value : null} />
+      <${Structural} config=${config} scorer=${results.scorer.ok ? results.scorer.value : null} />
+      <${RestartRequired} config=${config} />
+    </div>`;
+  }
+}
+
+/* `config.read` without `config.write` is a real, reachable state: the two are separate
+ * capabilities precisely so a policy can grant one (F9 — reading the allowlist reveals
+ * network-security posture, and is audited on denial). A principal in that state gets the
+ * precedence table, which is the part that answers "why is this value what it is?", and no form. */
+function ReadOnlyMechanism({ config }) {
+  const precedence = config.precedence || {};
+  return html`<section class=${`panel-block param-${MECHANISM}`}>
+    <${SectionHeading} title="Live configuration"
+      hint=${"Your account can read this configuration but not change it: it holds " +
+             "config.read and not config.write."} />
+    <${PrecedenceTable} rows=${[
+      ["NETCORENOC_ALLOWLIST", precedence.allowlist, config.allowlist,
+       "empty = accept every source"],
+      ["NETCORENOC_RETENTION_DAYS", precedence.retention_days, config.retention_days, "days"],
+      ...kpiRows(config),
+    ]} />
+  </section>`;
+}
+
+/** ADR #451: the KPI's two numbers as precedence rows, from the one `kpi` override. */
+function kpiRows(config) {
+  const kpi = config.kpi || {};
+  const env = (config.precedence || {}).kpi || {};
+  const row = (key) => ({ env: env.env ? env.env[key] : null,
+                          override: env.override ? env.override[key] : null });
+  return [
+    ["NETCORENOC_KPI_TARGET_S", row("target_s"), kpi.target_s, "seconds"],
+    ["NETCORENOC_KPI_LIMIT_S", row("limit_s"), kpi.limit_s, "seconds"],
+  ];
+}
+
+function ClassLegend() {
+  return html`<section class="panel-block legend-block">
+    <p class="hint">Every parameter on this screen belongs to one of three classes, and the class
+      decides what this console will let you do with it.</p>
+    <dl class="class-legend">
+      <dt class=${`param-${MECHANISM}`}>mechanism</dt>
+      <dd>Yours to set. The cost of each choice is stated beside it; where a change destroys
+        something, it is previewed first.</dd>
+      <dt class=${`param-${HARDENING}`}>hardening-only</dt>
+      <dd>You may make these stricter and not looser. The project floor is shown; a looser value
+        is refused here <em>and</em> at the API, with the reason.</dd>
+      <dt class=${`param-${STRUCTURAL}`}>structural</dt>
+      <dd>Facts about this appliance, shown for transparency. There is no control because there is
+        no choice — these are guarantees rather than preferences.</dd>
+    </dl>
+  </section>`;
+}
+
+/** The live-reloadable values, with the three-column precedence draft §7.1 requires. */
+class Mechanism extends Component {
+  constructor(props) {
+    super(props);
+    const precedence = props.config.precedence || {};
+    const kpi = props.config.kpi || {};
+    this.state = {
+      allowlist: props.config.allowlist ?? "",
+      retention_days: props.config.retention_days ?? 0,
+      kpi_target_s: kpi.target_s ?? 60, kpi_limit_s: kpi.limit_s ?? 120,
+      busy: false, outcome: null, precedence,
+    };
+  }
+
+  async save(overrides) {
+    this.setState({ busy: true, outcome: null });
+    const body = {
+      allowlist: this.state.allowlist,
+      retention_days: Number(this.state.retention_days),
+      ...(this.props.config.kpi ? {
+        kpi_target_s: Number(this.state.kpi_target_s),
+        kpi_limit_s: Number(this.state.kpi_limit_s),
+      } : {}),
+      ...overrides,
+    };
+    try {
+      await post("/api/config", body);
+      this.setState({ busy: false, outcome: { ok: true } });
+      this.props.onSaved();
+    } catch (error) {
+      this.setState({ busy: false, outcome: { ok: false, error } });
+    }
+  }
+
+  render({ config }, { busy, outcome, precedence }) {
+    const lowering = Number(this.state.retention_days) < Number(config.retention_days);
+    return html`<section class=${`panel-block param-${MECHANISM}`}>
+      <${SectionHeading} title="Live configuration"
+        hint=${"These take effect without a restart: an admin saving here writes a database " +
+               "row that takes precedence over the environment, and the running receiver and " +
+               "maintenance loop are refreshed from it. Every change is audited."} />
+
+      <${PrecedenceTable} rows=${[
+        ["NETCORENOC_ALLOWLIST", precedence.allowlist, config.allowlist,
+         "empty = accept every source"],
+        ["NETCORENOC_RETENTION_DAYS", precedence.retention_days, config.retention_days, "days"],
+        ...kpiRows(config),
+      ]} />
+
+      <form class="stack" onSubmit=${(e) => { e.preventDefault(); if (!lowering) this.save(); }}>
+        <label for="cfgAllow">Trap allowlist (CIDRs, comma-separated; empty accepts every source)</label>
+        <input id="cfgAllow" value=${this.state.allowlist}
+               placeholder="e.g. 10.0.0.0/8,192.168.1.0/24"
+               onInput=${(e) => this.setState({ allowlist: e.target.value })} />
+        <p class="impact">${SETTINGS[0].impact}</p>
+
+        <label for="cfgRet">Operational retention (days)</label>
+        <input id="cfgRet" type="number" step="0.1" value=${this.state.retention_days}
+               onInput=${(e) => this.setState({ retention_days: e.target.value })} />
+        <p class="impact">How long cleared and closed history is kept. <b>Lowering this deletes
+          rows and there is no rollback.</b> The maintenance loop applies it in the background.</p>
+
+        ${config.kpi ? html`<fieldset class="kpi-fields">
+          <legend>Classification KPI, per trap</legend>
+          <label for="cfgKpiTarget">Target (seconds from the trap's arrival)</label>
+          <input id="cfgKpiTarget" type="number" min="1" max="86400" step="1"
+                 value=${this.state.kpi_target_s}
+                 onInput=${(e) => this.setState({ kpi_target_s: e.target.value })} />
+          <label for="cfgKpiLimit">Limit (seconds; at or above the target)</label>
+          <input id="cfgKpiLimit" type="number" min="1" max="86400" step="1"
+                 value=${this.state.kpi_limit_s}
+                 onInput=${(e) => this.setState({ kpi_limit_s: e.target.value })} />
+          <p class="impact">Measures, never discards: a trap past either is still classified and
+            counted on the Overview — past the target as late, past the limit as a breach that
+            raises a warning. Applies from the next commit; the counts so far are kept.</p>
+        </fieldset>` : null}
+
+        ${lowering ? null : html`<button type="submit" disabled=${busy}>
+          ${busy ? "Saving…" : "Save"}
+        </button>`}
+      </form>
+
+      ${lowering ? html`<${Destructive}
+        title="Lower the operational retention"
+        hint=${`From ${config.retention_days} days to ${this.state.retention_days} days.`}
+        previewLabel="Show me what this destroys"
+        confirmLabel=${`Lower retention to ${this.state.retention_days} days`}
+        consequence=${"Cleared and closed history older than the new bound is deleted by the " +
+                      "maintenance loop. There is no rollback for a delete: history that is " +
+                      "removed cannot be reconstructed from this appliance."}
+        preview=${async () => ({
+          measured: false,
+          message: "The operational-retention route has no preview mode: the appliance does not " +
+                   "offer a row count for this bound without applying it. The dataset tiers " +
+                   "below DO preview, and this console does not pretend otherwise here.",
+        })}
+        apply=${async () => this.save()}
+        onDone=${this.props.onSaved} />` : null}
+
+      ${outcome && outcome.ok ? html`<p class="ok-note" role="status">Saved. The change is audited
+        and the running receiver and maintenance loop have already picked it up.</p>` : null}
+      ${outcome && !outcome.ok ? html`<p class="err" role="alert">
+        ${outcome.error.detail || outcome.error.message}</p>` : null}
+    </section>`;
+  }
+}
+
+/** The three columns. One component, so no screen can render two of them and call it precedence. */
+function PrecedenceTable({ rows }) {
+  const columns = [
+    { key: "setting", label: "setting" },
+    { key: "env", label: "environment default", title: "what the process started with" },
+    { key: "db", label: "database override", title: "what an admin saved from this console" },
+    { key: "effective", label: "effective", title: "what the appliance is actually using" },
+  ];
+  return html`<${DataTable}
+    caption="Why each value is what it is: the environment sets the default, a saved override wins."
+    columns=${columns}
+    rows=${rows.map(([env, override, effective, note]) => ({
+      key: env,
+      cells: {
+        setting: html`<code class="mono">${env}</code>`,
+        env: override && override.env != null && override.env !== ""
+          ? html`<code class="mono">${override.env}</code>`
+          : html`<span class="muted">(unset${note ? ` — ${note}` : ""})</span>`,
+        db: override && override.override != null && override.override !== ""
+          ? html`<code class="mono">${override.override}</code>`
+          : html`<span class="muted">(none)</span>`,
+        // An empty effective value must SAY it is empty. A blank cell in a precedence table is
+        // exactly the ambiguity the table exists to remove: the operator cannot tell "no value"
+        // from "the console failed to render one". Found by looking at the running console.
+        effective: effective === "" || effective == null
+          ? html`<span class="muted">(empty — every source accepted)</span>`
+          : html`<b class="mono">${String(effective)}</b>`,
+      },
+    }))} />`;
+}
+
+
+export { PrecedenceTable };

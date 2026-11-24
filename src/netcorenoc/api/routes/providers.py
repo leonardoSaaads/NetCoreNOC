@@ -88,12 +88,13 @@ def register(app: FastAPI, ctx: AppContext) -> None:
             "in_container": providers.in_container(),
         }
 
-    async def opened(secret_id: int) -> tuple[dict[str, Any], dict[str, str], Any]:
+    async def opened(
+        secret_id: int, principal: auth.Principal
+    ) -> tuple[dict[str, Any], dict[str, str], Any]:
         """A stored AI credential, opened inside the appliance: its row, fields and provider."""
         async with store.reading():
             secret = await store.noc_get_secret(secret_id, sealed=True)
-        if secret is None:
-            raise HTTPException(status_code=404, detail="no such credential")
+        secret = await gate.require_reach(ctx, principal, secret)  # ADR #499
         provider = providers.by_kind(str(secret["kind"]))
         if provider is None:
             raise HTTPException(status_code=400, detail=NOT_A_PROVIDER)
@@ -116,7 +117,7 @@ def register(app: FastAPI, ctx: AppContext) -> None:
     ) -> dict[str, Any]:
         """One short, timed turn with one tool: does this model answer, and does it call tools?"""
         await gate.require_custodian(ctx, request, principal)
-        secret, fields, provider = await opened(secret_id)
+        secret, fields, provider = await opened(secret_id, principal)
         base = providers.base_url(
             provider, str(secret["host"]), int(secret["port"]), str(secret["protocol_version"])
         )
@@ -167,8 +168,7 @@ def register(app: FastAPI, ctx: AppContext) -> None:
         await gate.require_custodian(ctx, request, principal)
         async with store.reading():
             secret = await store.noc_get_secret(secret_id, sealed=True)
-        if secret is None:
-            raise HTTPException(status_code=404, detail="no such credential")
+        secret = await gate.require_reach(ctx, principal, secret)  # ADR #499
         provider = providers.by_kind(str(secret["kind"]))
         if provider is None:
             raise HTTPException(status_code=400, detail=NOT_A_PROVIDER)

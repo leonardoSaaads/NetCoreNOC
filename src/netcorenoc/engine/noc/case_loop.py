@@ -40,8 +40,8 @@ LOOK_EVERY_S = 5.0
 #: Every how many passes the priorities are re-derived (30 s).
 REPRIORITIZE_EVERY = 6
 
-#: Why the Broker's situation left, in the words the console uses (`ui/app/views/parts/
-#: lifecycle.js`): a case's feed said `(self_cleared)` until ADR #476.
+#: Why the Broker's situation left, in the words the console uses
+#: (`ui/app/views/broker/parts/lifecycle.js`): a case's feed said `(self_cleared)` until ADR #476.
 WHY_RESOLVED: dict[str, str] = {
     "operator": "an operator closed it",
     "self_cleared": "every alarm cleared, the network fixed it",

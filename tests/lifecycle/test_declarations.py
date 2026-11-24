@@ -60,7 +60,8 @@ async def test_one_name_reaches_the_situation_row_the_entity_list_and_the_graph(
     """**The release's central claim, demonstrated rather than described.**
 
     Before v0.16.3 exactly one of these three resolved. `store/entities.py::list_ne` selected five
-    columns from `ne` and joined no label while `views/entities.js` rendered `${ne.label || ne.ip}`,
+    columns from `ne` and joined no label while `views/broker/entities.js` rendered `${ne.label ||
+    ne.ip}`,
     so the fallback to the address was permanent — and the label was not missing, because the alarm
     projection resolved the identical row. That asymmetry is what made it a broken join rather than
     a broken write, and it is why all three are asserted here from **one** POST.

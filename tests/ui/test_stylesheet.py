@@ -19,8 +19,9 @@ from collections import Counter
 from pathlib import Path
 
 import netcorenoc
+import uicss
 
-CSS = (Path(netcorenoc.__file__).resolve().parent / "ui" / "style.css").read_text(encoding="utf-8")
+CSS = uicss.stylesheet()
 
 
 def _top_level_selectors(css: str) -> list[str]:
@@ -70,9 +71,35 @@ def test_the_guard_sees_the_collision_it_exists_for() -> None:
 
 def test_the_model_gauge_no_longer_uses_the_health_meter_names() -> None:
     models = (
-        Path(netcorenoc.__file__).resolve().parent / "ui" / "app" / "views" / "parts" / "models.js"
+        Path(netcorenoc.__file__).resolve().parent
+        / "ui"
+        / "app"
+        / "views"
+        / "broker"
+        / "parts"
+        / "models.js"
     ).read_text(encoding="utf-8")
     assert "meter" not in models, "the model screen draws with the health control's class names"
     # The control that this read the right file: v0.26.0's gauge drew `.floor*` bars; v0.27.0
     # retired the floors (ADR #425) and the line draws with its own `.corr-*` classes.
     assert "corr-line" in models
+
+
+def test_the_sheets_are_cut_whole_and_linked_in_cascade_order() -> None:
+    """ADR #504: `style.css` became the sheets of `styles/`, cut at its own section marks. Each is
+    linked once, every sheet on disk is linked, and the first carries the tokens every later rule
+    reads — so the order `index.html` gives is the cascade the single file had."""
+    linked = [str(p.relative_to(uicss.UI)) for p in uicss.sheets()]
+    on_disk = sorted(str(p.relative_to(uicss.UI)) for p in (uicss.UI / "styles").rglob("*.css"))
+    assert sorted(linked) == on_disk, "a sheet on disk is not linked, or one linked is missing"
+    assert len(linked) == len(set(linked)), "a sheet linked twice applies its rules twice"
+    assert linked[0] == "styles/core/tokens.css" and ":root {" in uicss.sheets()[0].read_text()
+    assert not (uicss.UI / "style.css").exists(), "the single file is gone, not kept beside them"
+
+
+def test_the_served_stylesheets_are_the_linked_ones_in_the_same_order() -> None:
+    """ADR #504: `STYLESHEETS` (what is served) and `index.html` (what is linked) name the same
+    sheets in the same order, so a sheet cannot be linked and 404, or served and never applied."""
+    from netcorenoc.api.stylesheets import STYLESHEETS
+
+    assert [str(p.relative_to(uicss.UI)) for p in uicss.sheets()] == list(STYLESHEETS)

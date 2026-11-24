@@ -1,0 +1,96 @@
+/* ---------- panels, parameter classes, destructive ---------- */
+
+.panel-block {
+  border: 1px solid var(--line); border-radius: var(--radius-2);
+  background: var(--bg-raised); padding: var(--space-4); margin-bottom: var(--space-4);
+}
+.section-heading { display: flex; align-items: baseline; gap: var(--space-2); flex-wrap: wrap; }
+.section-heading .hint { flex-basis: 100%; }
+.stat-row { display: flex; gap: var(--space-2); flex-wrap: wrap; margin-bottom: var(--space-3); }
+/* A metric tile, as Paperclip's: the figure large and tabular, its label quiet under it, the
+   tile a soft well in the card rather than a second card (ADR #479). */
+.stat {
+  border: 1px solid var(--line); border-radius: var(--radius-2);
+  background: var(--bg-sunken); padding: 10px var(--space-3); min-width: 120px;
+}
+.stat-value { font-size: 22px; font-weight: 600; letter-spacing: -0.02em; line-height: 1.2; font-variant-numeric: tabular-nums; }
+.stat-label { font-size: var(--fs-xs); font-weight: 500; color: var(--fg-muted); }
+.stat-note { font-size: var(--fs-xs); color: var(--fg-dim); }
+/* A tile that FILTERS is a button (v0.16.4, item 3). It has to look like the tiles beside it and
+   behave like the control it is: the same box, plus a pointer, a hover and a pressed state that
+   `aria-pressed` carries for anyone not looking at it. */
+.stat-filter { text-align: left; font: inherit; cursor: pointer; }
+.stat-filter:hover { background: var(--bg-hover); }
+.stat-on { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+.count-cards { margin-bottom: var(--space-3); }
+.stat-alarm .stat-value { color: var(--alarm); }
+.stat-warn .stat-value { color: var(--warn); }
+.stat-quiet .stat-value { color: var(--quiet); }
+
+/* The three classes are visibly different, and the structural one is not a disabled input. */
+.param-mechanism { border-left: 3px solid var(--accent); }
+.param-hardening { border-left: 3px solid var(--warn); }
+.param-structural { border-left: 3px solid var(--line-strong); background: var(--bg-sunken); }
+.structural-note { font-size: var(--fs-sm); color: var(--fg-muted); max-width: 78ch; }
+.facts { margin: 0; }
+.fact { display: grid; grid-template-columns: 220px 1fr; gap: var(--space-2); padding: var(--space-1) 0; border-bottom: 1px solid var(--line); }
+.fact dt { color: var(--fg-muted); font-size: var(--fs-sm); }
+.fact dd { margin: 0; }
+.fact .why { display: block; color: var(--fg-muted); font-size: var(--fs-xs); margin-top: var(--space-1); }
+.class-legend { display: grid; grid-template-columns: max-content 1fr; gap: var(--space-1) var(--space-3); margin: 0; }
+.class-legend dt { font-weight: 600; padding-left: var(--space-2); }
+.class-legend dt.param-mechanism { border-left: 3px solid var(--accent); }
+.class-legend dt.param-hardening { border-left: 3px solid var(--warn); }
+.class-legend dt.param-structural { border-left: 3px solid var(--line-strong); }
+.class-legend dd { margin: 0; color: var(--fg-muted); font-size: var(--fs-sm); }
+
+.impact { font-size: var(--fs-sm); color: var(--fg-muted); max-width: 78ch; }
+.destructive { border-left: 3px solid var(--alarm); }
+.consequence { background: var(--alarm-bg); border-radius: var(--radius-1); padding: var(--space-2); font-size: var(--fs-sm); max-width: 78ch; }
+.preview-result { border-top: 1px solid var(--line); padding-top: var(--space-2); }
+.refusal { border: 1px solid var(--warn); background: var(--warn-bg); border-radius: var(--radius-2); padding: var(--space-3); margin: var(--space-3) 0; }
+.refusal h4 { color: var(--warn); margin-bottom: var(--space-2); }
+.refusal-item + .refusal-item { border-top: 1px solid var(--line); padding-top: var(--space-2); margin-top: var(--space-2); }
+.refusal-reason { color: var(--warn); }
+/* The expanded decision renders the refusal in a `<pre>`, because its bulleted trigger list is
+   structure and a `<p>` collapses it into prose. A bare `<pre>` then overflows the panel at any
+   width the reason's longest line exceeds — measured in the v0.14.0 live pass, where "...are met
+   by" ran off the right edge. `pre-wrap` keeps the newlines and wraps the long lines; the overflow
+   rule catches whatever still cannot wrap. */
+pre.refusal-reason {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  overflow-x: auto;
+  margin: var(--space-2) 0;
+  font-size: 0.92em;
+}
+.decision-detail .quantities { margin: var(--space-2) 0; }
+.decision-detail .unavailable h4 { margin-bottom: var(--space-1); }
+.artefact { margin-top: var(--space-3); }
+.artefact h4 { margin: 0 0 var(--space-1); }
+
+.stack { display: flex; flex-direction: column; gap: var(--space-1); max-width: 60ch; }
+.stack button { align-self: flex-start; margin-top: var(--space-2); }
+.row-form { display: flex; gap: var(--space-2); align-items: center; flex-wrap: wrap; }
+.grid-form { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: var(--space-2); margin-bottom: var(--space-3); }
+.grid-form .wide { grid-column: 1 / -1; }
+.role-control { display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap; }
+.inline-confirm { display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap; }
+.kv { display: grid; grid-template-columns: max-content 1fr; gap: var(--space-1) var(--space-3); }
+.kv dt { color: var(--fg-muted); }
+/* `min-width: 0` because a grid item defaults to `min-width: auto`, which refuses to shrink below
+   its content's min-content width. That is what actually put the account screen's capability list
+   2 443 px off a 390 px phone (F80): the column could not narrow, so the text never got the chance
+   to wrap. Fixing it here rather than with an aggressive `overflow-wrap` on the text is the
+   difference between wrapping at the spaces and breaking `classes.read` in half. */
+.kv dd { margin: 0; min-width: 0; }
+.cap { color: var(--fg-muted); }
+.mini-list { list-style: none; margin: 0 0 var(--space-3); padding: 0; }
+.mini-list li { display: flex; gap: var(--space-3); padding: var(--space-1) 0; border-bottom: 1px solid var(--line); font-size: var(--fs-sm); }
+.computed-at { font-size: var(--fs-xs); color: var(--fg-dim); }
+.outcome-ok { color: var(--quiet); }
+.outcome-denied, .outcome-error { color: var(--alarm); }
+.ts-abs { font-variant-numeric: tabular-nums; }
+.ts-rel { display: block; color: var(--fg-dim); font-size: var(--fs-xs); }
+.govjson { min-height: 160px; }
+.policy-editor { margin-top: var(--space-2); }
