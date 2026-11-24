@@ -226,7 +226,8 @@ jobs:
           echo
           # The console, from the wheel — this is the assertion F85 needed.
           curl -fsS -o /dev/null http://127.0.0.1:8080/app.js
-          curl -fsS -o /dev/null http://127.0.0.1:8080/app/views/overview.js
+          curl -fsS -o /dev/null http://127.0.0.1:8080/app/views/broker/overview.js
+          curl -fsS -o /dev/null http://127.0.0.1:8080/styles/core/tokens.css
           # The schema version, as a literal (v0.21.0's rule): a release that adds a migration changes
           # this line in the same commit, which is what makes the schema a reviewable diff rather
           # than a thing that grew. 31 is the PostgreSQL baseline (ADR #452), 32 the hardening (#453),
