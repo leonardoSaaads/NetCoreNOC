@@ -47,6 +47,13 @@ data directory), without which sealed values and every password are unreadable (
 secrets key file** (`secrets.key`; the image keeps it on a volume of its own), without which every
 stored device credential is unreadable (#455).
 
+### Changed — the console's files by plane (#504)
+
+- `ui/style.css` (5 100 lines) is now `ui/styles/{core,broker,noc,admin}/*.css`, 32 sheets cut at
+  its own section marks and linked by `index.html` in the same order — the cascade is unchanged.
+- `ui/app/views/` is now `views/broker/`, `views/noc/` and `views/admin/`, each with its `parts/`;
+  no module was renamed and every import was re-resolved (#504).
+
 ### Fixed — what a Gemini agent found in the lab (#505)
 
 - A busy AI provider (429, 5xx — Gemini's free tier answered 503 "high demand" mid-case) is asked

@@ -337,7 +337,7 @@ def test_every_link_decomposes_into_terms_that_sum_to_its_score(
     `[{"name": "temporal", "contribution": …}, …]` beside them on every link; measured on a
     1 051-member storm that restatement was **993 KiB of a 1 844 KiB response**, held in the
     browser for as long as the card was open. The named list is built in
-    `views/parts/why.js::termsOf` now, from these columns, by a branch that always existed.
+    `views/broker/parts/why.js::termsOf` now, from these columns, by a branch that always existed.
 
     What the mapping below duplicates is three names, and duplicating them is the point: a
     console that renamed a term would still pass a test that asked the console what the terms

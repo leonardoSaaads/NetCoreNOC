@@ -425,152 +425,183 @@ ROUTE_ORDER_BASELINE: list[tuple[str, str]] = [
     ("GET", "/app/sidebar.js"),
     ("GET", "/app/store.js"),
     ("GET", "/app/theme.js"),
-    ("GET", "/app/views/account.js"),
-    ("GET", "/app/views/audit.js"),
-    ("GET", "/app/views/classes.js"),
-    ("GET", "/app/views/entities.js"),
-    ("GET", "/app/views/graph.js"),
-    ("GET", "/app/views/learning.js"),
-    ("GET", "/app/views/parts/learnuml.js"),
-    ("GET", "/app/views/overview.js"),
-    ("GET", "/app/views/promotion.js"),
-    ("GET", "/app/views/maintenance.js"),
-    ("GET", "/app/views/quarantine.js"),
-    ("GET", "/app/views/scorer.js"),
-    ("GET", "/app/views/settings.js"),
-    ("GET", "/app/views/situations.js"),
-    ("GET", "/app/views/timeline.js"),
-    ("GET", "/app/views/parts/facts.js"),
-    ("GET", "/app/views/parts/model.js"),
-    ("GET", "/app/views/parts/retention.js"),
-    ("GET", "/app/views/parts/verdict.js"),
-    ("GET", "/app/views/parts/lifecycle.js"),
-    ("GET", "/app/views/parts/restructure.js"),
-    ("GET", "/app/views/parts/declare.js"),
-    ("GET", "/app/views/parts/members.js"),
-    ("GET", "/app/views/parts/why.js"),
-    ("GET", "/app/views/parts/card.js"),
-    ("GET", "/app/views/parts/correlation.js"),
-    ("GET", "/app/views/parts/judge.js"),
-    ("GET", "/app/views/parts/bulkclear.js"),
-    ("GET", "/app/views/parts/mwform.js"),
-    ("GET", "/app/views/parts/mwdraft.js"),
-    ("GET", "/app/views/parts/mwrules.js"),
-    ("GET", "/app/views/parts/mwtime.js"),
-    ("GET", "/app/views/parts/mwmarker.js"),
-    ("GET", "/app/views/parts/mwsummary.js"),
-    ("GET", "/app/views/parts/mwreview.js"),
-    ("GET", "/app/views/parts/mwwhen.js"),
-    ("GET", "/app/views/parts/decide.js"),
-    ("GET", "/app/views/parts/finder.js"),
-    ("GET", "/app/views/parts/pulse.js"),
-    ("GET", "/app/views/parts/keeping.js"),
-    ("GET", "/app/views/parts/pipeline.js"),
-    ("GET", "/app/views/parts/severity.js"),
-    ("GET", "/app/views/parts/models.js"),
-    ("GET", "/app/views/parts/marks.js"),
-    ("GET", "/app/views/parts/evidence.js"),
+    ("GET", "/app/views/admin/account.js"),
+    ("GET", "/app/views/admin/audit.js"),
+    ("GET", "/app/views/broker/classes.js"),
+    ("GET", "/app/views/broker/entities.js"),
+    ("GET", "/app/views/broker/graph.js"),
+    ("GET", "/app/views/broker/learning.js"),
+    ("GET", "/app/views/broker/parts/learnuml.js"),
+    ("GET", "/app/views/broker/overview.js"),
+    ("GET", "/app/views/broker/promotion.js"),
+    ("GET", "/app/views/broker/maintenance.js"),
+    ("GET", "/app/views/broker/quarantine.js"),
+    ("GET", "/app/views/broker/scorer.js"),
+    ("GET", "/app/views/admin/settings.js"),
+    ("GET", "/app/views/broker/situations.js"),
+    ("GET", "/app/views/broker/timeline.js"),
+    ("GET", "/app/views/admin/parts/facts.js"),
+    ("GET", "/app/views/broker/parts/model.js"),
+    ("GET", "/app/views/admin/parts/retention.js"),
+    ("GET", "/app/views/broker/parts/verdict.js"),
+    ("GET", "/app/views/broker/parts/lifecycle.js"),
+    ("GET", "/app/views/broker/parts/restructure.js"),
+    ("GET", "/app/views/broker/parts/declare.js"),
+    ("GET", "/app/views/broker/parts/members.js"),
+    ("GET", "/app/views/broker/parts/why.js"),
+    ("GET", "/app/views/broker/parts/card.js"),
+    ("GET", "/app/views/broker/parts/correlation.js"),
+    ("GET", "/app/views/broker/parts/judge.js"),
+    ("GET", "/app/views/broker/parts/bulkclear.js"),
+    ("GET", "/app/views/broker/parts/mwform.js"),
+    ("GET", "/app/views/broker/parts/mwdraft.js"),
+    ("GET", "/app/views/broker/parts/mwrules.js"),
+    ("GET", "/app/views/broker/parts/mwtime.js"),
+    ("GET", "/app/views/broker/parts/mwmarker.js"),
+    ("GET", "/app/views/broker/parts/mwsummary.js"),
+    ("GET", "/app/views/broker/parts/mwreview.js"),
+    ("GET", "/app/views/broker/parts/mwwhen.js"),
+    ("GET", "/app/views/broker/parts/decide.js"),
+    ("GET", "/app/views/broker/parts/finder.js"),
+    ("GET", "/app/views/broker/parts/pulse.js"),
+    ("GET", "/app/views/broker/parts/keeping.js"),
+    ("GET", "/app/views/broker/parts/pipeline.js"),
+    ("GET", "/app/views/broker/parts/severity.js"),
+    ("GET", "/app/views/broker/parts/models.js"),
+    ("GET", "/app/views/broker/parts/marks.js"),
+    ("GET", "/app/views/broker/parts/evidence.js"),
     ("GET", "/app/notices.js"),
     ("GET", "/app/health.js"),
     ("GET", "/app/info.js"),
     ("GET", "/app/layout.js"),
     ("GET", "/app/netgraph.js"),
-    ("GET", "/app/views/parts/element.js"),
-    ("GET", "/app/views/parts/oidtree.js"),
-    ("GET", "/app/views/parts/importbox.js"),
-    ("GET", "/app/views/parts/mwdetail.js"),
-    ("GET", "/app/views/parts/mwboard.js"),
+    ("GET", "/app/views/broker/parts/element.js"),
+    ("GET", "/app/views/broker/parts/oidtree.js"),
+    ("GET", "/app/views/broker/parts/importbox.js"),
+    ("GET", "/app/views/broker/parts/mwdetail.js"),
+    ("GET", "/app/views/broker/parts/mwboard.js"),
     ("GET", "/app/stack.js"),
-    ("GET", "/app/views/parts/sitsummary.js"),
-    ("GET", "/app/views/parts/topassets.js"),
-    ("GET", "/app/views/parts/tlfilters.js"),
-    ("GET", "/app/views/parts/sequence.js"),
-    ("GET", "/app/views/parts/nedetail.js"),
+    ("GET", "/app/views/broker/parts/sitsummary.js"),
+    ("GET", "/app/views/broker/parts/topassets.js"),
+    ("GET", "/app/views/broker/parts/tlfilters.js"),
+    ("GET", "/app/views/broker/parts/sequence.js"),
+    ("GET", "/app/views/broker/parts/nedetail.js"),
     ("GET", "/app/avatar.js"),
-    ("GET", "/app/views/access.js"),
-    ("GET", "/app/views/parts/capgrid.js"),
-    ("GET", "/app/views/parts/people.js"),
-    ("GET", "/app/views/parts/custscope.js"),
-    ("GET", "/app/views/parts/roles.js"),
-    ("GET", "/app/views/parts/tokenspanel.js"),
-    ("GET", "/app/views/parts/visibility.js"),
+    ("GET", "/app/views/admin/access.js"),
+    ("GET", "/app/views/admin/parts/capgrid.js"),
+    ("GET", "/app/views/admin/parts/people.js"),
+    ("GET", "/app/views/admin/parts/custscope.js"),
+    ("GET", "/app/views/admin/parts/roles.js"),
+    ("GET", "/app/views/admin/parts/tokenspanel.js"),
+    ("GET", "/app/views/admin/parts/visibility.js"),
     ("GET", "/app/widgets.js"),
     # v0.26.0 (ADR #414): the model's charts, Settings' three new tabs and the Judge's two blocks.
     ("GET", "/app/modelcharts.js"),
-    ("GET", "/app/views/parts/decider.js"),
-    ("GET", "/app/views/parts/autonomy.js"),
-    ("GET", "/app/views/parts/searchpanel.js"),
-    ("GET", "/app/views/parts/sitejudge.js"),
+    ("GET", "/app/views/broker/parts/decider.js"),
+    ("GET", "/app/views/admin/parts/autonomy.js"),
+    ("GET", "/app/views/broker/parts/searchpanel.js"),
+    ("GET", "/app/views/broker/parts/sitejudge.js"),
     # v0.27.0: the league on the Judge screen; `shippedjudge.js` left with the single model.
-    ("GET", "/app/views/parts/league.js"),
-    ("GET", "/app/views/parts/leaguecharts.js"),
-    ("GET", "/app/views/parts/leaguecompare.js"),
+    ("GET", "/app/views/broker/parts/league.js"),
+    ("GET", "/app/views/broker/parts/leaguecharts.js"),
+    ("GET", "/app/views/broker/parts/leaguecompare.js"),
     ("GET", "/app/recover.js"),
     ("GET", "/app/twofactor.js"),
-    ("GET", "/app/views/parts/snmp.js"),
-    ("GET", "/app/views/parts/snmpuser.js"),
-    ("GET", "/app/views/parts/email.js"),
-    ("GET", "/app/views/parts/apiref.js"),
-    ("GET", "/app/views/parts/scopeexamples.js"),
+    ("GET", "/app/views/admin/parts/snmp.js"),
+    ("GET", "/app/views/admin/parts/snmpuser.js"),
+    ("GET", "/app/views/admin/parts/email.js"),
+    ("GET", "/app/views/admin/parts/apiref.js"),
+    ("GET", "/app/views/admin/parts/scopeexamples.js"),
     # The NOC plane (ADRs #454-#458): the plane switch, the Secrets screen and its parts.
     ("GET", "/app/plane.js"),
-    ("GET", "/app/views/secrets.js"),
-    ("GET", "/app/views/parts/secretform.js"),
-    ("GET", "/app/views/parts/stepup.js"),
-    ("GET", "/app/views/parts/secretdetail.js"),
-    ("GET", "/app/views/parts/nocgrants.js"),
-    ("GET", "/app/views/cases.js"),
-    ("GET", "/app/views/nockpis.js"),
-    ("GET", "/app/views/parts/caseclock.js"),
-    ("GET", "/app/views/parts/caseform.js"),
-    ("GET", "/app/views/parts/caseacts.js"),
-    ("GET", "/app/views/parts/casefeed.js"),
-    ("GET", "/app/views/parts/caseemail.js"),
-    ("GET", "/app/views/parts/casedetail.js"),
-    ("GET", "/app/views/routines.js"),
+    ("GET", "/app/views/noc/secrets.js"),
+    ("GET", "/app/views/noc/parts/secretform.js"),
+    ("GET", "/app/views/noc/parts/stepup.js"),
+    ("GET", "/app/views/noc/parts/secretdetail.js"),
+    ("GET", "/app/views/noc/parts/nocgrants.js"),
+    ("GET", "/app/views/noc/cases.js"),
+    ("GET", "/app/views/noc/nockpis.js"),
+    ("GET", "/app/views/noc/parts/caseclock.js"),
+    ("GET", "/app/views/noc/parts/caseform.js"),
+    ("GET", "/app/views/noc/parts/caseacts.js"),
+    ("GET", "/app/views/noc/parts/casefeed.js"),
+    ("GET", "/app/views/noc/parts/caseemail.js"),
+    ("GET", "/app/views/noc/parts/casedetail.js"),
+    ("GET", "/app/views/noc/routines.js"),
     ("GET", "/app/roster.js"),
-    ("GET", "/app/views/agents.js"),
-    ("GET", "/app/views/org.js"),
-    ("GET", "/app/views/parts/nocui.js"),
-    ("GET", "/app/views/parts/agentkey.js"),
-    ("GET", "/app/views/parts/agentform.js"),
-    ("GET", "/app/views/parts/agentdetail.js"),
-    ("GET", "/app/views/parts/agentdash.js"),
-    ("GET", "/app/views/parts/agentruns.js"),
-    ("GET", "/app/views/parts/agentadmin.js"),
-    ("GET", "/app/views/parts/casemilestones.js"),
-    ("GET", "/app/views/parts/caseassign.js"),
-    ("GET", "/app/views/nocoverview.js"),
+    ("GET", "/app/views/noc/agents.js"),
+    ("GET", "/app/views/noc/org.js"),
+    ("GET", "/app/views/noc/parts/nocui.js"),
+    ("GET", "/app/views/noc/parts/agentkey.js"),
+    ("GET", "/app/views/noc/parts/agentform.js"),
+    ("GET", "/app/views/noc/parts/agentdetail.js"),
+    ("GET", "/app/views/noc/parts/agentdash.js"),
+    ("GET", "/app/views/noc/parts/agentruns.js"),
+    ("GET", "/app/views/noc/parts/agentadmin.js"),
+    ("GET", "/app/views/noc/parts/casemilestones.js"),
+    ("GET", "/app/views/noc/parts/caseassign.js"),
+    ("GET", "/app/views/noc/nocoverview.js"),
     ("GET", "/app/brands.js"),
-    ("GET", "/app/views/parts/vaultui.js"),
-    ("GET", "/app/views/parts/aiproviders.js"),
-    ("GET", "/app/views/parts/credlist.js"),
-    ("GET", "/app/views/parts/custaccess.js"),
-    ("GET", "/app/views/parts/custmail.js"),
-    ("GET", "/app/views/parts/custroutines.js"),
-    ("GET", "/app/views/parts/agentrun.js"),
-    ("GET", "/app/views/parts/ollamamodels.js"),
-    ("GET", "/app/views/parts/orgmove.js"),
-    ("GET", "/app/views/parts/firstrun.js"),
-    ("GET", "/app/views/parts/routineform.js"),
-    ("GET", "/app/views/parts/nocstart.js"),
-    ("GET", "/app/views/parts/personsecurity.js"),
-    ("GET", "/app/views/customers.js"),
-    ("GET", "/app/views/parts/custbook.js"),
-    ("GET", "/app/views/parts/custcontacts.js"),
-    ("GET", "/app/views/parts/custdocs.js"),
-    ("GET", "/app/views/parts/circuits.js"),
-    ("GET", "/app/views/parts/circuitedit.js"),
+    ("GET", "/app/views/noc/parts/vaultui.js"),
+    ("GET", "/app/views/noc/parts/aiproviders.js"),
+    ("GET", "/app/views/noc/parts/credlist.js"),
+    ("GET", "/app/views/noc/parts/custaccess.js"),
+    ("GET", "/app/views/noc/parts/custmail.js"),
+    ("GET", "/app/views/noc/parts/custroutines.js"),
+    ("GET", "/app/views/noc/parts/agentrun.js"),
+    ("GET", "/app/views/noc/parts/ollamamodels.js"),
+    ("GET", "/app/views/noc/parts/orgmove.js"),
+    ("GET", "/app/views/broker/parts/firstrun.js"),
+    ("GET", "/app/views/noc/parts/routineform.js"),
+    ("GET", "/app/views/noc/parts/nocstart.js"),
+    ("GET", "/app/views/admin/parts/personsecurity.js"),
+    ("GET", "/app/views/noc/customers.js"),
+    ("GET", "/app/views/noc/parts/custbook.js"),
+    ("GET", "/app/views/noc/parts/custcontacts.js"),
+    ("GET", "/app/views/noc/parts/custdocs.js"),
+    ("GET", "/app/views/noc/parts/circuits.js"),
+    ("GET", "/app/views/noc/parts/circuitedit.js"),
     ("GET", "/app/brokers.js"),
     ("GET", "/app/heading.js"),
-    ("GET", "/app/views/brokers.js"),
-    ("GET", "/app/views/parts/brokerhome.js"),
-    ("GET", "/app/views/parts/brokerlearn.js"),
-    ("GET", "/app/views/parts/brokerpick.js"),
-    ("GET", "/app/views/parts/brokerwizard.js"),
+    ("GET", "/app/views/broker/brokers.js"),
+    ("GET", "/app/views/broker/parts/brokerhome.js"),
+    ("GET", "/app/views/broker/parts/brokerlearn.js"),
+    ("GET", "/app/views/broker/parts/brokerpick.js"),
+    ("GET", "/app/views/broker/parts/brokerwizard.js"),
     ("GET", "/vendor/preact-10.29.8.module.js"),
     ("GET", "/vendor/htm-3.1.1.module.js"),
-    ("GET", "/style.css"),
+    ("GET", "/styles/core/tokens.css"),
+    ("GET", "/styles/core/base.css"),
+    ("GET", "/styles/core/shell.css"),
+    ("GET", "/styles/core/charts.css"),
+    ("GET", "/styles/core/components.css"),
+    ("GET", "/styles/broker/situations.css"),
+    ("GET", "/styles/broker/graph.css"),
+    ("GET", "/styles/core/panels.css"),
+    ("GET", "/styles/core/sign-in.css"),
+    ("GET", "/styles/core/widths.css"),
+    ("GET", "/styles/broker/health.css"),
+    ("GET", "/styles/broker/maintenance.css"),
+    ("GET", "/styles/broker/timeline.css"),
+    ("GET", "/styles/broker/catalogue.css"),
+    ("GET", "/styles/broker/overview.css"),
+    ("GET", "/styles/broker/entities.css"),
+    ("GET", "/styles/admin/people.css"),
+    ("GET", "/styles/broker/learning.css"),
+    ("GET", "/styles/admin/settings.css"),
+    ("GET", "/styles/noc/plane.css"),
+    ("GET", "/styles/noc/secrets.css"),
+    ("GET", "/styles/noc/cases.css"),
+    ("GET", "/styles/noc/overview.css"),
+    ("GET", "/styles/noc/routines.css"),
+    ("GET", "/styles/noc/agents.css"),
+    ("GET", "/styles/noc/customers.css"),
+    ("GET", "/styles/core/marks.css"),
+    ("GET", "/styles/broker/first-run.css"),
+    ("GET", "/styles/broker/learning-screens.css"),
+    ("GET", "/styles/admin/audit.css"),
+    ("GET", "/styles/noc/ollama.css"),
+    ("GET", "/styles/broker/brokers.css"),
     ("GET", "/favicon.svg"),
     ("GET", "/login-bg.svg"),
     ("GET", "/vendor/inter-5.3.0.latin.woff2"),
@@ -1458,8 +1489,10 @@ def test_the_queue_put_on_the_hot_path_is_non_blocking() -> None:
 #: the line reviewable rather than absorbing whatever else came with the change.
 #:
 #: v0.16.1: 190 -> 193 files. Three added, none removed, none moved:
-#: `migrations/0015_bag_identity.sql` (the bag key), `ui/app/views/parts/card.js` (the situation
-#: card, split out when the server-side search pushed `views/situations.js` over the module-graph
+#: `migrations/0015_bag_identity.sql` (the bag key), `ui/app/views/broker/parts/card.js` (the
+#: situation
+#: card, split out when the server-side search pushed `views/broker/situations.js` over the
+#: module-graph
 #: guard) and `ui/favicon.svg` (F96 — `img-src 'self'` forbids the data: URI that would otherwise
 #: be a one-line fix). The other `src/` diffs are edits to files that already existed, and the
 #: digest moves with them in the commit that makes each one.
@@ -1474,18 +1507,19 @@ def test_the_queue_put_on_the_hot_path_is_non_blocking() -> None:
 #: derivations it drops), `store/situation_reads.py` — `read_models.py`'s one cohesive cluster
 #: after the release pushed that module to 508 lines against the 400-line guard, taking both of
 #: its sibling-inheritance edges with it (DECISIONS #280-#284) — and
-#: `ui/app/views/parts/declare.js`, the three declaration controls, split out of the member row
+#: `ui/app/views/broker/parts/declare.js`, the three declaration controls, split out of the member
+#: row
 #: for the same module-graph reason `members.js` and `card.js` were.
 #:
 #: v0.16.6: 204 -> 210 files. Three added, none removed, none moved, and **no migration** —
 #: `0016` is still the head of the schema. `ui/app/charts.js` (the three chart types),
 #: `ui/app/chartdata.js` (their arithmetic, separate because it is pure and is driven directly by
-#: tests with no DOM) and `ui/app/views/parts/pulse.js` (the Overview's five bands, out of
-#: `views/overview.js` at 22 552 bytes against the 17 579-byte module-graph guard) — and
+#: tests with no DOM) and `ui/app/views/broker/parts/pulse.js` (the Overview's five bands, out of
+#: `views/broker/overview.js` at 22 552 bytes against the 17 579-byte module-graph guard) — and
 #: `ui/app/views/parts/estate.js`, the Graph screen's second projection and its two derived
-#: tables, out of `views/graph.js` at the same ceiling — and
-#: `ui/app/views/parts/marks.js`, the timeline's half of that same boundary, and
-#: `ui/app/views/parts/evidence.js`, which draws the promotion record over time and states
+#: tables, out of `views/broker/graph.js` at the same ceiling — and
+#: `ui/app/views/broker/parts/marks.js`, the timeline's half of that same boundary, and
+#: `ui/app/views/broker/parts/evidence.js`, which draws the promotion record over time and states
 #: the three things nothing measures. A release that
 #: drew charts on four screens added **no route and no route parameter** (DECISIONS #306).
 #:
@@ -1498,7 +1532,7 @@ def test_the_queue_put_on_the_hot_path_is_non_blocking() -> None:
 #: `fixtures/behaviour-identity.txt` records exactly those three lines and no others. `make eval`'s
 #: stdout hash did not move at all: `c2e8a0ce…` before and after, checked against a stashed tree.
 #:
-#: Then one more, for the console half (#348): `ui/app/views/parts/severity.js` appends the
+#: Then one more, for the console half (#348): `ui/app/views/broker/parts/severity.js` appends the
 #: provenance clause to the band's note and carries the vocabulary that names the sources. Three
 #: files in total; still 213; still no route but `/api/stats` and that module's own asset.
 #:
@@ -1517,8 +1551,8 @@ def test_the_queue_put_on_the_hot_path_is_non_blocking() -> None:
 #: moved**; what was removed this release is named in `HANDOFF.md` §7.4 and is smaller than a file
 #: in every case.
 #:
-#: **v0.21.1: 253 -> 255.** Two console modules. `views/parts/mwsummary.js` is the Overview's
-#: planned-work card, and `views/parts/mwreview.js` is the stepper's card 4, split out of
+#: **v0.21.1: 253 -> 255.** Two console modules. `views/broker/parts/mwsummary.js` is the Overview's
+#: planned-work card, and `views/broker/parts/mwreview.js` is the stepper's card 4, split out of
 #: `mwform.js` when the UX repairs pushed it to 448 lines — split along a noun rather than the
 #: limit being raised, which is what MODULE-ARCHITECTURE.md §2 asks for.
 #: **v0.22.0: 255 -> 273.** Twenty-two added and four removed. Added: three migrations
@@ -1553,7 +1587,7 @@ def test_the_queue_put_on_the_hot_path_is_non_blocking() -> None:
 #: **Then 392 -> 399.** Seven added, none removed: `ingest/spool.py`, `ingest/records.py`,
 #: `ingest/decoder.py` and `engine/operate/intake.py` (the spool, its record, the decoder and the
 #: engine's reader, #450); `engine/operate/pipeline.py` and migration `0030` (the KPI's record,
-#: #451); `ui/app/views/parts/pipeline.js` (the Overview's trap pipeline).
+#: #451); `ui/app/views/broker/parts/pipeline.js` (the Overview's trap pipeline).
 #: **Then 399 -> 375.** PostgreSQL (ADR #452): the thirty SQLite migrations `0001`-`0030`
 #: removed and `0031_postgresql.sql`, the designed baseline, added; `store/db.py` (the writer and
 #: the reader pool), `store/codecs.py`, `store/sql.py` (the placeholder translation),
@@ -1581,8 +1615,8 @@ def test_the_queue_put_on_the_hot_path_is_non_blocking() -> None:
 #: `engine/noc/` `commands`, `executor`, `playbook` and `runbook`, `store/noc_playbooks.py`,
 #: migration `0035_noc_automation.sql`, the `noc_exec` and `playbooks` routes, and the
 #: `views/playbooks` console module.
-SRC_TREE_DIGEST = "4cc08d9edd4aa84a7a5e9ac27a99ce970f315164d0f0e454509520495b920997"
-SRC_FILE_COUNT = 564
+SRC_TREE_DIGEST = "90e79f0d2c138d7c3de562af58f4fc72d371c610f061087ffd05180b2db34443"
+SRC_FILE_COUNT = 595
 SRC_VERSION_FILE = "src/netcorenoc/__init__.py"
 
 

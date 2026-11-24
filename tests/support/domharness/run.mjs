@@ -329,7 +329,7 @@ const scenarios = {
    * makes this a fact about the shipped UI rather than about a copy of it.
    */
   /**
-   * **Drive `views/parts/correlation.js`'s verdict rule directly** (v0.18.0).
+   * **Drive `views/broker/parts/correlation.js`'s verdict rule directly** (v0.18.0).
    *
    * The collapsed line is a *derived grade*, and the one thing that must hold of it is that it
    * states the number it judged. Asserting that through a render would test the payload the
@@ -339,12 +339,12 @@ const scenarios = {
   async correlationverdict(params) {
     const env = await boot(params);
     const found = [...env.modules.entries()].find(([file]) =>
-      file.endsWith("views/parts/correlation.js"),
+      file.endsWith("views/broker/parts/correlation.js"),
     );
-    if (!found) throw new Error("views/parts/correlation.js was not in the module graph");
+    if (!found) throw new Error("views/broker/parts/correlation.js was not in the module graph");
     const summarise = found[1].namespace.summarise;
     if (typeof summarise !== "function") {
-      throw new Error("views/parts/correlation.js exports no summarise()");
+      throw new Error("views/broker/parts/correlation.js exports no summarise()");
     }
     const out = {};
     for (const [name, data] of Object.entries(params.cases ?? {})) {

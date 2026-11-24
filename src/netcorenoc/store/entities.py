@@ -18,7 +18,8 @@ class EntityMixin(StoreBase):
 
         The join is the whole of F99's sibling complaint — *"I renamed the host and nothing changed
         in Entities"*. This method selected five columns and joined no label, while
-        `ui/app/views/entities.js` rendered `${ne.label || ne.ip}` — a field the route had never
+        `ui/app/views/broker/entities.js` rendered `${ne.label || ne.ip}` — a field the route had
+        never
         served, so the fallback was permanent. The label was not missing: the same row resolved
         through the alarm projection and on the graph, which is the control that made this a broken
         join rather than a broken write.

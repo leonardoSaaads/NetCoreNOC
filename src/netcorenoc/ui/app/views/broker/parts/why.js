@@ -1,0 +1,312 @@
+/* "Why these were grouped" — the screen that carries principle 2, redesigned (V.6, #245).
+ *
+ * ## What was wrong with it
+ *
+ * It rendered `links.slice(0, 30)`: thirty rows of three-term decomposition, with a paragraph
+ * above them, and a line saying how many were not shown. In a four-alarm situation that is the
+ * right screen. In a 400-trap storm it is thirty rows out of thousands, chosen by insertion
+ * order — and an operator who needs to know **whether the grouping is sound** has to read a
+ * sample nobody selected and draw a conclusion from it.
+ *
+ * The question a storm asks is not "what is link seventeen's temporal term". It is *"can I trust
+ * this grouping?"*, and after that, sometimes, *"show me the pair that made you say so"*.
+ *
+ * ## What replaces it
+ *
+ * A **summary** that answers the first question from every link rather than from thirty, and the
+ * per-link decomposition **one interaction away and complete when opened** — not truncated, which
+ * is the half that makes principle 2 still true. Three facts, and each is on screen because it
+ * changes what an operator does:
+ *
+ *   * **the weakest link and its margin over the threshold.** A grouping whose weakest pair
+ *     cleared by 0.01 is one scorer nudge from falling apart; one whose weakest cleared by 0.3 is
+ *     not. This is the single most useful number on the screen and it was not on it.
+ *   * **which term is carrying the grouping**, as the mean contribution of each across every link.
+ *     If temporal carries it alone, these alarms are close in time and nothing else — a storm
+ *     coincidence. If entity affinity carries it, the appliance is grouping on structure it has
+ *     learned. Those two situations look identical in a list of scores.
+ *   * **how many links there are**, so the operator knows what "open the detail" will cost.
+ *
+ * ## What this deliberately does NOT do
+ *
+ * It does not compute a verdict. Every number here is an aggregate of numbers the server already
+ * sent, by arithmetic a reader can check in the source, and none of it is a judgement the
+ * appliance has not made. A console that scored its own groupings would be a second scorer
+ * (F28's shape at a different altitude), and the one that decides is `engine/correlate`.
+ *
+ * It is also not situation-lifecycle work: nothing here proposes a state, a merge, a split or a
+ * rename. That is v0.16.0 and `docs/plans/v0.16.0-situation-lifecycle.md` carries what was noticed
+ * while working in this file.
+ */
+
+import { html, Component, cx } from "../../../dom.js";
+import { Icon } from "../../../icons.js";
+import { score, alarmName, plural } from "../../../format.js";
+
+const TERM_KEY = { temporal: "t", class_affinity: "a", entity_affinity: "e" };
+const TERM_LABEL = {
+  temporal: "T — how close in time",
+  class_affinity: "A — how often these alarm classes co-occur",
+  entity_affinity: "E — how often these devices co-occur",
+};
+/* v0.27.0: a trained model explains a link by one term per feature (`engine/correlate/features.py`),
+ * each its exact contribution to the log-odds — Shapley values for the trees, the term itself for
+ * the GAM and the logistic regression. The names come from the server once per situation. */
+const FEATURE_LABEL = {
+  dt: "how close in time",
+  same_ne: "same network element",
+  same_class: "same alarm class",
+  oid_arcs: "how much of the trap OID they share",
+  class_affinity: "how often these alarm classes co-occur",
+  entity_affinity: "how often these devices co-occur",
+  ne_episodes: "past episodes on these elements together",
+  class_episodes: "past episodes of these classes together",
+  item_episodes: "past episodes of these two alarms together",
+  severity: "severity",
+  burst: "how many alarms arrived at once",
+  chatter: "how chatty these alarms are",
+  degree: "how connected the elements are",
+  cross_ref: "one alarm names the other's element",
+  hour: "time of day",
+};
+const labelOf = (name) => TERM_LABEL[name] ?? (FEATURE_LABEL[name] ? `${name} — ${FEATURE_LABEL[name]}` : name);
+const keyOf = (name) => TERM_KEY[name] ?? "m";
+const logistic = (z) => 1 / (1 + Math.exp(-z));
+/** What it means when a term dominates. One clause each, because the fact needs the reading. */
+const TERM_MEANING = {
+  temporal: "these alarms are close in time",
+  class_affinity: "these alarm classes have co-occurred before",
+  entity_affinity: "these devices have co-occurred before",
+};
+
+/**
+ * The three named terms of one link.
+ *
+ * **Named here rather than on the wire** (v0.20.0, F145). `/api/situations/{id}` used to carry
+ * both this list and the three columns it is built from: measured on a 1 051-member storm,
+ * 993 KiB of a 1 844 KiB response was the same three floats written twice, held for as long as
+ * the operator had the card open. The names were never the server's to give — `TERM_LABEL` and
+ * `TERM_KEY` above are keyed on them, so this file already knew all three.
+ *
+ * A payload that still carries `terms` is honoured, because a scorer with a different term set
+ * would announce it that way and this must not silently relabel it as the three it expects.
+ */
+export function termsOf(link, table) {
+  if (Array.isArray(link.terms) && link.terms.length) return link.terms;
+  // v0.27.0: a model's link — its names from the situation's table, its contributions inline.
+  if (Array.isArray(link.phi) && table && table[link.names]) {
+    return table[link.names].map((name, i) => ({ name, contribution: link.phi[i] }));
+  }
+  return [
+    { name: "temporal", contribution: link.term_t },
+    { name: "class_affinity", contribution: link.term_a },
+    { name: "entity_affinity", contribution: link.term_e },
+  ];
+}
+
+/**
+ * Aggregate every link — not a sample. Arithmetic only: min, max, and a mean per term.
+ *
+ * Returns null for an empty list rather than a zeroed object, so a caller cannot render
+ * "weakest 0.00" about a situation that has no links at all.
+ */
+export function summarise(links, table) {
+  if (!links || !links.length) return null;
+  const scores = links.map((l) => l.score);
+  const totals = new Map();
+  for (const link of links) {
+    for (const term of termsOf(link, table)) {
+      totals.set(term.name, (totals.get(term.name) ?? 0) + (term.contribution ?? 0));
+    }
+  }
+  const means = [...totals.entries()]
+    .map(([name, total]) => ({ name, mean: total / links.length }))
+    .sort((a, b) => b.mean - a.mean);
+  return {
+    count: links.length,
+    weakest: Math.min(...scores),
+    strongest: Math.max(...scores),
+    means,
+    carrying: means[0],
+  };
+}
+
+/** The band a margin falls in, and the one sentence that IS the answer to "can I trust this?".
+ * A model's scores are log-odds, so its margin is read as probability (v0.27.0): 0.05 above the
+ * threshold means the same thing whichever decider drew the line. */
+export function bandOf(weakest, threshold, scale) {
+  if (threshold == null) return { band: "unknown", margin: null };
+  const margin = scale === "logit" ? logistic(weakest) - logistic(threshold) : weakest - threshold;
+  return { band: margin < 0.05 ? "thin" : margin < 0.15 ? "fair" : "wide", margin };
+}
+
+const BAND_VERDICT = {
+  thin: "The weakest pair only just cleared the threshold",
+  fair: "Every pair cleared the threshold",
+  wide: "Every pair cleared the threshold comfortably",
+  unknown: "The threshold was not reported",
+};
+
+/**
+ * **One line, closed; everything, open** (v0.20.0).
+ *
+ * *"The correlation panel is not very intuitive — too much information. The user doesn't want to
+ * know all that, they want to know what to do right away."* This section was three things stacked:
+ * a heading, a three-figure summary with a paragraph and three mean bars, and a second disclosure
+ * holding the per-link decomposition. An operator deciding whether a grouping is right met all of
+ * it before reaching the decision, and the only part that changes the decision is **one bit**:
+ * did the weakest pair clear the threshold comfortably or barely.
+ *
+ * So the closed state is that bit, in a sentence, with the band's colour and the link count — and
+ * the two disclosures became **one**. That is strictly better for principle 2, not worse: the
+ * per-term contributions used to be two interactions away (expand the card, then open the detail)
+ * and are now one, and they are still complete when opened.
+ */
+export class WhyGrouped extends Component {
+  constructor(props) {
+    super(props);
+    this.state = { open: false };
+  }
+
+  render({ links, byId, threshold, table, scale }, { open }) {
+    const all = links || [];
+    const summary = summarise(all, table);
+    if (!summary) {
+      return html`<section class="why">
+        <p class="hint">This situation has one member, so there is no link to explain.</p>
+      </section>`;
+    }
+    const { band } = bandOf(summary.weakest, threshold, scale);
+    return html`<section class="why">
+      <button type="button" class=${cx("why-toggle", `soundness-${band}`)}
+              aria-expanded=${open ? "true" : "false"} aria-controls="why-body"
+              onClick=${() => this.setState({ open: !open })}>
+        <span class=${open ? "sit-chevron open" : "sit-chevron"}><${Icon} name="chevron" /></span>
+        <${Icon} name=${BAND_ICON[band]} />${" "}
+        <span class="why-verdict">${BAND_VERDICT[band]}</span>${" "}
+        <span class="muted">${plural(summary.count, "link")}</span>
+      </button>
+      <div class="why-body" id="why-body" hidden=${!open}>
+        ${open ? html`
+          <${Soundness} summary=${summary} threshold=${threshold} band=${band} scale=${scale} />
+          <${LinkRows} links=${all} byId=${byId} table=${table} />` : null}
+      </div>
+    </section>`;
+  }
+}
+
+/* The icon per band, as a table rather than a ternary inside the element.
+ *
+ * `tests/ui/test_icons.py` reads the quoted strings inside an `<${Icon} …/>` element, so
+ * `name=${band === "thin" ? "warn" : "info"}` made it ask for an icon called "thin" — the
+ * ternary's CONDITION. The guard could be taught to parse the expression; a lookup keyed on the
+ * band is the better answer, because the alternative is a guard with its own JavaScript parser. */
+const BAND_ICON = { thin: "warn", fair: "info", wide: "info", unknown: "info" };
+
+/** The answer to "is this grouping sound?", from every link. */
+function Soundness({ summary, threshold, band, scale }) {
+  const margin = threshold != null ? bandOf(summary.weakest, threshold, scale).margin : null;
+  const unit = scale === "logit" ? " in probability" : "";
+  // Three bands, and the words change with the band as well as the colour — a margin read off a
+  // colour alone fails the same operator the severity rules are written for.
+  return html`<div class=${cx("soundness", `soundness-${band}`)}>
+    <div class="stat-row">
+      <div class="stat">
+        <div class="stat-value">${score(summary.weakest)}</div>
+        <div class="stat-label">weakest link</div>
+        <div class="stat-note">${margin == null
+          ? "the threshold was not reported"
+          : `${score(margin)}${unit} above the threshold of ${score(threshold)}`}</div>
+      </div>
+      <div class="stat">
+        <div class="stat-value">${score(summary.strongest)}</div>
+        <div class="stat-label">strongest link</div>
+        <div class="stat-note">${summary.count === 1 ? "the only link" : "of the links below"}</div>
+      </div>
+      <div class="stat">
+        <div class="stat-value">${summary.count}</div>
+        <div class="stat-label">${summary.count === 1 ? "link" : "links"}</div>
+        <div class="stat-note">every pair scored above the threshold</div>
+      </div>
+    </div>
+    ${/* The sentence that used to be here is the toggle's own label now (v0.20.0). Saying it
+          twice, once on the control that was just pressed and once under it, is the shape of
+          text this console is being asked to stop producing. `margin` is still what the
+          weakest-link note above reports, which is where the number belongs. */ null}
+    <${Carrying} means=${summary.means} />
+  </div>`;
+}
+
+/**
+ * Which term is doing the work, averaged over every link.
+ *
+ * A bar AND the number AND the term's name, never the bar alone — the same rule the per-link rows
+ * follow, and for the same reason: a bar cannot be read off a bad monitor or copied into a ticket.
+ */
+function Carrying({ means }) {
+  const top = means[0];
+  const total = means.reduce((n, m) => n + m.mean, 0) || 1;
+  return html`<div class="carrying">
+    <p class="hint">Averaged over every link, the grouping is carried by${" "}
+      <b>${TERM_LABEL[top.name]?.split(" — ")[0] ?? top.name}</b>${" — "}
+      ${TERM_MEANING[top.name] ?? FEATURE_LABEL[top.name] ?? "an unnamed term"}.</p>
+    <ul class="term-means">
+      ${means.map((m) => html`<li key=${m.name}>
+        <span class="term-mean-label">${labelOf(m.name)}</span>
+        <span class=${cx("term-bar", `term-${keyOf(m.name)}`, m.mean < 0 && "term-neg")}
+              style=${{ width: `${Math.max(2, Math.round(160 * Math.abs(m.mean / total)))}px` }}
+              aria-hidden="true"></span>
+        <span class="term-num">${score(m.mean)} mean</span>
+      </li>`)}
+    </ul>
+  </div>`;
+}
+
+/**
+ * Every link, complete.
+ *
+ * **Complete is the point.** The old version rendered `slice(0, 30)` and said how many it had
+ * hidden, which means the per-term contributions — the product's central claim — were unreachable
+ * for link thirty-one onwards on any device at all. They are all here once the section is opened;
+ * what is behind the interaction is the *cost* of drawing them, not the facts.
+ *
+ * It had a disclosure of its own until v0.20.0 and no longer does. Two nested toggles put the
+ * decomposition two interactions from an expanded card, and the outer one now hides the whole
+ * section — so the inner one was a second press to reach what the first press was for.
+ */
+function LinkRows({ links, byId, table }) {
+  return html`<ol class="links" id="why-links">
+    ${links.map((link, index) => html`<li class="linkrow" key=${index}>
+      <span class="linkscore" title=${link.phi ? `log-odds: the base ${score(link.base)} plus the terms below`
+        : "the sum of the three terms below"}>${score(link.score)}</span>
+      <${TermBar} link=${link} table=${table} />
+      <span class="linkpair">
+        ${nameOf(byId, link.alarm_a)} <span aria-hidden="true">↔</span>
+        ${nameOf(byId, link.alarm_b)}
+      </span>
+    </li>`)}
+  </ol>`;
+}
+
+function nameOf(byId, alarmId) {
+  const alarm = byId.get(alarmId);
+  return alarm ? alarmName(alarm) : `alarm ${alarmId}`;
+}
+
+export function TermBar({ link, table }) {
+  const terms = termsOf(link, table);
+  const title = terms.map((t) => `${labelOf(t.name)}: ${score(t.contribution)}`).join("\n");
+  // A model's terms are many and signed: the four that moved the score most, by magnitude; the
+  // rest are in the tooltip, and every one is in the summary's means above.
+  const shown = link.phi
+    ? [...terms].sort((a, b) => Math.abs(b.contribution) - Math.abs(a.contribution)).slice(0, 4)
+    : terms;
+  return html`<span class="terms" title=${title}>
+    ${shown.map((t) => html`<span class="term" key=${t.name}>
+      <span class=${cx("term-bar", `term-${keyOf(t.name)}`, t.contribution < 0 && "term-neg")}
+            style=${{ width: `${Math.max(2, Math.round(120 * Math.abs(t.contribution / 0.95)))}px` }}
+            aria-hidden="true"></span>
+      <span class="term-num">${TERM_KEY[t.name] ? TERM_KEY[t.name].toUpperCase() : t.name} ${score(t.contribution)}</span>
+    </span>`)}
+  </span>`;
+}

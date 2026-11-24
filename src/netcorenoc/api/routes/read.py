@@ -242,7 +242,7 @@ def register(app: FastAPI, ctx: AppContext) -> None:
         # as the operator has the situation open, which is the memory growth the maintainer
         # reported and the reason the card is slow to arrive.
         #
-        # Nothing is lost. `views/parts/why.js::termsOf` has always built the named list from
+        # Nothing is lost. `views/broker/parts/why.js::termsOf` has always built the named list from
         # the three columns when `terms` is absent — that is the path every link now takes —
         # and the names live in that file already, because `TERM_LABEL` and `TERM_KEY` are
         # keyed on them. What left the wire is the restatement; what carries the decomposition

@@ -45,10 +45,10 @@ import { Avatar } from "./avatar.js";
 import { theme, setTheme, nextTheme, navState, setNavState, nextNavState } from "./theme.js";
 import { Bell } from "./notices.js";
 import { Health } from "./health.js";
-import { StopButton } from "./views/parts/autonomy.js";
+import { StopButton } from "./views/admin/parts/autonomy.js";
 import * as store from "./store.js";
 import { customerList, hiddenViews, onRoster, roster, watchRoster } from "./roster.js";
-import { customerEntries, navEntries } from "./views/parts/nocui.js";
+import { customerEntries, navEntries } from "./views/noc/parts/nocui.js";
 import { brokerEntries, brokerList, followRoute, liveCount, onBrokers, watchBrokers }
   from "./brokers.js";
 import { plural, utcOffset, TIMEZONE } from "./format.js";

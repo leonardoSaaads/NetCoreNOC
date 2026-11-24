@@ -1,0 +1,213 @@
+/* ---------- the password surface (V.2) ---------- */
+
+.pw-field { margin-bottom: var(--space-2); }
+/* One field: the reveal control inside the box, then the input that fills whatever is left
+   (ADR #480). The box carries the border and the focus ring, so the eye and the text read as one
+   control rather than two boxes side by side. The input carries `flex: 1` (basis 0) and the button
+   `flex: none` — see `.login-card > input` below for the rule that used to break exactly this. */
+.pw-row {
+  display: flex; align-items: stretch; min-height: 36px;
+  border: 1px solid var(--line-strong); border-radius: var(--radius-1);
+  background: var(--bg-raised); transition: border-color 120ms ease, box-shadow 120ms ease;
+}
+.pw-row:hover { border-color: var(--fg-dim); }
+.pw-row:focus-within { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+.pw-row input {
+  flex: 1; min-width: 0; margin-bottom: 0; border: 0; background: transparent;
+  box-shadow: none; padding-left: 4px;
+}
+.pw-row input:focus { box-shadow: none; }
+/* `order`, not DOM order, and the difference is load-bearing. The icon is asked to sit to the LEFT
+   of the field, but the button must stay AFTER the input in the markup: tabbing out of the
+   username field has to land in the password box, not on a toggle. Reversing the markup would put
+   a control the operator does not want yet between them, and they would type into nothing. */
+.pw-reveal {
+  flex: none; order: -1; width: 36px; margin: 0; border: 0; background: transparent;
+  display: inline-flex; align-items: center; justify-content: center; color: var(--fg-dim);
+}
+.pw-reveal:hover { color: var(--fg); background: transparent; }
+
+/* Four segments across the field, then the sentence and the count on one line (ADR #480). The
+   segments are never the only signal: the sentence changes with the state, as severity does. */
+.pw-meter {
+  display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center;
+  gap: 6px var(--space-2); margin: 8px 0 var(--space-3);
+  font-size: var(--fs-xs); color: var(--fg-muted);
+}
+.pw-segs { grid-column: 1 / -1; display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px; }
+.pw-seg { height: 4px; border-radius: 999px; background: var(--grid); transition: background-color 160ms ease; }
+.pw-meter-short .pw-seg-on { background: var(--warn); }
+.pw-meter-ok .pw-seg-on { background: var(--quiet); }
+.pw-meter-over .pw-seg-on { background: var(--alarm); }
+.pw-words { display: inline-flex; align-items: center; gap: 6px; min-width: 0; line-height: 1.4; }
+.pw-words .icon-svg { flex: none; width: 14px; height: 14px; color: var(--quiet); }
+.pw-meter-over .pw-words { color: var(--alarm); }
+.pw-count { font-variant-numeric: tabular-nums; color: var(--fg-dim); white-space: nowrap; }
+.pw-meter-short .pw-count { color: var(--warn); }
+.pw-meter-over .pw-count { color: var(--alarm); }
+
+/* A declaration, not a control (V.3): an icon, a sentence, no affordance. Used by the fixed-role
+   note on People & access and the two-factor statement on Your account. */
+.note-line {
+  display: flex; align-items: flex-start; gap: var(--space-2);
+  font-size: var(--fs-sm); color: var(--fg-muted); margin: 0 0 var(--space-2); max-width: 70ch;
+}
+.note-line .icon-svg { flex: none; margin-top: 0.15em; color: var(--fg-dim); }
+.note-line b { color: var(--fg); font-weight: 600; }
+
+/* ---------- sign-in (v0.30.0, ADR #446) ----------
+ *
+ * Two columns over the artwork: what the product is, and the card. The scrim deepens toward the
+ * card so the card's edge always reads against the picture, whatever part of it lands there. */
+
+.login {
+  position: relative; isolation: isolate;
+  min-height: 100vh; display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(320px, 420px);
+  align-items: center; gap: var(--space-6);
+  padding: var(--space-6) clamp(var(--space-4), 6vw, 112px);
+  background: var(--art-base) url("/login-bg.svg") center / cover no-repeat;
+  color: var(--art-ink);
+  transition: grid-template-columns 0.35s ease; /* ADR #482: the card moves for the second step */
+}
+.login::before {
+  content: ""; position: absolute; inset: 0; z-index: -1; pointer-events: none;
+  background: linear-gradient(90deg, transparent 0%, var(--art-scrim) 70%, var(--art-scrim) 100%);
+}
+.login-hero { max-width: 34rem; }
+.login-brand { display: flex; align-items: center; gap: 14px; font-size: 34px; font-weight: 600; letter-spacing: -0.03em; }
+.login-brand b { color: var(--art-ink-muted); font-weight: 500; }
+.login-brand .brand-mark { display: inline-flex; }
+.login-tagline { font-size: var(--fs-xl); color: var(--art-ink); margin: var(--space-3) 0 var(--space-5); }
+.login-points { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--space-3); }
+.login-points li {
+  position: relative; padding-left: var(--space-5); color: var(--art-ink-muted); line-height: 1.5;
+}
+.login-points li::before {
+  content: ""; position: absolute; left: 0; top: 0.5em; width: 8px; height: 8px;
+  border-radius: 50%; background: var(--art-accent); box-shadow: 0 0 10px var(--art-accent);
+}
+.login-panel { display: flex; justify-content: center; }
+.login-card {
+  width: 100%; max-width: 420px; background: var(--bg-raised); color: var(--fg);
+  border: 1px solid var(--line); border-radius: 12px;
+  padding: var(--space-6) var(--space-5); box-shadow: var(--shadow-2);
+}
+.login-head { margin-bottom: var(--space-4); }
+.login-head h1 { display: flex; align-items: center; gap: 8px; font-size: var(--fs-lg); font-weight: 600; letter-spacing: -0.02em; margin: 0 0 var(--space-4); color: var(--fg); }
+.login-head h1 b { color: var(--fg-muted); font-weight: 500; }
+.login-head h2 { font-size: var(--fs-2xl); margin: 0 0 var(--space-1); }
+.login-head .hint { margin: 0; }
+/* DIRECT CHILDREN ONLY, and that is the whole of F86: a descendant selector reached the composed
+   `PasswordInput`'s reveal button too, which then claimed the entire row. `>` says what these
+   rules have always meant: the card's OWN field and the card's OWN submit button. */
+.login-card > input { width: 100%; margin-bottom: var(--space-3); min-height: 36px; }
+.login-card > button { width: 100%; margin-top: var(--space-3); min-height: 36px; }
+.login-card .pw-field { margin-bottom: var(--space-3); }
+.login-card .pw-row input { min-height: 36px; }
+.login-foot { margin: var(--space-4) 0 0; text-align: center; font-size: var(--fs-sm); }
+.login-foot code { font-size: var(--fs-xs); }
+@media (max-width: 899px) {
+  .login { grid-template-columns: 1fr; justify-items: center; padding: var(--space-4); }
+  .login-hero { display: none; }
+  .login::before { background: var(--art-scrim); }
+}
+
+/* ---------- the sign-in's second step (ADR #482) ----------
+ *
+ * The password card moves left and the second step slides in beside it: three columns while it is
+ * open, the product's column narrowing to make room and leaving altogether below 1280 px; below
+ * 900 px the card steps aside and the second step is the page. */
+.login.has-second {
+  grid-template-columns: minmax(0, 0.9fr) minmax(300px, 380px) minmax(360px, 540px);
+  gap: var(--space-5);
+}
+.login-second { display: flex; justify-content: center; }
+.login-passed { display: flex; align-items: center; gap: var(--space-2); margin: var(--space-2) 0 0; }
+.login-tick {
+  display: inline-grid; place-items: center; width: 22px; height: 22px; flex: none;
+  border-radius: 50%; background: var(--quiet-bg); color: var(--quiet);
+}
+.has-second .login-card { opacity: 0.92; }
+@media (max-width: 1279px) {
+  .login.has-second { grid-template-columns: minmax(300px, 380px) minmax(360px, 540px); justify-content: center; }
+  .login.has-second .login-hero { display: none; }
+}
+@media (max-width: 899px) {
+  .login.has-second { grid-template-columns: 1fr; }
+  .login.has-second .login-panel { display: none; }
+}
+
+.tf-panel {
+  width: 100%; max-width: 540px; background: var(--bg-raised); color: var(--fg);
+  border: 1px solid var(--line); border-radius: 12px; box-shadow: var(--shadow-2);
+  padding: var(--space-5); display: grid; gap: var(--space-4);
+  animation: tf-in 0.35s ease-out;
+}
+@keyframes tf-in { from { opacity: 0; transform: translateX(28px); } to { opacity: 1; transform: none; } }
+.tf-head { display: flex; gap: var(--space-3); align-items: flex-start; }
+.tf-head h2 { margin: 0 0 2px; font-size: var(--fs-xl); letter-spacing: -0.01em; }
+.tf-head .hint { margin: 0; }
+.tf-badge {
+  display: inline-grid; place-items: center; width: 40px; height: 40px; flex: none;
+  border-radius: 10px; background: var(--accent-soft); color: var(--accent); font-size: 20px;
+}
+.tf-steps { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--space-3); }
+.tf-step {
+  display: grid; grid-template-columns: 28px minmax(0, 1fr); gap: var(--space-3);
+  padding: var(--space-3); border: 1px solid var(--line); border-radius: 10px; background: var(--bg);
+}
+.tf-num {
+  display: inline-grid; place-items: center; width: 26px; height: 26px; border-radius: 50%;
+  border: 1px solid var(--line-strong); font-size: var(--fs-sm); font-weight: 600; color: var(--fg-muted);
+}
+.tf-step-body { display: grid; gap: var(--space-2); min-width: 0; }
+.tf-step-body > p { margin: 0; }
+.tf-qr-row { display: flex; gap: var(--space-4); align-items: center; flex-wrap: wrap; }
+.qr-code { width: 168px; height: 168px; border-radius: 8px; flex: none; background: #fff; }
+.tf-qr-side { flex: 1 1 160px; display: grid; gap: var(--space-2); }
+.tf-qr-side p { margin: 0; font-size: var(--fs-sm); }
+.tf-manual { justify-self: start; font-size: var(--fs-sm); }
+.tf-key { display: flex; align-items: center; gap: var(--space-2); }
+.tf-key code {
+  padding: 6px 8px; border: 1px dashed var(--line-strong); border-radius: 6px;
+  font-size: var(--fs-xs); overflow-wrap: anywhere; background: var(--bg-sunken);
+}
+.recovery-box { border: 1px solid var(--line); border-radius: 8px; background: var(--bg-sunken); }
+.recovery-codes {
+  margin: 0; padding: var(--space-3); list-style: none; display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px var(--space-4); font-size: var(--fs-sm);
+  counter-reset: rc;
+}
+.recovery-codes li { counter-increment: rc; display: flex; gap: var(--space-2); text-transform: uppercase; letter-spacing: 0.04em; }
+.recovery-codes li::before { content: counter(rc, decimal-leading-zero); color: var(--fg-dim); }
+.recovery-actions {
+  display: flex; gap: var(--space-2); justify-content: flex-end;
+  padding: var(--space-2) var(--space-3); border-top: 1px solid var(--line);
+}
+.tf-saved { margin: 0; font-size: var(--fs-sm); }
+.code-boxes { position: relative; display: grid; grid-template-columns: repeat(6, 44px); gap: 8px; width: max-content; }
+.code-boxes .code-real {
+  position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; cursor: text;
+  font-size: 16px; letter-spacing: 2em; z-index: 1;
+}
+.code-box {
+  display: grid; place-items: center; height: 52px; border: 1px solid var(--line-strong);
+  border-radius: 8px; background: var(--bg); font: 600 var(--fs-xl) / 1 var(--mono);
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+.code-box.is-filled { border-color: var(--fg-muted); }
+.code-boxes:focus-within .code-box.is-next {
+  border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft);
+}
+.code-boxes.is-disabled { opacity: 0.5; }
+.code-recovery { font-size: var(--fs-lg); letter-spacing: 0.08em; max-width: 220px; }
+.tf-verify { display: grid; gap: var(--space-3); justify-items: start; }
+.tf-actions { display: flex; justify-content: space-between; gap: var(--space-2); }
+.tf-actions .primary { min-height: 36px; padding-inline: var(--space-4); }
+@media (max-width: 520px) {
+  .code-boxes { grid-template-columns: repeat(6, 38px); gap: 6px; }
+  .recovery-codes { grid-template-columns: 1fr; }
+}
+
+.noscript { max-width: 60ch; margin: 10vh auto; padding: var(--space-4); }

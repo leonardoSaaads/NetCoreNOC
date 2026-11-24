@@ -1,0 +1,107 @@
+/* ---------- banners ---------- */
+
+.banners:empty { display: none; }
+.banner { padding: var(--space-2) var(--space-4); font-size: var(--fs-sm); border-bottom: 1px solid var(--line); }
+.banner-urgent { background: var(--alarm-bg); color: var(--alarm); }
+.banner-warn { background: var(--warn-bg); color: var(--warn); }
+
+/* ---------- states ---------- */
+
+.state { padding: var(--space-4); border: 1px dashed var(--line-strong); border-radius: var(--radius-2); }
+.state-empty { text-align: left; background: var(--bg-sunken); }
+.state-empty h3 { text-transform: none; letter-spacing: 0; font-size: var(--fs-lg); color: var(--fg); }
+.what-fills { color: var(--fg); max-width: 60ch; }
+.state-loading { display: flex; align-items: center; gap: var(--space-2); color: var(--fg-muted); border-style: solid; }
+/* It is called a spinner, it is drawn as one — a ring with one accent edge — and until v0.15.2 it
+   did not move: there was no `animation` and no `@keyframes` anywhere in this file. A static ring
+   beside "Loading…" reads as a stalled control rather than a working one. Not identity work: the
+   mark was already chosen, and this is the half of it that was missing. The reduced-motion block
+   at the end of this file turns it off for an operator who asked for that. */
+.spinner {
+  width: 10px; height: 10px; border-radius: 50%;
+  border: 2px solid var(--line-strong); border-top-color: var(--accent);
+  animation: spin 0.8s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+.state-error, .state-partial { border-color: var(--alarm); background: var(--alarm-bg); }
+.state-error h3, .state-refused h3 { color: var(--alarm); text-transform: none; letter-spacing: 0; font-size: var(--fs-lg); }
+.state-error .detail { font-family: var(--mono); font-size: var(--fs-sm); }
+.state-refused { border-color: var(--warn); background: var(--warn-bg); }
+.state-refused code, .state-partial code { color: var(--fg); }
+
+/* ---------- tables ---------- */
+
+.table-scroll { overflow-x: auto; margin-bottom: var(--space-3); }
+table.data { border-collapse: collapse; width: 100%; font-size: var(--fs-sm); }
+table.data caption {
+  text-align: left; color: var(--fg-muted); font-size: var(--fs-xs);
+  padding-bottom: var(--space-1);
+}
+table.data th, table.data td {
+  text-align: left; padding: var(--space-1) var(--space-2);
+  border-bottom: 1px solid var(--line); height: var(--row-h); vertical-align: top;
+}
+table.data th {
+  color: var(--fg-muted); font-weight: 500; font-size: var(--fs-xs);
+  border-bottom-color: var(--line); position: sticky; top: 0; background: var(--bg-raised);
+}
+/* Numerals align on the decimal point so a column of counts can be scanned vertically. */
+table.data th.num, table.data td.num {
+  text-align: right; font-variant-numeric: tabular-nums;
+}
+table.data tbody tr:hover { background: var(--bg-hover); }
+tr.row-alarm td:first-child { box-shadow: inset 2px 0 var(--alarm); }
+tr.row-quiet { color: var(--fg-muted); }
+
+/* ---------- severity: colour AND glyph AND text ---------- */
+
+td.sev { white-space: nowrap; }
+/* The chip: a level AND a fill AND a word (DECISIONS #277, #386, #391). Filled and
+ * rounded so it is read at a glance; inline-flex so level and word share one baseline; never
+ * wrapped. The level is SVG drawn in the ink colour, so it keeps its outline in greyscale. */
+.sev-glyph { width: 0.95em; height: 0.95em; flex: none; fill: currentColor; }
+/* The level bars (#391): filled bars carry the band's colour; the rest are a faint outline, so the
+   count of filled bars is readable against the chip. Unplaced is dashed: nothing was read. */
+.sev-glyph .sev-on { fill: currentColor; }
+.sev-glyph .sev-off { fill: none; stroke: currentColor; stroke-width: 0.8; opacity: 0.45; }
+.sev-glyph .sev-dashed { stroke-dasharray: 1.4 1.1; opacity: 0.7; }
+.sev-pill {
+  display: inline-flex; align-items: center; gap: var(--space-1);
+  min-height: 20px; padding: 0 var(--space-2);
+  border-radius: 6px; font-size: var(--fs-xs); font-weight: 600;
+  letter-spacing: 0.01em; white-space: nowrap;
+}
+.sev-count { font-variant-numeric: tabular-nums; font-weight: 600; letter-spacing: 0; }
+/* The declaration mark: a fourth encoding, and deliberately not a fifth colour — the fills are the
+ * luminosity ladder carrying the RANK, and the title says it in words. */
+.sev-pill .sev-mark { font-weight: 700; opacity: 0.75; margin-left: -1px; }
+.sev-critical { background: var(--sev-critical-fill); color: var(--sev-critical-ink); }
+.sev-major { background: var(--sev-major-fill); color: var(--sev-major-ink); }
+.sev-minor { background: var(--sev-minor-fill); color: var(--sev-minor-ink); }
+.sev-warning { background: var(--sev-warning-fill); color: var(--sev-warning-ink); }
+/* The two that are not placements on the scale say so by not being solid. */
+.sev-indeterminate {
+  background: transparent; color: var(--fg-muted); border: 1px solid var(--line-strong);
+}
+.sev-unplaced {
+  background: var(--sev-unplaced-fill); color: var(--sev-unplaced-ink);
+  border: 1px dashed var(--line-strong); font-weight: 500;
+}
+
+/* ---------- badges ---------- */
+
+.badge {
+  display: inline-block; font-size: var(--fs-xs);
+  border: 1px solid var(--line-strong); border-radius: var(--radius-1);
+  padding: 0 var(--space-1); color: var(--fg-muted); white-space: nowrap;
+}
+.badge-alarm { border-color: var(--alarm); color: var(--alarm); }
+.badge-quiet { border-color: var(--quiet); color: var(--quiet); }
+.badge-redacted, .badge-held, .badge-scope { border-color: var(--warn); color: var(--warn); cursor: help; }
+/* v0.16.2: idle for over an hour with an alarm still on. FILLED rather than outlined, because it
+ * is the one badge on this line that means "somebody should look at this now" — the others say
+ * what the card is, and this one says what it needs (DECISIONS #274). */
+.badge-stale {
+  background: var(--warn); color: var(--bg); border-color: var(--warn);
+  font-weight: 600; cursor: help;
+}

@@ -20,10 +20,10 @@ handoff (the field review and two more models) is at `f7cf702`: `git show f7cf70
 | Concern | Module |
 |---|---|
 | What the receiver accepts | `ingest/snmpconf.py` (policy), `ingest/usm.py` (SNMPv3), `ingest/ber.py` (offsets) |
-| SNMP settings | `api/routes/snmp.py`, `ui/app/views/parts/snmp.js`, `snmpuser.js` |
-| Outgoing email | `crosscutting/mail.py`, `api/routes/email.py`, `ui/app/views/parts/email.js` |
+| SNMP settings | `api/routes/snmp.py`, `ui/app/views/admin/parts/snmp.js`, `snmpuser.js` |
+| Outgoing email | `crosscutting/mail.py`, `api/routes/email.py`, `ui/app/views/admin/parts/email.js` |
 | Recovery | `api/routes/recovery.py` (public), `store/recovery.py`, `ui/app/recover.js` |
-| API reference | `api/reference.py`, `api/declare.py::documented`, `api/routes/apidoc.py`, `parts/apiref.js` |
+| API reference | `api/reference.py`, `api/declare.py::documented`, `api/routes/apidoc.py`, `views/admin/parts/apiref.js` |
 | Fixed roles | `rbac/tables.py::FIXED_ROLES`, `rbac/policy.py::resolve_capabilities` |
 
 ## Decisions a reviewer should check

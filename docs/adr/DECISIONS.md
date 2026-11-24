@@ -7562,3 +7562,26 @@ From this release an entry is about six lines: decision, reason, release.*
   `References` — the customer's client named it in both `References` and `In-Reply-To`, and both
   were kept. A reply's chain is read oldest first, each message once, its parent last.
 - **Reason**: each was met by doing the owner's work in the owner's way; each is a test now.
+
+## 504. The console's files by plane: the stylesheet in parts, the screens in folders (unreleased)
+
+- **Context**: `ui/style.css` had grown to five thousand lines in one file, and `ui/app/views/`
+  held every screen of the Broker, the NOC and the console's administration side by side, with a
+  hundred of their parts in one `parts/` folder. The owner asked for the UI folder organised by
+  good practice.
+- **Decision (styles)**: `ui/styles/<area>/<topic>.css` — `core/` (tokens and themes, base, the
+  shell, charts, shared components, panels, sign-in, the three widths, section marks), `broker/`,
+  `noc/` and `admin/` — cut from the old file **at its own section marks**, so each sheet is a
+  contiguous run of it. `index.html` links them in the old order, which keeps the cascade byte for
+  byte what it was: a rule wins or loses to exactly the rules it did. Each sheet is in
+  `STATIC_ASSETS` (nothing is served from a directory, ADR #175). The guards that read "the
+  stylesheet" read all of them in that order (`tests/support/uicss.py`).
+- **Decision (screens)**: `ui/app/views/{broker,noc,admin}/` hold each plane's screens, and each
+  plane's `parts/` its components; a part two planes use lives with the one that owns it and is
+  imported across. Every relative import was re-resolved by a script, the files moved with
+  `git mv` (history kept), and every literal path naming one — the static allowlist, the public
+  paths, the tests, the living docs — rewritten; the historical records (this log, the findings,
+  the changelog) keep the paths they cited. The core modules (`app/*.js`: the DOM, the API client,
+  the router, the widgets) stay where every screen reaches them.
+- **Not done, deliberately**: no `@import` (it chains requests and a guard refuses it), no build
+  step (ADR #175), no module renamed: a path moved, a name did not.

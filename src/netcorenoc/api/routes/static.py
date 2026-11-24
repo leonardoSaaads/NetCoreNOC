@@ -74,99 +74,100 @@ _UI_MODULES = (
     "app/sidebar.js",
     "app/store.js",
     "app/theme.js",
-    "app/views/account.js",
-    "app/views/audit.js",
-    "app/views/classes.js",
-    "app/views/entities.js",
-    "app/views/graph.js",
-    "app/views/learning.js",
-    "app/views/parts/learnuml.js",
-    "app/views/overview.js",
-    "app/views/promotion.js",
-    "app/views/maintenance.js",
-    "app/views/quarantine.js",
-    "app/views/scorer.js",
-    "app/views/settings.js",
-    "app/views/situations.js",
-    "app/views/timeline.js",
+    "app/views/admin/account.js",
+    "app/views/admin/audit.js",
+    "app/views/broker/classes.js",
+    "app/views/broker/entities.js",
+    "app/views/broker/graph.js",
+    "app/views/broker/learning.js",
+    "app/views/broker/parts/learnuml.js",
+    "app/views/broker/overview.js",
+    "app/views/broker/promotion.js",
+    "app/views/broker/maintenance.js",
+    "app/views/broker/quarantine.js",
+    "app/views/broker/scorer.js",
+    "app/views/admin/settings.js",
+    "app/views/broker/situations.js",
+    "app/views/broker/timeline.js",
     # `views/parts/` — modules under `views/` that are NOT views. `registry.js` imports seventeen
     # screens; these four are imported by SIBLING views (`settings` takes facts and retention,
     # `scorer` takes model, `promotion` takes verdict). They lived beside the screens until
     # v0.15.3, when the import graph was read and the directory stopped saying something false
     # (DECISIONS #239). `model.js` and `verdict.js` arrived in v0.14.0 at the seam their screens
     # already had; `facts.js` and `retention.js` are the same shape, split out of `settings`.
-    "app/views/parts/facts.js",
-    "app/views/parts/model.js",
-    "app/views/parts/retention.js",
-    "app/views/parts/verdict.js",
-    "app/views/parts/lifecycle.js",
+    "app/views/admin/parts/facts.js",
+    "app/views/broker/parts/model.js",
+    "app/views/admin/parts/retention.js",
+    "app/views/broker/parts/verdict.js",
+    "app/views/broker/parts/lifecycle.js",
     # v0.20.0: the three restructuring gestures and their confidence, off `lifecycle.js` at the
     # module-graph ceiling — that file's own title said *"move, merge, split, name"*, and a name
     # is not a restructuring (DECISIONS #358).
-    "app/views/parts/restructure.js",
-    "app/views/parts/declare.js",
-    "app/views/parts/members.js",
-    "app/views/parts/why.js",
+    "app/views/broker/parts/restructure.js",
+    "app/views/broker/parts/declare.js",
+    "app/views/broker/parts/members.js",
+    "app/views/broker/parts/why.js",
     # v0.16.1: the situation card, split out when the server-side search pushed
-    # `views/situations.js` over the module-graph guard (DECISIONS #265).
-    "app/views/parts/card.js",
-    "app/views/parts/correlation.js",
+    # `views/broker/situations.js` over the module-graph guard (DECISIONS #265).
+    "app/views/broker/parts/card.js",
+    "app/views/broker/parts/correlation.js",
     # v0.16.4: the judgement surface, split out when the state-dependent action surface pushed
-    # `views/parts/card.js` over the same guard (DECISIONS #291, #293).
-    "app/views/parts/judge.js",
-    "app/views/parts/bulkclear.js",
+    # `views/broker/parts/card.js` over the same guard (DECISIONS #291, #293).
+    "app/views/broker/parts/judge.js",
+    "app/views/broker/parts/bulkclear.js",
     # v0.21.0: the maintenance window, on the seams Part IV draws. `mwform.js` is the
     # four-card stepper; `mwrules.js` the per-target chips that express D4; `mwtime.js` the
     # hand-written timeline bar and the city-to-zone combobox (hand-written because the DOM
     # harness cannot see d3 and cannot see whitespace); `mwmarker.js` the marker every role
     # sees on a device or a situation.
-    "app/views/parts/mwform.js",
-    "app/views/parts/mwdraft.js",
-    "app/views/parts/mwrules.js",
-    "app/views/parts/mwtime.js",
-    "app/views/parts/mwmarker.js",
+    "app/views/broker/parts/mwform.js",
+    "app/views/broker/parts/mwdraft.js",
+    "app/views/broker/parts/mwrules.js",
+    "app/views/broker/parts/mwtime.js",
+    "app/views/broker/parts/mwmarker.js",
     # v0.21.1: the Overview's planned-work card. It reads its own route and owns its own
     # failure, so a deployment that has withheld `mw.read` gets one quiet line on the
     # dashboard rather than five panels that never render.
-    "app/views/parts/mwsummary.js",
+    "app/views/broker/parts/mwsummary.js",
     # v0.21.1: card 4 of the stepper, split from `mwform.js` at the 400-line guard.
-    "app/views/parts/mwreview.js",
+    "app/views/broker/parts/mwreview.js",
     # v0.29.0: card 2 of the stepper — zone, start and duration presets, patch band.
-    "app/views/parts/mwwhen.js",
+    "app/views/broker/parts/mwwhen.js",
     # v0.20.0: the decision bar — what may be pressed on a situation right now, and in what
     # words — off `judge.js`, which keeps when a press sends and what the server answered.
-    "app/views/parts/decide.js",
+    "app/views/broker/parts/decide.js",
     # v0.16.4: the controls that narrow the situation list — the count cards, the search box
     # and the tabs — split out when they became a block (DECISIONS #288, item 3, item 5).
-    "app/views/parts/finder.js",
-    # v0.16.6: the Overview's five chart bands, split out when they pushed `views/overview.js` to
+    "app/views/broker/parts/finder.js",
+    # v0.16.6: the Overview's five chart bands, split out when they pushed
+    # `views/broker/overview.js` to
     # 22 552 bytes against the module graph's 17 579-byte ceiling (DECISIONS #304). The seam is
     # real: `overview.js` owns the screen's composition and its four states, `pulse.js` owns the
     # charts and the population each one may claim.
-    "app/views/parts/pulse.js",
+    "app/views/broker/parts/pulse.js",
     # v0.16.7: the Overview's appliance half, split from `pulse.js` when this release added a band
     # above it and the file had 484 bytes of headroom (DECISIONS #318). The seam is the subject:
     # `pulse.js` is about the network, this is about the appliance.
-    "app/views/parts/keeping.js",
+    "app/views/broker/parts/keeping.js",
     # ADRs #450, #451: the Overview's trap pipeline — the backlog, throughput in and out, decision
     # latency against the KPI and Zabbix's delay buckets — split from `keeping.js`, which kept the
     # host. The seam is the subject again: the work, and the machine it runs on.
-    "app/views/parts/pipeline.js",
+    "app/views/broker/parts/pipeline.js",
     # v0.16.7: the band this release exists for — active alarms by severity, and the count
     # the appliance has NOT been able to place (DECISIONS #312).
-    "app/views/parts/severity.js",
+    "app/views/broker/parts/severity.js",
     # v0.19.0: the Overview's model line — who is deciding, how far the operator's own judgements
     # are from training one, and the loss curve once a fit exists. One line and one bar on the
     # face of it; everything else behind a click.
-    "app/views/parts/models.js",
+    "app/views/broker/parts/models.js",
     # v0.16.6: the Graph screen's second projection and its two derived tables — everything on
-    # that screen a test executes — split out of `views/graph.js` at the same ceiling
+    # that screen a test executes — split out of `views/broker/graph.js` at the same ceiling
     # (DECISIONS #307, #310).
     # v0.16.6: the timeline's hand-written half — the five controls, the column alternative to the
     # d3 scatter, and the per-element summary (DECISIONS #311). Same boundary as `estate.js`.
-    "app/views/parts/marks.js",
+    "app/views/broker/parts/marks.js",
     # v0.16.6: evidence over time, and the three things nothing measures (DECISIONS #308).
-    "app/views/parts/evidence.js",
+    "app/views/broker/parts/evidence.js",
     # v0.16.4: the two disclosures in the top bar — the bell and the health control — split out
     # of `shell.js` (DECISIONS #288, #289).
     "app/notices.js",
@@ -174,115 +175,151 @@ _UI_MODULES = (
     "app/info.js",
     "app/layout.js",
     "app/netgraph.js",
-    "app/views/parts/element.js",
-    "app/views/parts/oidtree.js",
-    "app/views/parts/importbox.js",
-    "app/views/parts/mwdetail.js",
-    "app/views/parts/mwboard.js",  # ADR #503
+    "app/views/broker/parts/element.js",
+    "app/views/broker/parts/oidtree.js",
+    "app/views/broker/parts/importbox.js",
+    "app/views/broker/parts/mwdetail.js",
+    "app/views/broker/parts/mwboard.js",  # ADR #503
     "app/stack.js",
-    "app/views/parts/sitsummary.js",
-    "app/views/parts/topassets.js",
-    "app/views/parts/tlfilters.js",
-    "app/views/parts/sequence.js",
-    "app/views/parts/nedetail.js",
+    "app/views/broker/parts/sitsummary.js",
+    "app/views/broker/parts/topassets.js",
+    "app/views/broker/parts/tlfilters.js",
+    "app/views/broker/parts/sequence.js",
+    "app/views/broker/parts/nedetail.js",
     "app/avatar.js",
-    "app/views/access.js",
-    "app/views/parts/capgrid.js",
-    "app/views/parts/people.js",
-    "app/views/parts/custscope.js",  # ADR #499: which customers a person serves
-    "app/views/parts/roles.js",
-    "app/views/parts/tokenspanel.js",
-    "app/views/parts/visibility.js",
+    "app/views/admin/access.js",
+    "app/views/admin/parts/capgrid.js",
+    "app/views/admin/parts/people.js",
+    "app/views/admin/parts/custscope.js",  # ADR #499: which customers a person serves
+    "app/views/admin/parts/roles.js",
+    "app/views/admin/parts/tokenspanel.js",
+    "app/views/admin/parts/visibility.js",
     "app/widgets.js",
     # v0.26.0 (ADR #414): the model's charts, Settings' Correlation, Autonomy and Search tabs, and
     # the Judge dashboard's two blocks.
     "app/modelcharts.js",
-    "app/views/parts/decider.js",
-    "app/views/parts/autonomy.js",
-    "app/views/parts/searchpanel.js",
-    "app/views/parts/sitejudge.js",
+    "app/views/broker/parts/decider.js",
+    "app/views/admin/parts/autonomy.js",
+    "app/views/broker/parts/searchpanel.js",
+    "app/views/broker/parts/sitejudge.js",
     # v0.27.0 (ADRs #423, #427): the league on the Judge screen — the board, one model's ten
     # charts, and every model on shared axes. `shippedjudge.js` left with the single shipped model.
-    "app/views/parts/league.js",
-    "app/views/parts/leaguecharts.js",
-    "app/views/parts/leaguecompare.js",
+    "app/views/broker/parts/league.js",
+    "app/views/broker/parts/leaguecharts.js",
+    "app/views/broker/parts/leaguecompare.js",
     # v0.30.0: recovery on the sign-in card, Settings → SNMP and Email, the API reference and the
     # visibility examples (ADRs #444-#446).
     "app/recover.js",
     # ADR #482: two-factor sign-in on screen (the QR code, the code field, recovery codes).
     "app/twofactor.js",
-    "app/views/parts/snmp.js",
-    "app/views/parts/snmpuser.js",
-    "app/views/parts/email.js",
-    "app/views/parts/apiref.js",
-    "app/views/parts/scopeexamples.js",
+    "app/views/admin/parts/snmp.js",
+    "app/views/admin/parts/snmpuser.js",
+    "app/views/admin/parts/email.js",
+    "app/views/admin/parts/apiref.js",
+    "app/views/admin/parts/scopeexamples.js",
     # The NOC plane (ADRs #454-#458): the top bar's Broker | NOC switch, the Secrets screen, and
     # the parts it composes — the credential form, the step-up, one credential, the custodians.
     "app/plane.js",
-    "app/views/secrets.js",
-    "app/views/parts/secretform.js",
-    "app/views/parts/stepup.js",
-    "app/views/parts/secretdetail.js",
-    "app/views/parts/nocgrants.js",
+    "app/views/noc/secrets.js",
+    "app/views/noc/parts/secretform.js",
+    "app/views/noc/parts/stepup.js",
+    "app/views/noc/parts/secretdetail.js",
+    "app/views/noc/parts/nocgrants.js",
     # Cases (ADRs #459-#461): the queue, the KPIs, and one case's clocks, form, acts and feed.
-    "app/views/cases.js",
-    "app/views/nockpis.js",
-    "app/views/parts/caseclock.js",
-    "app/views/parts/caseform.js",
-    "app/views/parts/caseacts.js",
-    "app/views/parts/casefeed.js",
-    "app/views/parts/caseemail.js",  # ADR #500: email from the feed
-    "app/views/parts/casedetail.js",
-    "app/views/routines.js",  # ADR #492: formerly playbooks.js
+    "app/views/noc/cases.js",
+    "app/views/noc/nockpis.js",
+    "app/views/noc/parts/caseclock.js",
+    "app/views/noc/parts/caseform.js",
+    "app/views/noc/parts/caseacts.js",
+    "app/views/noc/parts/casefeed.js",
+    "app/views/noc/parts/caseemail.js",  # ADR #500: email from the feed
+    "app/views/noc/parts/casedetail.js",
+    "app/views/noc/routines.js",  # ADR #492: formerly playbooks.js
     # ADR #468: the NOC's agents and its organization (Paperclip's), the sidebar's roster, and a
     # case's milestones and assignment (Salesforce's record).
     "app/roster.js",
-    "app/views/agents.js",
-    "app/views/org.js",
-    "app/views/parts/nocui.js",
-    "app/views/parts/agentkey.js",
-    "app/views/parts/agentform.js",
-    "app/views/parts/agentdetail.js",
-    "app/views/parts/agentdash.js",
-    "app/views/parts/agentruns.js",
-    "app/views/parts/agentadmin.js",
-    "app/views/parts/casemilestones.js",
-    "app/views/parts/caseassign.js",
+    "app/views/noc/agents.js",
+    "app/views/noc/org.js",
+    "app/views/noc/parts/nocui.js",
+    "app/views/noc/parts/agentkey.js",
+    "app/views/noc/parts/agentform.js",
+    "app/views/noc/parts/agentdetail.js",
+    "app/views/noc/parts/agentdash.js",
+    "app/views/noc/parts/agentruns.js",
+    "app/views/noc/parts/agentadmin.js",
+    "app/views/noc/parts/casemilestones.js",
+    "app/views/noc/parts/caseassign.js",
     # ADR #470: the NOC's overview, what the caller holds in the NOC, and the AI providers' marks.
-    "app/views/nocoverview.js",
+    "app/views/noc/nocoverview.js",
     "app/brands.js",
-    "app/views/parts/vaultui.js",
-    "app/views/parts/aiproviders.js",
+    "app/views/noc/parts/vaultui.js",
+    "app/views/noc/parts/aiproviders.js",
     # ADR #481: a customer's Access and Email, and the credential list both they and the vault use.
-    "app/views/parts/credlist.js",
-    "app/views/parts/custaccess.js",
-    "app/views/parts/custmail.js",
-    "app/views/parts/custroutines.js",  # ADR #501
-    "app/views/parts/agentrun.js",
+    "app/views/noc/parts/credlist.js",
+    "app/views/noc/parts/custaccess.js",
+    "app/views/noc/parts/custmail.js",
+    "app/views/noc/parts/custroutines.js",  # ADR #501
+    "app/views/noc/parts/agentrun.js",
     # ADR #477: what a local Ollama has, and moving an agent in the chart.
-    "app/views/parts/ollamamodels.js",
-    "app/views/parts/orgmove.js",
+    "app/views/noc/parts/ollamamodels.js",
+    "app/views/noc/parts/orgmove.js",
     # ADR #483: the Overview before the first trap — three pictures of what to do.
-    "app/views/parts/firstrun.js",
-    "app/views/parts/routineform.js",  # ADR #492: writing a routine
-    "app/views/parts/nocstart.js",  # ADR #490: the NOC's three set-up panels
-    "app/views/parts/personsecurity.js",  # ADR #490: a person's Security tab
+    "app/views/broker/parts/firstrun.js",
+    "app/views/noc/parts/routineform.js",  # ADR #492: writing a routine
+    "app/views/noc/parts/nocstart.js",  # ADR #490: the NOC's three set-up panels
+    "app/views/admin/parts/personsecurity.js",  # ADR #490: a person's Security tab
     # ADR #473: the customers' books.
-    "app/views/customers.js",
-    "app/views/parts/custbook.js",
-    "app/views/parts/custcontacts.js",
-    "app/views/parts/custdocs.js",
-    "app/views/parts/circuits.js",
-    "app/views/parts/circuitedit.js",
+    "app/views/noc/customers.js",
+    "app/views/noc/parts/custbook.js",
+    "app/views/noc/parts/custcontacts.js",
+    "app/views/noc/parts/custdocs.js",
+    "app/views/noc/parts/circuits.js",
+    "app/views/noc/parts/circuitedit.js",
     # ADR #494: the brokers — their list, one broker's page and screens, adding one, choosing one;
     # and the work area's heading, which a broker's screens title.
     "app/brokers.js",
     "app/heading.js",
-    "app/views/brokers.js",
-    "app/views/parts/brokerhome.js",
-    "app/views/parts/brokerlearn.js",
-    "app/views/parts/brokerpick.js",
-    "app/views/parts/brokerwizard.js",
+    "app/views/broker/brokers.js",
+    "app/views/broker/parts/brokerhome.js",
+    "app/views/broker/parts/brokerlearn.js",
+    "app/views/broker/parts/brokerpick.js",
+    "app/views/broker/parts/brokerwizard.js",
+)
+
+# ADR #504: the stylesheets, in the cascade order `index.html` links them in.
+_STYLESHEETS = (
+    "styles/core/tokens.css",
+    "styles/core/base.css",
+    "styles/core/shell.css",
+    "styles/core/charts.css",
+    "styles/core/components.css",
+    "styles/broker/situations.css",
+    "styles/broker/graph.css",
+    "styles/core/panels.css",
+    "styles/core/sign-in.css",
+    "styles/core/widths.css",
+    "styles/broker/health.css",
+    "styles/broker/maintenance.css",
+    "styles/broker/timeline.css",
+    "styles/broker/catalogue.css",
+    "styles/broker/overview.css",
+    "styles/broker/entities.css",
+    "styles/admin/people.css",
+    "styles/broker/learning.css",
+    "styles/admin/settings.css",
+    "styles/noc/plane.css",
+    "styles/noc/secrets.css",
+    "styles/noc/cases.css",
+    "styles/noc/overview.css",
+    "styles/noc/routines.css",
+    "styles/noc/agents.css",
+    "styles/noc/customers.css",
+    "styles/core/marks.css",
+    "styles/broker/first-run.css",
+    "styles/broker/learning-screens.css",
+    "styles/admin/audit.css",
+    "styles/noc/ollama.css",
+    "styles/broker/brokers.css",
 )
 
 _VENDOR_ASSETS = (
@@ -293,7 +330,7 @@ _VENDOR_ASSETS = (
 STATIC_ASSETS = {
     **dict.fromkeys(_UI_MODULES, "application/javascript"),
     **dict.fromkeys(_VENDOR_ASSETS, "application/javascript"),
-    "style.css": "text/css",
+    **dict.fromkeys(_STYLESHEETS, "text/css"),
     # v0.16.1 (F96): the console's own icon, served from this origin. Every page load asked for
     # `/favicon.ico` and got a 404 — trivial, and NOT trivially fixable, because the obvious
     # one-line repair is a `data:` URI in `index.html` and this appliance's CSP says

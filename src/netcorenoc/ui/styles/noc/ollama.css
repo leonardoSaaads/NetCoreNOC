@@ -1,0 +1,25 @@
+/* ---------- a local Ollama, found and tried (ADR #487) ---------- */
+.ollama-detect { display: grid; gap: var(--space-2); margin-bottom: var(--space-3); }
+.ollama-detect.is-busy { display: flex; align-items: center; gap: var(--space-2); color: var(--fg-muted); font-size: var(--fs-sm); }
+.ollama-detect.is-none { padding: var(--space-3); border: 1px dashed var(--warn); border-radius: 10px; background: var(--warn-bg); }
+.ollama-detect.is-none p { margin: 0; }
+.ollama-steps { margin: var(--space-2) 0; padding-left: 1.2em; display: grid; gap: 4px; font-size: var(--fs-sm); }
+.ollama-detect .linkish { justify-self: start; }
+.ollama-found {
+  display: flex; align-items: center; gap: var(--space-3); width: 100%; text-align: left;
+  padding: var(--space-2) var(--space-3); border: 1px solid var(--line); border-radius: 10px; background: var(--bg);
+  cursor: pointer; color: var(--fg); font: inherit;
+}
+.ollama-found > span:nth-child(2) { display: grid; gap: 2px; flex: 1; min-width: 0; }
+.ollama-found small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ollama-found.on { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+.ollama-found-dot { width: 10px; height: 10px; border-radius: 50%; background: var(--quiet); box-shadow: 0 0 8px var(--quiet); flex: none; }
+.ollama-try { white-space: nowrap; }
+.ollama-try .btn-ghost { display: inline-flex; align-items: center; gap: 4px; }
+.ollama-try-ok { color: var(--quiet); display: inline-flex; align-items: center; gap: 4px; }
+/* ADR #482: recovery codes stay off the screen unless asked for, twice. */
+.recovery-hidden { display: flex; align-items: center; gap: var(--space-2); margin: 0; padding: var(--space-3); font-size: var(--fs-sm); color: var(--fg-muted); }
+.recovery-hidden b { color: var(--fg); }
+.recovery-warn { display: flex; align-items: center; gap: var(--space-2); margin: 0; padding: var(--space-2) var(--space-3); border-top: 1px solid var(--line); background: var(--warn-bg); color: var(--warn); font-size: var(--fs-sm); }
+.recovery-box.is-masked .recovery-codes { color: var(--fg-muted); letter-spacing: 0.12em; }
+.recovery-ready { background: var(--warn); border-color: var(--warn); color: #111; font-weight: 600; }

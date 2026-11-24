@@ -1,0 +1,7 @@
+/* ---------- section and tab marks (ADR #480) ---------- */
+.section-icon {
+  display: inline-grid; place-items: center; width: 22px; height: 22px; margin-right: 8px;
+  border-radius: 6px; background: var(--accent-soft); color: var(--accent); vertical-align: -5px;
+}
+.section-icon .icon-svg { width: 13px; height: 13px; }
+.access-tab .icon-svg { width: 14px; height: 14px; margin-right: 2px; vertical-align: -2px; }

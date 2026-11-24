@@ -2,7 +2,7 @@
 
 One read, `cases.read` and scoped as the queue is: a case outside the caller's scope is in no
 count, as it is in no list. What the counts mean is `engine/noc/overview.py`'s; what the console
-draws from them is `ui/app/views/nocoverview.js`. An agent asks it too (`noc_overview`, an MCP
+draws from them is `ui/app/views/noc/nocoverview.js`. An agent asks it too (`noc_overview`, an MCP
 tool): how much is waiting, at its tier, before it takes the next case.
 """
 

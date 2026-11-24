@@ -575,7 +575,7 @@ def test_f32_scoping_is_not_tenant_isolation_is_documented() -> None:
         # module that renders the Governance screen, which is where an operator reads it — and
         # that is what this control is about, not which file it lives in.
         # v0.25.0: the Visibility tab of People & access (ADR #403).
-        "src/netcorenoc/ui/app/views/parts/visibility.js",
+        "src/netcorenoc/ui/app/views/admin/parts/visibility.js",
         "src/netcorenoc/crosscutting/shaping/__init__.py",
     ):
         # Normalise typesetting before matching: strip Markdown/HTML emphasis and collapse

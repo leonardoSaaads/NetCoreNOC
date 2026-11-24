@@ -1,0 +1,317 @@
+/* ---------- situations ---------- */
+
+/* ---------- the search and the tabs (v0.16.4, item 5) --------------------------------------
+ *
+ * The maintainer: *"too small, crowded, and touching the table."* Measured — the field was its
+ * browser default width beside a count, and the tab row sat 12 px above the first card with
+ * nothing between them, so at a glance the tabs read as part of the first situation rather than as
+ * a filter over all of them.
+ *
+ * Three changes and no new control: the field **takes the row** (`flex: 1`, up to 34rem so it does
+ * not become a 1 400 px input on a NOC wall); the tabs are a **grouped segmented control** with a
+ * shared border, which is what makes four buttons read as one choice; and the whole block sits in
+ * a bordered header with space under it. */
+.filters {
+  display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap;
+  margin-bottom: var(--space-3);
+}
+.filters input[type="search"] { flex: 1 1 14rem; min-width: 0; max-width: 34rem; }
+.filter-count { color: var(--fg-muted); font-size: var(--fs-xs); flex: none; }
+.finder {
+  border: 1px solid var(--line); border-radius: var(--radius-2);
+  background: var(--bg-raised); padding: var(--space-3);
+  margin-bottom: var(--space-4);
+}
+.finder .filters:last-child { margin-bottom: 0; }
+/* A segmented control: one border around four buttons, so they read as one choice rather than as
+   four separate things to press. `overflow: hidden` is what lets the outer radius clip the ends. */
+/* The same segmented shape as `.seg` and `.ranges` (ADR #479): one control family. */
+.tabs {
+  display: inline-flex; flex-wrap: wrap; gap: 2px; padding: 3px;
+  border: 1px solid var(--line); border-radius: var(--radius-2); background: var(--bg-sunken);
+}
+.tab {
+  border: 1px solid transparent; border-radius: var(--radius-1);
+  background: transparent; color: var(--fg-muted); min-height: 26px;
+  padding: 0 var(--space-3); white-space: nowrap;
+}
+.tab:hover:not(:disabled) { background: transparent; border-color: transparent; color: var(--fg); }
+.tab-on, .tab-on:hover:not(:disabled) {
+  background: var(--bg-raised); border-color: var(--line-strong); color: var(--fg); font-weight: 600;
+  box-shadow: var(--shadow-1);
+}
+.cards { display: flex; flex-direction: column; gap: var(--space-2); list-style: none; margin: 0; padding: 0; }
+.sit { border: 1px solid var(--line); border-radius: var(--radius-2); background: var(--bg-raised); }
+.sit.expanded { border-color: var(--line-strong); box-shadow: var(--shadow-1); }
+.sit-head { display: flex; align-items: center; gap: var(--space-2); padding-right: var(--space-3); }
+.sit-toggle {
+  flex: 1; min-width: 0; display: flex; align-items: center; gap: var(--space-2);
+  background: none; border: 0; text-align: left; padding: var(--space-2) var(--space-3);
+}
+/* The chevron points right when the card is closed and down when it is open. `aria-expanded`
+   on the button is what assistive technology reads; this is the sighted half of the same fact,
+   and the card is not relying on either alone. */
+.sit-chevron { display: inline-flex; color: var(--fg-dim); transition: transform 0.12s ease; }
+.sit-chevron.open { transform: rotate(90deg); }
+.sid { font-family: var(--mono); font-weight: 600; }
+/* ADR #476: what the situation IS, beside its name — the root's class and element. It yields
+   first when the row is narrow, and never pushes the age off the row. */
+.sit-root { font-size: var(--fs-sm); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+@media (max-width: 720px) {
+  .sit-toggle { flex-wrap: wrap; row-gap: var(--space-1); }
+  .sit-root { order: 1; flex-basis: 100%; white-space: normal; overflow-wrap: anywhere; }
+}
+.age { margin-left: auto; color: var(--fg-muted); font-size: var(--fs-xs); }
+
+/* ---------- the gesture history, and the two lines that make `.age` mean something -------
+ *
+ * **Bug 2, and it made a maintainer believe a counter was incrementing.** `History` renders
+ * `" by "`, the actor, then `<span class="age">`. The rule above gives `.age` `margin-left: auto`,
+ * which does nothing outside a flex context — and there was **no `.history-list` rule in this
+ * stylesheet at all**, so the `<li>` was `display: list-item` and the two runs abutted:
+ * `by admin` + `2m` rendered as `by admin2m`, which reads as `admin2` and then, a minute later,
+ * as `admin3`.
+ *
+ * Measured in Chromium at 390 / 820 / 1440 px: `rename by edt1s`, with 192 / 622 / 1002 px of
+ * empty row sitting to the right of the age. **The control** is the same `.age` on `.sit-head`,
+ * whose parent IS a flex row: it is 12 px from the right edge at every width and reads correctly.
+ * So the rule was never wrong — it was never given a context, which is why this is two lines and
+ * not a rewrite.
+ */
+.history-list { list-style: none; margin: 0; padding: 0; }
+.history-list li {
+  display: flex; align-items: baseline; gap: var(--space-2); flex-wrap: wrap;
+  padding: var(--space-1) 0; border-bottom: 1px solid var(--line); font-size: var(--fs-sm);
+}
+.history-kind { font-weight: 600; }
+.permalink { font-size: var(--fs-xs); color: var(--fg-dim); }
+.detail { padding: 0 var(--space-3) var(--space-3); border-top: 1px solid var(--line); }
+.detail[hidden] { display: none; }
+.held-note { color: var(--warn); font-size: var(--fs-xs); }
+.root { padding-top: var(--space-2); }
+.warnbox {
+  background: var(--warn-bg); border-left: 3px solid var(--warn);
+  padding: var(--space-2) var(--space-3); border-radius: var(--radius-1);
+  font-size: var(--fs-sm); margin-bottom: var(--space-2);
+}
+.flap { color: var(--warn); font-size: var(--fs-xs); }
+.fb { display: flex; gap: var(--space-2); flex-wrap: wrap; margin: 0; }
+
+/* ---------- v0.20.0: one decision bar above the member table ------------------------------
+ *
+ * The promote was a strip of its own, the verdicts a second strip below the judged note, and
+ * the bulk clear a third block above them — three rows of buttons around one table. *"The Clear
+ * button feels completely tacked on"* and *"'Start working this' feels disconnected"* are two
+ * readings of the same layout. They are one decision surface and are now one row, above the
+ * table they act on, with the clear pushed to the far end because it is the one control here
+ * that asserts nothing about the grouping. */
+.decide {
+  display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap;
+  margin: var(--space-3) 0;
+}
+.decide .bulkclear { margin: 0; margin-left: auto; }
+/* ADR #480: on an open situation, Start working this is the decision left — the primary action. */
+.decide .promote { background: var(--primary); color: var(--primary-fg); border-color: transparent; }
+.decide .promote .icon-svg { color: inherit; }
+/* The case this situation opened (ADR #480): its link, where the button was. */
+.decide .case-link { display: inline-flex; align-items: center; gap: 6px; }
+.decide-note { margin: calc(-1 * var(--space-2)) 0 var(--space-3); font-size: var(--fs-sm); }
+@media (max-width: 720px) {
+  /* `margin-left: auto` on a wrapped row pushes the clear onto a line of its own, which reads
+     as the separation it is rather than as a button that missed its row. */
+  .decide { gap: var(--space-1) var(--space-2); }
+}
+
+/* ---------- v0.20.0: restructure as a selection, then a destination ----------------------
+ *
+ * This section had **no rules in this stylesheet at all** until now — three stacked forms, two
+ * number inputs and a range slider, laid out by the browser's defaults. *"It completely
+ * violates UI/UX principles"* was a fair reading of what that produced. It is now two buttons
+ * and, once one is pressed, a list of the situations that exist. */
+/* ADR #489: merge and move live in the decision bar, beside Confirm grouping. Their wrappers
+   take no box of their own, so the buttons are items of the bar's row and the picker drops onto
+   a full-width line below it. */
+.restructure, .lifecycle-actions { display: contents; }
+.decide > .fb { flex: 1 1 auto; }
+.lifecycle-actions .tap.on { background: var(--bg-hover); border-color: var(--accent); }
+.restructure-outcome { flex-basis: 100%; order: 100; margin: 0; }
+
+.destinations {
+  flex-basis: 100%; order: 99; padding: var(--space-3);
+  border: 1px solid var(--line); border-radius: var(--radius-2); background: var(--bg-sunken);
+}
+.dest-kinds { display: grid; grid-template-columns: repeat(auto-fit, minmax(12rem, 1fr)); gap: var(--space-2); }
+.dest-kind {
+  display: flex; flex-direction: column; align-items: flex-start; gap: 4px; text-align: left;
+  padding: var(--space-3); border: 1px solid var(--line); border-radius: var(--radius-2);
+  background: var(--bg-raised); color: inherit; font-size: var(--fs-sm);
+}
+.dest-kind:hover { border-color: var(--accent); background: var(--bg-hover); }
+.dest-kind b { display: inline-flex; align-items: center; gap: 6px; font-size: var(--fs-md); }
+.dest-head { display: flex; align-items: center; flex-wrap: wrap; gap: var(--space-1) var(--space-3); font-size: var(--fs-sm); }
+.dest-back .icon-svg { transform: rotate(180deg); }
+.dest-filter { width: 100%; margin-top: var(--space-2); }
+.destination-list {
+  list-style: none; margin: var(--space-2) 0 0; padding: 0;
+  max-height: 18rem; overflow-y: auto;
+}
+.dest-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dest-reason {
+  flex: none; padding: 1px 8px; border-radius: 999px; font-size: var(--fs-xs);
+  background: var(--accent-bg, var(--bg-hover)); color: var(--accent);
+}
+.destination-list li { margin: 0; }
+.destination {
+  /* A full-width flex row, because the destination is the whole line: an operator picking a
+     situation out of a list is aiming at the name, not at a word at the end of it — and the
+     age's `margin-left: auto` is inert outside a flex context, which is Bug 2's rule. The
+     comment sits INSIDE the block deliberately, and carries no brace of its own:
+     `_flex_containers_of` reads a rule as everything between two braces, so a comment placed
+     just above a selector is read AS the selector and the rule is silently dropped. */
+  display: flex; align-items: baseline; gap: var(--space-2); width: 100%;
+  padding: var(--space-2); border: 0; border-radius: var(--radius-1);
+  background: none; color: inherit; text-align: left; font-size: var(--fs-sm);
+}
+.destination:hover:not(:disabled) { background: var(--bg-hover); }
+.destination .age { margin-left: auto; }
+.destination-new { border-bottom: 1px solid var(--line); border-radius: 0; }
+
+.confidence {
+  display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap;
+  margin-top: var(--space-2); font-size: var(--fs-sm);
+}
+.confidence input[type="range"] { flex: 1; min-width: 8rem; }
+.confidence-value { font-variant-numeric: tabular-nums; }
+.confidence .hint { flex-basis: 100%; margin: 0; }
+.confidence-below .confidence-value { color: var(--warn); }
+
+.lifecycle-name { display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap;
+  margin-top: var(--space-4); }
+.lifecycle-name input { flex: 1; min-width: 10rem; }
+.lifecycle-name .hint { flex-basis: 100%; margin: 0; }
+
+/* ---------- v0.16.4: the member row's actions cell (DECISIONS #293) ----------------------
+ *
+ * Eleven columns became eight. The three declarations and the hand-clear share this one cell,
+ * and it **wraps** rather than widening: it is the last column of a table that already scrolls
+ * horizontally, and a cell that pushed the scroll further would put the controls furthest from
+ * the operator exactly where the viewport is smallest.
+ *
+ * The clear is separated by a rule rather than sitting flush against the other three, because it
+ * is a different kind of statement: the declarations say what a thing IS, and the clear says an
+ * ALARM was stale and asserts nothing about the grouping. Three buttons in a row that all looked
+ * alike would invite the confusion `PREREGISTRATION-0.16.0.md` turns into a prohibition. */
+/* A table cell stays a table cell (ADR #476): `display: flex` on the `<td>` took it out of the
+   row's layout, so its border and height no longer lined up with the cells beside it. */
+td.row-actions { vertical-align: middle; white-space: nowrap; }
+/* The mark column is a fixed 44 px — 28 px of control plus the cell's own padding — so the
+   frozen offset below is a number this stylesheet knows rather than one it hopes for. */
+table.members th:first-child, table.members td:first-child { width: 44px; }
+.row-clear {
+  margin-left: var(--space-2); padding-left: var(--space-2);
+  border-left: 1px solid var(--line-strong); border-radius: 0;
+  background: none; border-top: 0; border-right: 0; border-bottom: 0;
+  color: var(--accent);
+}
+.row-clear:hover:not(:disabled) { background: none; text-decoration: underline; }
+/* The declaration openers sit three-in-a-row here, so they are quiet by default and become
+   ordinary buttons on hover. A cell holding three primary-looking controls reads as three things
+   to do; it is one thing to do, three times. */
+.row-actions .declare-open { color: var(--accent); background: none; border-color: transparent; }
+/* The verb is quiet and the NOUN is what an operator scans for: three controls in one cell, and
+   what distinguishes them is the thing each declares, not the fact that all three declare. */
+.declare-noun { font-weight: 600; }
+.row-actions .declare-open:hover { background: var(--bg-hover); border-color: var(--line-strong); }
+
+/* ---------- v0.20.0: the value IS the control -------------------------------------------
+ *
+ * A member row's device, class and severity are each wrapped in the opener that declares them,
+ * so the cell must read as **the value**, not as a button: no border, no button background, the
+ * table's own type, and the row's alignment. What makes it discoverable is the underline on
+ * hover and the focus ring on tab — the same affordance a link has, on a control that is one.
+ *
+ * `text-align: inherit` and `width: 100%` matter: a `<button>` centres its content and shrinks to
+ * fit, and a column of device names that each sat centred in its own cell would be unscannable —
+ * the reason this table is dense in the first place. The full width also means the whole cell is
+ * the target, which is the touch floor met by the cell rather than by a 28 px word inside it. */
+.cell-edit {
+  display: block; width: 100%; text-align: inherit;
+  padding: 0; margin: 0; border: 0; border-radius: var(--radius-1);
+  background: none; color: inherit;
+  font: inherit; line-height: inherit;
+  cursor: pointer;
+  text-decoration: underline dotted var(--line-strong); text-underline-offset: 3px;
+}
+/* **The affordance has to be visible at rest, not on hover.** Measured in Chromium at 1280 px:
+   with the underline only on `:hover`, a column of device names is indistinguishable from the
+   plain text it replaced, and an operator who never happens to hover never learns the value is
+   the control. A faint dotted underline at rest is the long-standing "edit in place" cue; it
+   goes solid and takes the accent on hover, so the hover still says "this one". */
+.cell-edit:hover { text-decoration: underline solid var(--accent); color: var(--accent); }
+.cell-edit:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+/* The severity badge carries its own colour and padding; the button around it adds neither. */
+td.sev .cell-edit { display: inline-block; width: auto; }
+
+/* ---------- "why these were grouped": the summary, then the detail (V.6, #245) ----------
+ *
+ * The band changes the WORDS as well as the colour — a thin margin read off a border colour
+ * alone fails the same operator the severity rules are written for. */
+.soundness {
+  border: 1px solid var(--line); border-left-width: 3px; border-radius: var(--radius-2);
+  border-left-color: var(--band, var(--line)); background: var(--bg-sunken);
+  padding: var(--space-3); margin-bottom: var(--space-3);
+}
+/* The band names a COLOUR and nothing else, so the closed disclosure and the opened panel can
+   both wear it without either restating the other's box (v0.20.0). */
+.soundness-thin { --band: var(--warn); }
+.soundness-fair { --band: var(--low); }
+.soundness-wide { --band: var(--quiet); }
+.soundness-unknown { --band: var(--line-strong); }
+.soundness .stat-row { margin-bottom: var(--space-2); }
+.soundness .stat { background: var(--bg-raised); }
+
+.carrying { border-top: 1px solid var(--line); padding-top: var(--space-2); }
+.term-means { list-style: none; margin: 0; padding: 0; }
+.term-means li {
+  display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap;
+  font-size: var(--fs-xs); color: var(--fg-muted); padding: var(--space-1) 0;
+}
+.term-mean-label { min-width: 22ch; }
+
+/* ---------- v0.20.0: the grouping section is one disclosure, and its closed state is a verdict
+ *
+ * *"The correlation panel is not very intuitive — too much information. The user doesn't want to
+ * know all that, they want to know what to do right away."* So the closed state is a single row
+ * the width of the card, carrying the band's colour on its left edge exactly as `.soundness`
+ * does when opened — the same signal at both sizes, which is what makes the colour learnable. */
+.why-toggle {
+  display: flex; align-items: center; gap: var(--space-2); width: 100%;
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--line); border-left-width: 3px; border-radius: var(--radius-2);
+  border-left-color: var(--band, var(--line)); background: var(--bg-sunken);
+  color: inherit; text-align: left; font-size: var(--fs-sm);
+}
+.why-toggle:hover { background: var(--bg-hover); }
+.why-verdict { font-weight: 600; }
+.why-body { margin-top: var(--space-2); }
+
+/* per-term contributions: a bar AND the number, never the bar alone */
+.why { margin-top: var(--space-3); }
+.links { list-style: none; margin: 0; padding: 0; }
+.linkrow {
+  display: flex; align-items: center; gap: var(--space-3);
+  padding: var(--space-1) 0; border-bottom: 1px solid var(--line); font-size: var(--fs-sm);
+}
+.linkscore { font-variant-numeric: tabular-nums; font-weight: 600; min-width: 3.5em; }
+.terms { display: flex; flex-wrap: wrap; gap: var(--space-3); }
+.term { display: flex; align-items: center; gap: var(--space-1); }
+.term-bar { display: inline-block; height: 7px; border-radius: 2px; }
+.term-t { background: var(--term-t); }
+.term-a { background: var(--term-a); }
+.term-e { background: var(--term-e); }
+/* v0.27.0: a model's per-feature term; a term that argued AGAINST the link is hatched, so the sign
+   never rests on colour alone (the number beside it carries the minus too). */
+.term-m { background: var(--fg-muted); }
+.term-neg { background: repeating-linear-gradient(135deg, var(--fg-muted) 0 2px, transparent 2px 4px); }
+.term-num { font-family: var(--mono); font-size: var(--fs-xs); color: var(--fg-muted); }
+.linkpair { color: var(--fg-muted); }

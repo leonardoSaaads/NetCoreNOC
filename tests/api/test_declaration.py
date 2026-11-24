@@ -559,7 +559,8 @@ async def test_f43_every_path_served_today_still_registers(store: Store) -> None
     # `app/views/verdict.js`.
     # v0.15.3: 90 -> 93, and all three again are static UI modules — `app/icons.js` (the drawn
     # icon family, #236), `app/password.js` (the confirmation, meter and reveal the sign-in card
-    # and the account screen share, V.2) and `app/views/parts/why.js` (the redesigned "Why these
+    # and the account screen share, V.2) and `app/views/broker/parts/why.js` (the redesigned "Why
+    # these
     # were grouped", V.6). The four `views/*.js` that became `views/parts/*.js` (#239) are a
     # rename and net zero. **No `/api` route was added, removed or renamed by this
     # release either**, which is the property this count is really guarding and which the
@@ -572,28 +573,33 @@ async def test_f43_every_path_served_today_still_registers(store: Store) -> None
     # v0.13.0 to add one at all. Move, merge, operator-split, name and the zombie clear: five
     # gestures, five routes, five declarations rather than one overloaded route that would need
     # none of them (DECISIONS #255, #260). The other two are static UI modules,
-    # `app/views/parts/lifecycle.js` (the gestures, their confidence control and the history list)
-    # and `app/views/parts/members.js` (the member table, split out when the situations view
+    # `app/views/broker/parts/lifecycle.js` (the gestures, their confidence control and the history
+    # list)
+    # and `app/views/broker/parts/members.js` (the member table, split out when the situations view
     # reached the module-graph guard).
     # v0.16.1: 100 -> 101. **Exactly one, and it is a static UI module**, not an `/api` route:
-    # `app/views/parts/card.js`, the situation card, split out when the server-side search pushed
-    # `views/situations.js` over the same module-graph guard that produced `members.js` a release
+    # `app/views/broker/parts/card.js`, the situation card, split out when the server-side search
+    # pushed
+    # `views/broker/situations.js` over the same module-graph guard that produced `members.js` a
+    # release
     # earlier (DECISIONS #265) — and `/favicon.svg`, which every page load had been asking for as
     # `/favicon.ico` and getting a 404 (F96). **Neither is an `/api` route**: the search is a query
     # parameter on `GET /api/situations`, and the timeline's two filters are query parameters on
     # `GET /api/timeline`, so the /api surface is unchanged at 49 — which is the property this
     # pair of assertions is really for.
     #
-    # v0.16.3: 103 -> 105. Two, and each is exactly one thing: `app/views/parts/declare.js`, the
+    # v0.16.3: 103 -> 105. Two, and each is exactly one thing: `app/views/broker/parts/declare.js`,
+    # the
     # three declaration controls, split out for the same module-graph reason `members.js` and
     # `card.js` were; and `DELETE /api/labels/{kind}/{target_id}`, the only /api route this
     # release adds.
     #
     # v0.16.4: 105 -> 108, and all three are **static modules with no /api route between them**.
-    # `app/views/parts/judge.js` is the judgement surface, split out of `card.js` when the
+    # `app/views/broker/parts/judge.js` is the judgement surface, split out of `card.js` when the
     # state-dependent action surface took that file past the module-graph guard — the same reason,
     # for the fourth time (DECISIONS #291, #293) — `app/notices.js` is the top bar's bell and
-    # health control, which replaced four counter chips (#288, #289), and `views/parts/finder.js`
+    # health control, which replaced four counter chips (#288, #289), and
+    # `views/broker/parts/finder.js`
     # is the search, the tabs and the count cards, split out when they became one block. The /api
     # surface was unchanged at 51 in that release, which is the property this pair of
     # assertions is really for.
@@ -604,7 +610,7 @@ async def test_f43_every_path_served_today_still_registers(store: Store) -> None
     # contract must say so here rather than adjust a number quietly. The other two are static
     # modules forced out by the module-graph guard for the fifth and sixth time: `app/health.js`
     # (CPU, memory and storage, out of `notices.js` at 19 005 bytes) and
-    # `app/views/parts/bulkclear.js` (out of `judge.js` at 19 499).
+    # `app/views/broker/parts/bulkclear.js` (out of `judge.js` at 19 499).
     #
     # v0.16.6: 111 -> 114, and **all three are static modules with no /api route between them**,
     # which is the property this pair of assertions is really for. A release that drew charts on
@@ -615,22 +621,26 @@ async def test_f43_every_path_served_today_still_registers(store: Store) -> None
     #
     # The three: `app/charts.js` (the three chart types), `app/chartdata.js` (their arithmetic,
     # separate because it is pure and is driven directly by tests with no DOM), and
-    # `app/views/parts/pulse.js` (the Overview's five bands, out of `views/overview.js` at 22 552
+    # `app/views/broker/parts/pulse.js` (the Overview's five bands, out of
+    # `views/broker/overview.js` at 22 552
     # bytes against the 17 579-byte guard — the seventh time that guard has chosen a seam).
     # A fourth followed in the same release: `app/views/parts/estate.js`, the Graph screen's second
-    # projection and its two derived tables, out of `views/graph.js` at the same ceiling — the
+    # projection and its two derived tables, out of `views/broker/graph.js` at the same ceiling —
+    # the
     # eighth time, and the first time the seam it chose was the honest boundary between what a test
-    # executes and what it cannot (DECISIONS #307, #310). And a fifth, `app/views/parts/marks.js`,
+    # executes and what it cannot (DECISIONS #307, #310). And a fifth,
+    # `app/views/broker/parts/marks.js`,
     # which is the timeline's half of the same boundary — its five controls, its column chart and
     # its summary (DECISIONS #311). 111 -> 116, all five static, and the /api surface unchanged
     # at 52 through a release that put charts on four screens. And a sixth,
-    # `app/views/parts/evidence.js` — the promotion record's four named quantities over time, the
+    # `app/views/broker/parts/evidence.js` — the promotion record's four named quantities over
+    # time, the
     # verdict's three states, and the three things nothing measures, stated on the screen where
     # someone would look for them (DECISIONS #308). 111 -> 117, all six static.
     #
     # v0.16.7 adds two more, both static and both a split rather than a feature:
-    # `app/views/parts/keeping.js` (the Overview's appliance half, #318) and
-    # `app/views/parts/severity.js` (the band this release exists for, #312). 117 -> 119,
+    # `app/views/broker/parts/keeping.js` (the Overview's appliance half, #318) and
+    # `app/views/broker/parts/severity.js` (the band this release exists for, #312). 117 -> 119,
     # and the /api surface is **unchanged at 52** through the release that adds the count
     # an operator opens the console for — because the census is one more query on a route
     # that was already being read (#316).
@@ -648,7 +658,8 @@ async def test_f43_every_path_served_today_still_registers(store: Store) -> None
     # deciding, how far the operator's judgements are from training a model, and the loss curve)
     # and `POST /api/models/register` (turn one of *this appliance's own* fits into a registerable
     # artefact — admin-only, and the body names a run id, never a parameter), plus
-    # `GET /app/views/parts/models.js`, the console module that draws them. The register POST is
+    # `GET /app/views/broker/parts/models.js`, the console module that draws them. The register
+    # POST is
     # the first HTTP route that can create a `model_version`; what kept that CLI-only was that a
     # request must not be able to assert a model, and it still cannot — see the route's docstring.
     #
@@ -659,8 +670,9 @@ async def test_f43_every_path_served_today_still_registers(store: Store) -> None
     # a reviewable diff rather than a thing that grows quietly.
     #
     # **v0.20.0: 125 -> 127 served, /api unchanged at 55.** Two static assets and **no API route**:
-    # `GET /app/views/parts/restructure.js` (the three restructuring gestures, off `lifecycle.js`)
-    # and `GET /app/views/parts/decide.js` (the decision bar, off `judge.js`), both at the
+    # `GET /app/views/broker/parts/restructure.js` (the three restructuring gestures, off
+    # `lifecycle.js`)
+    # and `GET /app/views/broker/parts/decide.js` (the decision bar, off `judge.js`), both at the
     # module-graph ceiling. A release that rearranged the console this much and added no route to
     # do it is the fact worth recording here.
     # **v0.22.0: 148 -> 168 served, /api 68 -> 84.** Sixteen API routes — `GET /api/resources`
@@ -682,11 +694,13 @@ async def test_f43_every_path_served_today_still_registers(store: Store) -> None
     # search and the judge; ADRs #405, #412, #413) and six UI modules (ADR #414).
     # v0.27.0: 207 -> 210 and 107 -> 108 — one /api pair (an answer to a proposal, ADR #428) and
     # two UI modules net (the league's three added, `shippedjudge` gone; ADR #427).
-    # v0.29.0: 210 -> 211 — one UI module, `parts/mwwhen.js` (the maintenance form's card 2, ADR
+    # v0.29.0: 210 -> 211 — one UI module, `views/broker/parts/mwwhen.js` (the maintenance form's
+    # card 2, ADR
     # #440); no /api pair (the brief judge is a query parameter on `GET /api/judge`).
     # v0.30.0: 211 -> 227 and 108 -> 117 — nine /api pairs (SNMP, email, recovery, the reference;
     # ADRs #444-#446), six UI modules and the sign-in artwork.
-    # Unreleased: 227 -> 228 — one UI module, `parts/pipeline.js` (the trap pipeline, ADRs #450,
+    # Unreleased: 227 -> 228 — one UI module, `views/broker/parts/pipeline.js` (the trap pipeline,
+    # ADRs #450,
     # #451); no /api pair (the KPI is set through `POST /api/config`, the pipeline read through
     # `/api/stats` and `/api/resources`).
     # Unreleased: 228 -> 229 and 117 -> 118 — `POST /api/users/{uid}/password-reset` (ADR #453): an
@@ -730,13 +744,16 @@ async def test_f43_every_path_served_today_still_registers(store: Store) -> None
     # adding, changing, removing one, its proxy's token, moving an element and the proxy's door
     # (eight /api pairs), and seven console modules (the brokers, their screens, the heading).
     # Unreleased: 377 -> 379 and 210 -> 211 — one person's customers (ADR #499): `POST
-    # /api/scope/subject` (one /api pair) and its console module (`parts/custscope.js`).
+    # /api/scope/subject` (one /api pair) and its console module (`views/admin/parts/custscope.js`).
     # Unreleased: 379 -> 382 and 211 -> 213 — a case's email (ADR #500): `POST …/email` and `GET
-    # …/email/draft` (two /api pairs) and the editor (`parts/caseemail.js`).
+    # …/email/draft` (two /api pairs) and the editor (`views/noc/parts/caseemail.js`).
     # Unreleased: 382 -> 384 and 213 -> 214 — an earlier version of a routine (ADR #501) and a
-    # customer's Routines tab (`parts/custroutines.js`).
-    # Unreleased: 384 -> 385 and 214 -> 214 — the maintenance board (`parts/mwboard.js`, ADR #503)
-    assert len(served) == 385, f"the served surface moved: {len(served)} method/path pairs"
+    # customer's Routines tab (`views/noc/parts/custroutines.js`).
+    # Unreleased: 384 -> 385 and 214 -> 214 — the maintenance board
+    # (`views/broker/parts/mwboard.js`, ADR #503)
+    # Unreleased: 385 -> 416 and 214 -> 214 — the stylesheet in parts (ADR #504): `style.css` became
+    # the 32 sheets of `styles/`, each served
+    assert len(served) == 416, f"the served surface moved: {len(served)} method/path pairs"
     api_pairs = {(method, path) for method, path in served if path.startswith("/api")}
     # **v0.19.0: 53 -> 55.** `GET /api/models` and `POST /api/models/register`: what the
     # models are doing, and turning one of this appliance's own fits into an artefact.
@@ -798,7 +815,8 @@ async def test_f42_every_path_served_today_still_registers(store: Store) -> None
     # `app/views/verdict.js`.
     # v0.15.3: 90 -> 93, and all three again are static UI modules — `app/icons.js` (the drawn
     # icon family, #236), `app/password.js` (the confirmation, meter and reveal the sign-in card
-    # and the account screen share, V.2) and `app/views/parts/why.js` (the redesigned "Why these
+    # and the account screen share, V.2) and `app/views/broker/parts/why.js` (the redesigned "Why
+    # these
     # were grouped", V.6). The four `views/*.js` that became `views/parts/*.js` (#239) are a
     # rename and net zero. **No `/api` route was added, removed or renamed by this
     # release either**, which is the property this count is really guarding and which the
@@ -811,28 +829,33 @@ async def test_f42_every_path_served_today_still_registers(store: Store) -> None
     # v0.13.0 to add one at all. Move, merge, operator-split, name and the zombie clear: five
     # gestures, five routes, five declarations rather than one overloaded route that would need
     # none of them (DECISIONS #255, #260). The other two are static UI modules,
-    # `app/views/parts/lifecycle.js` (the gestures, their confidence control and the history list)
-    # and `app/views/parts/members.js` (the member table, split out when the situations view
+    # `app/views/broker/parts/lifecycle.js` (the gestures, their confidence control and the history
+    # list)
+    # and `app/views/broker/parts/members.js` (the member table, split out when the situations view
     # reached the module-graph guard).
     # v0.16.1: 100 -> 101. **Exactly one, and it is a static UI module**, not an `/api` route:
-    # `app/views/parts/card.js`, the situation card, split out when the server-side search pushed
-    # `views/situations.js` over the same module-graph guard that produced `members.js` a release
+    # `app/views/broker/parts/card.js`, the situation card, split out when the server-side search
+    # pushed
+    # `views/broker/situations.js` over the same module-graph guard that produced `members.js` a
+    # release
     # earlier (DECISIONS #265) — and `/favicon.svg`, which every page load had been asking for as
     # `/favicon.ico` and getting a 404 (F96). **Neither is an `/api` route**: the search is a query
     # parameter on `GET /api/situations`, and the timeline's two filters are query parameters on
     # `GET /api/timeline`, so the /api surface is unchanged at 49 — which is the property this
     # pair of assertions is really for.
     #
-    # v0.16.3: 103 -> 105. Two, and each is exactly one thing: `app/views/parts/declare.js`, the
+    # v0.16.3: 103 -> 105. Two, and each is exactly one thing: `app/views/broker/parts/declare.js`,
+    # the
     # three declaration controls, split out for the same module-graph reason `members.js` and
     # `card.js` were; and `DELETE /api/labels/{kind}/{target_id}`, the only /api route this
     # release adds.
     #
     # v0.16.4: 105 -> 108, and all three are **static modules with no /api route between them**.
-    # `app/views/parts/judge.js` is the judgement surface, split out of `card.js` when the
+    # `app/views/broker/parts/judge.js` is the judgement surface, split out of `card.js` when the
     # state-dependent action surface took that file past the module-graph guard — the same reason,
     # for the fourth time (DECISIONS #291, #293) — `app/notices.js` is the top bar's bell and
-    # health control, which replaced four counter chips (#288, #289), and `views/parts/finder.js`
+    # health control, which replaced four counter chips (#288, #289), and
+    # `views/broker/parts/finder.js`
     # is the search, the tabs and the count cards, split out when they became one block. The /api
     # surface was unchanged at 51 in that release, which is the property this pair of
     # assertions is really for.
@@ -843,7 +866,7 @@ async def test_f42_every_path_served_today_still_registers(store: Store) -> None
     # contract must say so here rather than adjust a number quietly. The other two are static
     # modules forced out by the module-graph guard for the fifth and sixth time: `app/health.js`
     # (CPU, memory and storage, out of `notices.js` at 19 005 bytes) and
-    # `app/views/parts/bulkclear.js` (out of `judge.js` at 19 499).
+    # `app/views/broker/parts/bulkclear.js` (out of `judge.js` at 19 499).
     #
     # v0.16.6: 111 -> 114, and **all three are static modules with no /api route between them**,
     # which is the property this pair of assertions is really for. A release that drew charts on
@@ -854,7 +877,8 @@ async def test_f42_every_path_served_today_still_registers(store: Store) -> None
     #
     # The three: `app/charts.js` (the three chart types), `app/chartdata.js` (their arithmetic,
     # separate because it is pure and is driven directly by tests with no DOM), and
-    # `app/views/parts/pulse.js` (the Overview's five bands, out of `views/overview.js` at 22 552
+    # `app/views/broker/parts/pulse.js` (the Overview's five bands, out of
+    # `views/broker/overview.js` at 22 552
     # bytes against the 17 579-byte guard — the seventh time that guard has chosen a seam).
     #
     # **v0.18.0: 119 -> 122 served, 52 -> 53 under /api.** Three paths: the route
@@ -870,7 +894,8 @@ async def test_f42_every_path_served_today_still_registers(store: Store) -> None
     # deciding, how far the operator's judgements are from training a model, and the loss curve)
     # and `POST /api/models/register` (turn one of *this appliance's own* fits into a registerable
     # artefact — admin-only, and the body names a run id, never a parameter), plus
-    # `GET /app/views/parts/models.js`, the console module that draws them. The register POST is
+    # `GET /app/views/broker/parts/models.js`, the console module that draws them. The register
+    # POST is
     # the first HTTP route that can create a `model_version`; what kept that CLI-only was that a
     # request must not be able to assert a model, and it still cannot — see the route's docstring.
     #
@@ -881,8 +906,9 @@ async def test_f42_every_path_served_today_still_registers(store: Store) -> None
     # a reviewable diff rather than a thing that grows quietly.
     #
     # **v0.20.0: 125 -> 127 served, /api unchanged at 55.** Two static assets and **no API route**:
-    # `GET /app/views/parts/restructure.js` (the three restructuring gestures, off `lifecycle.js`)
-    # and `GET /app/views/parts/decide.js` (the decision bar, off `judge.js`), both at the
+    # `GET /app/views/broker/parts/restructure.js` (the three restructuring gestures, off
+    # `lifecycle.js`)
+    # and `GET /app/views/broker/parts/decide.js` (the decision bar, off `judge.js`), both at the
     # module-graph ceiling. A release that rearranged the console this much and added no route to
     # do it is the fact worth recording here.
     # **v0.23.0: 168 -> 178 served, /api 84 -> 88.** Four API routes — `GET /api/activity/active`
@@ -896,11 +922,13 @@ async def test_f42_every_path_served_today_still_registers(store: Store) -> None
     # search and the judge; ADRs #405, #412, #413) and six UI modules (ADR #414).
     # v0.27.0: 207 -> 210 and 107 -> 108 — one /api pair (an answer to a proposal, ADR #428) and
     # two UI modules net (the league's three added, `shippedjudge` gone; ADR #427).
-    # v0.29.0: 210 -> 211 — one UI module, `parts/mwwhen.js` (the maintenance form's card 2, ADR
+    # v0.29.0: 210 -> 211 — one UI module, `views/broker/parts/mwwhen.js` (the maintenance form's
+    # card 2, ADR
     # #440); no /api pair (the brief judge is a query parameter on `GET /api/judge`).
     # v0.30.0: 211 -> 227 and 108 -> 117 — nine /api pairs (SNMP, email, recovery, the reference;
     # ADRs #444-#446), six UI modules and the sign-in artwork.
-    # Unreleased: 227 -> 228 — one UI module, `parts/pipeline.js` (the trap pipeline, ADRs #450,
+    # Unreleased: 227 -> 228 — one UI module, `views/broker/parts/pipeline.js` (the trap pipeline,
+    # ADRs #450,
     # #451); no /api pair (the KPI is set through `POST /api/config`, the pipeline read through
     # `/api/stats` and `/api/resources`).
     # Unreleased: 228 -> 229 and 117 -> 118 — `POST /api/users/{uid}/password-reset` (ADR #453): an
@@ -944,13 +972,16 @@ async def test_f42_every_path_served_today_still_registers(store: Store) -> None
     # adding, changing, removing one, its proxy's token, moving an element and the proxy's door
     # (eight /api pairs), and seven console modules (the brokers, their screens, the heading).
     # Unreleased: 377 -> 379 and 210 -> 211 — one person's customers (ADR #499): `POST
-    # /api/scope/subject` (one /api pair) and its console module (`parts/custscope.js`).
+    # /api/scope/subject` (one /api pair) and its console module (`views/admin/parts/custscope.js`).
     # Unreleased: 379 -> 382 and 211 -> 213 — a case's email (ADR #500): `POST …/email` and `GET
-    # …/email/draft` (two /api pairs) and the editor (`parts/caseemail.js`).
+    # …/email/draft` (two /api pairs) and the editor (`views/noc/parts/caseemail.js`).
     # Unreleased: 382 -> 384 and 213 -> 214 — an earlier version of a routine (ADR #501) and a
-    # customer's Routines tab (`parts/custroutines.js`).
-    # Unreleased: 384 -> 385 and 214 -> 214 — the maintenance board (`parts/mwboard.js`, ADR #503)
-    assert len(served) == 385, f"the served surface moved: {len(served)} method/path pairs"
+    # customer's Routines tab (`views/noc/parts/custroutines.js`).
+    # Unreleased: 384 -> 385 and 214 -> 214 — the maintenance board
+    # (`views/broker/parts/mwboard.js`, ADR #503)
+    # Unreleased: 385 -> 416 and 214 -> 214 — the stylesheet in parts (ADR #504): `style.css` became
+    # the 32 sheets of `styles/`, each served
+    assert len(served) == 416, f"the served surface moved: {len(served)} method/path pairs"
     api_pairs = {(method, path) for method, path in served if path.startswith("/api")}
     # **v0.19.0: 53 -> 55.** `GET /api/models` and `POST /api/models/register`: what the
     # models are doing, and turning one of this appliance's own fits into an artefact.

@@ -1,0 +1,79 @@
+/* ---------- the Overview before the first trap (ADR #483) ----------
+ *
+ * Three panels, each a picture first: what to do now, what follows, and how it ends. The pictures
+ * are line art in the theme's own colours; the traps "flow" into the appliance until the first one
+ * really does, and the motion stops for people who asked for less of it. */
+.first-run { display: grid; gap: var(--space-5); max-width: 1180px; }
+.fr-head { display: grid; gap: var(--space-1); }
+.fr-head h2 { margin: 0; font-size: var(--fs-2xl); letter-spacing: -0.02em; }
+.fr-eyebrow {
+  display: inline-flex; align-items: center; gap: var(--space-2); margin: 0;
+  font-size: var(--fs-xs); font-weight: 600; text-transform: uppercase; letter-spacing: 0.08em; color: var(--fg-muted);
+}
+.fr-live { width: 8px; height: 8px; border-radius: 50%; background: var(--accent); animation: fr-pulse 1.6s ease-in-out infinite; }
+@keyframes fr-pulse { 0%, 100% { box-shadow: 0 0 0 0 var(--accent-soft); } 50% { box-shadow: 0 0 0 6px var(--accent-soft); } }
+.fr-steps { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--space-4); counter-reset: fr; }
+.fr-step {
+  position: relative; display: grid; grid-template-rows: auto 1fr;
+  border: 1px solid var(--line); border-radius: 14px; background: var(--bg-raised);
+}
+.fr-step.is-now { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+.fr-step:not(:last-child)::after {
+  content: ""; position: absolute; top: 88px; right: -14px; width: 12px; height: 12px; z-index: 1;
+  border-top: 2px solid var(--line-strong); border-right: 2px solid var(--line-strong); transform: rotate(45deg);
+}
+.fr-figure {
+  padding: var(--space-4) var(--space-3) var(--space-2); border-bottom: 1px solid var(--line);
+  border-radius: 13px 13px 0 0;
+  background-color: var(--bg-sunken);
+  background-image: radial-gradient(var(--line) 1px, transparent 1px); background-size: 14px 14px;
+}
+.fr-art { display: block; width: 100%; height: auto; max-height: 170px; color: var(--fg-muted); }
+.fr-body { padding: var(--space-4); display: grid; gap: var(--space-2); align-content: start; }
+.fr-body h3 { margin: 0; font-size: var(--fs-lg); }
+.fr-body p { margin: 0; font-size: var(--fs-sm); line-height: 1.5; }
+.fr-num { display: flex; align-items: center; gap: var(--space-2); font-size: var(--fs-xs) !important; color: var(--fg-muted); text-transform: uppercase; letter-spacing: 0.06em; font-weight: 600; }
+.fr-num span {
+  display: inline-grid; place-items: center; width: 22px; height: 22px; border-radius: 50%;
+  border: 1px solid var(--line-strong); color: var(--fg); font-size: var(--fs-xs);
+}
+.is-now .fr-num span { background: var(--accent); border-color: var(--accent); color: var(--accent-fg); }
+.fr-cta { display: inline-flex; align-items: center; gap: 4px; font-size: var(--fs-sm); font-weight: 600; margin-top: var(--space-1); }
+.fr-dest {
+  display: flex; align-items: center; gap: var(--space-2); margin-top: var(--space-1);
+  padding: 6px 6px 6px 10px; border: 1px dashed var(--line-strong); border-radius: 8px; background: var(--bg);
+}
+.fr-dest-label { font-size: var(--fs-xs); color: var(--fg-muted); }
+.fr-dest code { font-size: var(--fs-sm); margin-left: auto; overflow-wrap: anywhere; }
+.fr-test { border: 1px solid var(--line); border-radius: 10px; padding: var(--space-2) var(--space-3); background: var(--bg-raised); }
+.fr-test summary { cursor: pointer; font-size: var(--fs-sm); color: var(--fg-muted); }
+.fr-test pre { margin: var(--space-2) 0; padding: var(--space-2); background: var(--bg-sunken); border-radius: 6px; overflow-x: auto; font-size: var(--fs-xs); }
+.fr-test p { margin: 0; font-size: var(--fs-sm); }
+/* the drawings */
+.fr-node { fill: var(--bg-raised); stroke: var(--line-strong); stroke-width: 1.2; }
+.fr-card { stroke: var(--fg-muted); }
+.fr-core { fill: var(--accent-soft); stroke: var(--accent); stroke-width: 1.5; }
+.fr-core-name { fill: var(--fg); font: 600 12px var(--sans); }
+.fr-label { fill: var(--fg-muted); font: 500 9.5px var(--sans); }
+.fr-strong { fill: var(--fg); font: 600 11px var(--sans); }
+.fr-led { fill: var(--quiet); animation: fr-blink 1.4s ease-in-out infinite; }
+@keyframes fr-blink { 50% { opacity: 0.25; } }
+.fr-flow { fill: none; stroke: var(--accent); stroke-width: 1.5; stroke-dasharray: 4 6; animation: fr-dash 1.2s linear infinite; }
+@keyframes fr-dash { to { stroke-dashoffset: -20; } }
+.fr-link { fill: none; stroke: var(--line-strong); stroke-width: 1.2; }
+.fr-arrow { fill: none; stroke: var(--fg-muted); stroke-width: 1.5; }
+.fr-arrowhead { fill: var(--fg-muted); }
+.fr-pill { fill: var(--bg-raised); stroke-width: 1.4; }
+.fr-crit { stroke: var(--alarm); }
+.fr-major { stroke: var(--major); }
+.fr-minor { stroke: var(--minor); }
+.fr-btn { fill: var(--primary); }
+.fr-btn-text { fill: var(--primary-fg); font: 600 9px var(--sans); }
+.fr-dot { fill: var(--bg-raised); stroke: var(--accent); stroke-width: 1.2; }
+.fr-glyph { fill: none; stroke: var(--accent); stroke-width: 1.4; stroke-linecap: round; }
+.fr-ring { fill: none; stroke: var(--quiet); stroke-width: 1.2; stroke-dasharray: 3 5; opacity: 0.7; }
+.fr-check { fill: none; stroke: var(--quiet); stroke-width: 3; stroke-linecap: round; stroke-linejoin: round; }
+@media (max-width: 980px) {
+  .fr-steps { grid-template-columns: 1fr; }
+  .fr-step:not(:last-child)::after { top: auto; bottom: -14px; right: 50%; transform: rotate(135deg); }
+}

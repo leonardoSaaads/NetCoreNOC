@@ -147,7 +147,7 @@ rest is at `3ecf237` ([`record.md`](record.md)).
   the largest render paths execute against a stub. **Narrowed by v0.16.6, not closed**: the estate
   map beside the force drawing and the column chart beside the scatter are hand-written and are
   asserted, so each screen now has one drawing a test executes and one it does not. The d3 halves
-  are still executed by nothing, and `views/graph.js` says so where a reader will find it.
+  are still executed by nothing, and `views/broker/graph.js` says so where a reader will find it.
 - **F112's open half: F110's element-to-element exemption is justified by a container property it
   never reads.** It should either resolve the container's `display`/`gap` for each candidate pair or
   stop claiming that the container separates them. A stylesheet-parsing problem, which is why

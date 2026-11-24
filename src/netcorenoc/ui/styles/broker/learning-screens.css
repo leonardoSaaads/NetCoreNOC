@@ -1,0 +1,85 @@
+/* ---------- Learning: Labelling and Corpus as one screen (ADR #484) ----------
+ *
+ * A UML class diagram first — how a judgement becomes a label, a label lands in the corpus, and the
+ * corpus re-ranks the models — with this appliance's numbers in its attribute compartments; then
+ * the queue and the corpus as tabs. Each class in the diagram is a button. */
+.learning { display: grid; gap: var(--space-4); }  /* ADR #493: the page's width, as every list screen */
+.learn-diagram { display: grid; gap: var(--space-3); }
+.learn-diagram-head { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); flex-wrap: wrap; }
+.learn-diagram-head h3 { display: flex; align-items: center; gap: var(--space-2); margin: 0; }
+.uml {
+  /* The page is full width (ADR #493); the drawing stops growing at a readable size and centres. */
+  width: 100%; height: auto; max-height: 460px; border: 1px solid var(--line); border-radius: 10px;
+  background-color: var(--bg-sunken);
+  background-image: radial-gradient(var(--line) 1px, transparent 1px); background-size: 16px 16px;
+}
+.uml-class { cursor: pointer; outline: none; }
+.uml-box { fill: var(--bg-raised); stroke: var(--fg-muted); stroke-width: 1.2; transition: stroke 0.15s ease, fill 0.15s ease; }
+.uml-class:hover .uml-box, .uml-class:focus-visible .uml-box { stroke: var(--accent); }
+.uml-class.is-active .uml-box { stroke: var(--accent); stroke-width: 2; fill: var(--accent-soft); }
+.uml-name { fill: var(--fg); font: 700 13px var(--sans); }
+.uml-stereo { fill: var(--fg-muted); font: italic 500 10px var(--sans); }
+.uml-attr { fill: var(--fg-muted); font: 500 11.5px var(--mono); }
+.uml-rule { stroke: var(--fg-muted); stroke-width: 1; }
+.uml-line { fill: none; stroke: var(--fg-muted); stroke-width: 1.4; }
+.uml-dep { stroke-dasharray: 6 4; }
+.uml-tri { fill: var(--bg-raised); stroke: var(--fg-muted); stroke-width: 1.2; }
+.uml-open { fill: none; stroke: var(--fg-muted); stroke-width: 1.4; }
+.uml-mult { fill: var(--fg); font: 600 11px var(--mono); }
+.uml-role { fill: var(--fg-muted); font: italic 500 10.5px var(--sans); }
+.learn-about { margin: 0; font-size: var(--fs-sm); display: flex; gap: 6px; flex-wrap: wrap; align-items: baseline; }
+.learn-about a { display: inline-flex; align-items: center; gap: 2px; }
+.tab-count {
+  display: inline-grid; place-items: center; min-width: 20px; height: 18px; padding: 0 6px; margin-left: 4px;
+  border-radius: 999px; background: var(--bg-sunken); border: 1px solid var(--line); font-size: var(--fs-xs); color: var(--fg-muted);
+}
+.learn-list { list-style: none; margin: 0; padding: 0; border: 1px solid var(--line); border-radius: 10px; overflow: hidden; background: var(--bg-raised); }
+.learn-row {
+  display: grid; grid-template-columns: 84px minmax(0, 1.4fr) minmax(0, 1fr) auto auto; gap: var(--space-3);
+  align-items: center; padding: var(--space-2) var(--space-3); min-height: 48px;
+}
+.learn-row + .learn-row { border-top: 1px solid var(--line); }
+.learn-row:hover { background: var(--bg-hover); }
+.learn-kind {
+  justify-self: start; font-size: var(--fs-xs); font-weight: 600; padding: 2px 8px; border-radius: 999px;
+  background: var(--bg-sunken); color: var(--fg-muted); border: 1px solid var(--line);
+}
+.learn-kind.is-proposal { background: var(--warn-bg); color: var(--warn); border-color: transparent; }
+.learn-name { font-weight: 600; color: var(--fg); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.learn-meta { font-size: var(--fs-sm); color: var(--fg-muted); }
+.learn-go { display: inline-flex; align-items: center; gap: 2px; font-size: var(--fs-sm); }
+.learn-empty {
+  display: flex; gap: var(--space-3); align-items: center; padding: var(--space-4);
+  border: 1px dashed var(--line-strong); border-radius: 10px; background: var(--bg-raised);
+}
+.learn-empty p { margin: 2px 0 0; font-size: var(--fs-sm); }
+.learn-empty-mark { display: inline-grid; place-items: center; width: 36px; height: 36px; border-radius: 50%; background: var(--quiet-bg); color: var(--quiet); }
+.learn-corpus { display: grid; gap: var(--space-4); }
+.learn-tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: var(--space-3); }
+.learn-tile { display: grid; gap: 2px; padding: var(--space-3); border: 1px solid var(--line); border-radius: 10px; background: var(--bg-raised); }
+.learn-tile b { font-size: var(--fs-xl); font-variant-numeric: tabular-nums; }
+.learn-tile span { font-size: var(--fs-xs); color: var(--fg-muted); }
+.learn-tiers { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--space-3); }
+.learn-tier { display: grid; gap: 2px; padding: var(--space-3); border: 1px solid var(--line); border-radius: 10px; background: var(--bg-raised); }
+.learn-tier.is-danger { border-color: var(--alarm); }
+.learn-tier-name { font-size: var(--fs-xs); text-transform: uppercase; letter-spacing: 0.06em; color: var(--fg-muted); font-weight: 600; }
+.learn-foot { margin: 0; font-size: var(--fs-sm); }
+@media (max-width: 760px) {
+  .learn-row { grid-template-columns: 1fr auto; }
+  .learn-meta, .learn-row .badge { display: none; }
+  .learn-tiers { grid-template-columns: 1fr; }
+}
+
+/* ---------- Judge & promotion in tabs (ADR #485) ----------
+ *
+ * The model switch on Charts is a row of pills (one per model, its colour beside its name), not a
+ * second tab strip under the screen's own tabs. */
+.judgeview .access-tabs { margin-bottom: 0; }
+.judgeview .league { display: grid; gap: var(--space-4); }
+.league-pill {
+  display: inline-flex; align-items: center; gap: 6px; min-height: 30px; padding: 2px 12px;
+  border-radius: 999px; border: 1px solid var(--line); background: var(--bg); color: var(--fg-muted);
+  font-size: var(--fs-sm); cursor: pointer;
+}
+.league-pill:hover:not(.on) { border-color: var(--line-strong); color: var(--fg); }
+.league-pill.on { background: var(--fg); border-color: var(--fg); color: var(--bg); }
