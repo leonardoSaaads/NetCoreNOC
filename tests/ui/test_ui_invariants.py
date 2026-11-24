@@ -1760,7 +1760,7 @@ async def test_every_declaration_control_clears_the_tap_floor_at_all_three_width
     # Every element in `declare.js` that carries a handler — which is what "interactive" means at
     # the DOM, and what a `<div onClick>` would fail. Derived from the source rather than listed,
     # so a control added later is measured rather than assumed.
-    source = (ui / "app" / "views" / "parts" / "declare.js").read_text(encoding="utf-8")
+    source = (ui / "app" / "views" / "broker" / "parts" / "declare.js").read_text(encoding="utf-8")
     #
     # `onSubmit` is deliberately not in the set: a form is a container, and the event is raised by
     # a control inside it that this same scan already covers. Every other handler here is one a
@@ -4006,7 +4006,7 @@ def test_no_chart_is_drawn_from_a_sampled_table_without_naming_its_rate() -> Non
 
     # The positive half: the screen where such a chart WOULD go states the rate and the column it
     # would have to be read from, so a later release inherits the rule rather than the prose.
-    evidence = (ui / "views" / "parts" / "evidence.js").read_text(encoding="utf-8")
+    evidence = (ui / "views" / "broker" / "parts" / "evidence.js").read_text(encoding="utf-8")
     assert str(DEFAULT_SAMPLE_RATE) in evidence, (
         f"the Evidence screen does not name the shadow sampler's default rate "
         f"({DEFAULT_SAMPLE_RATE}); a later release adding a sampled chart would have no anchor."

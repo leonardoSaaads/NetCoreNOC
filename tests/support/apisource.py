@@ -78,6 +78,7 @@ MODULE_ORDER: tuple[str, ...] = (
     "agent_runtime.py",
     "app.py",
     "routes/__init__.py",
+    "stylesheets.py",  # ADR #504: the console's stylesheets, in cascade order
     "routes/static.py",
     "routes/auth.py",
     # ADR #482: the sign-in's second step, registered right after the first.

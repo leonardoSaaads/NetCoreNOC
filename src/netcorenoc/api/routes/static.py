@@ -19,6 +19,7 @@ import netcorenoc
 from netcorenoc import __version__
 from netcorenoc.api.context import AppContext
 from netcorenoc.api.declare import DeclaredRoutes
+from netcorenoc.api.stylesheets import STYLESHEETS
 from netcorenoc.engine.operate.intake import SpoolFeed
 
 # **Resolved from the PACKAGE, not by counting `.parent`s** (v0.16.2, DECISIONS #278).
@@ -286,42 +287,6 @@ _UI_MODULES = (
     "app/views/broker/parts/brokerwizard.js",
 )
 
-# ADR #504: the stylesheets, in the cascade order `index.html` links them in.
-_STYLESHEETS = (
-    "styles/core/tokens.css",
-    "styles/core/base.css",
-    "styles/core/shell.css",
-    "styles/core/charts.css",
-    "styles/core/components.css",
-    "styles/broker/situations.css",
-    "styles/broker/graph.css",
-    "styles/core/panels.css",
-    "styles/core/sign-in.css",
-    "styles/core/widths.css",
-    "styles/broker/health.css",
-    "styles/broker/maintenance.css",
-    "styles/broker/timeline.css",
-    "styles/broker/catalogue.css",
-    "styles/broker/overview.css",
-    "styles/broker/entities.css",
-    "styles/admin/people.css",
-    "styles/broker/learning.css",
-    "styles/admin/settings.css",
-    "styles/noc/plane.css",
-    "styles/noc/secrets.css",
-    "styles/noc/cases.css",
-    "styles/noc/overview.css",
-    "styles/noc/routines.css",
-    "styles/noc/agents.css",
-    "styles/noc/customers.css",
-    "styles/core/marks.css",
-    "styles/broker/first-run.css",
-    "styles/broker/learning-screens.css",
-    "styles/admin/audit.css",
-    "styles/noc/ollama.css",
-    "styles/broker/brokers.css",
-)
-
 _VENDOR_ASSETS = (
     "vendor/preact-10.29.8.module.js",
     "vendor/htm-3.1.1.module.js",
@@ -330,7 +295,7 @@ _VENDOR_ASSETS = (
 STATIC_ASSETS = {
     **dict.fromkeys(_UI_MODULES, "application/javascript"),
     **dict.fromkeys(_VENDOR_ASSETS, "application/javascript"),
-    **dict.fromkeys(_STYLESHEETS, "text/css"),
+    **dict.fromkeys(STYLESHEETS, "text/css"),
     # v0.16.1 (F96): the console's own icon, served from this origin. Every page load asked for
     # `/favicon.ico` and got a 404 — trivial, and NOT trivially fixable, because the obvious
     # one-line repair is a `data:` URI in `index.html` and this appliance's CSP says

@@ -71,7 +71,13 @@ def test_the_guard_sees_the_collision_it_exists_for() -> None:
 
 def test_the_model_gauge_no_longer_uses_the_health_meter_names() -> None:
     models = (
-        Path(netcorenoc.__file__).resolve().parent / "ui" / "app" / "views" / "parts" / "models.js"
+        Path(netcorenoc.__file__).resolve().parent
+        / "ui"
+        / "app"
+        / "views"
+        / "broker"
+        / "parts"
+        / "models.js"
     ).read_text(encoding="utf-8")
     assert "meter" not in models, "the model screen draws with the health control's class names"
     # The control that this read the right file: v0.26.0's gauge drew `.floor*` bars; v0.27.0
@@ -89,3 +95,11 @@ def test_the_sheets_are_cut_whole_and_linked_in_cascade_order() -> None:
     assert len(linked) == len(set(linked)), "a sheet linked twice applies its rules twice"
     assert linked[0] == "styles/core/tokens.css" and ":root {" in uicss.sheets()[0].read_text()
     assert not (uicss.UI / "style.css").exists(), "the single file is gone, not kept beside them"
+
+
+def test_the_served_stylesheets_are_the_linked_ones_in_the_same_order() -> None:
+    """ADR #504: `STYLESHEETS` (what is served) and `index.html` (what is linked) name the same
+    sheets in the same order, so a sheet cannot be linked and 404, or served and never applied."""
+    from netcorenoc.api.stylesheets import STYLESHEETS
+
+    assert [str(p.relative_to(uicss.UI)) for p in uicss.sheets()] == list(STYLESHEETS)

@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import asyncio
 from collections.abc import AsyncIterator
+from pathlib import Path
 
 import httpx
 import pytest
@@ -371,10 +372,21 @@ def test_capability_is_resolved_before_anything_is_constructed() -> None:
     )
     # And no view module may resolve its own capability — that would be the 17-checks design the
     # ADR rejected, and the one that is forgotten is invisible until it is exploited.
-    for path in sorted((UI_DIR / "app" / "views").glob("*.js")):
+    # ADR #504: the screens are in their plane's folder, `views/<plane>/<screen>.js`.
+    for path in sorted((UI_DIR / "app" / "views").glob("*/*.js")):
         source = path.read_text(encoding="utf-8")
         assert "reachableViews" not in source, path.name
         assert "resolve(" not in source, path.name
+
+
+def view_path(view_id: str) -> str:
+    """Where a screen lives: `app/views/<plane>/<id>.js` since ADR #504 put each plane's screens
+    in a folder of their own. One file per id, or none (an id that names no module)."""
+    found = sorted(
+        str(p.relative_to(UI_DIR)) for p in (UI_DIR / "app" / "views").glob(f"*/{view_id}.js")
+    )
+    assert len(found) <= 1, f"two screens are called {view_id}: {found}"
+    return found[0] if found else f"app/views/{view_id}.js"
 
 
 def _local_imports(name: str, source: str) -> set[str]:
@@ -417,7 +429,7 @@ def component_owners() -> dict[str, set[str]]:
     modules = ui_modules()
     reachable: dict[str, set[str]] = {name: set() for name in modules}
     for view_id in _registry_ids():
-        entry = f"app/views/{view_id}.js"
+        entry = view_path(view_id)
         if entry not in modules:
             continue
         seen: set[str] = set()
@@ -445,7 +457,7 @@ def composed_source(view_id: str) -> str:
     """
     modules = ui_modules()
     owners = component_owners()
-    parts = [modules.get(f"app/views/{view_id}.js", "")]
+    parts = [modules.get(view_path(view_id), "")]
     parts.extend(source for name, source in modules.items() if view_id in owners.get(name, set()))
     return "".join(parts)
 
@@ -468,7 +480,8 @@ def view_writes() -> dict[str, set[tuple[str, str]]]:
     for name, source in modules.items():
         if not name.startswith("app/views/"):
             continue
-        view_id = name.removeprefix("app/views/").removesuffix(".js")
+        # ADR #504: a screen is `views/<plane>/<id>.js`; a part, under its plane's `parts/`.
+        view_id = name if "/parts/" in name else Path(name).stem
         found: set[tuple[str, str]] = set()
         calls = re.findall(r"\b(post|del)\(\s*[`\"']([^`\"']*)", source)
         # A path looked up in a module-level literal table (`POLICY_PATH[kind]`) is still a
@@ -674,7 +687,7 @@ def test_the_labelling_payload_contract_is_unchanged() -> None:
 def test_the_scorer_screen_states_the_preview_caveat() -> None:
     """SECURITY-REVIEW-0.6 §4 treats the wording as a control: a preview that presented itself as
     authoritative would be worse than none. The API supplies the sentence; the screen shows it."""
-    scorer = (UI_DIR / "app" / "views" / "scorer.js").read_text(encoding="utf-8")
+    scorer = (UI_DIR / view_path("scorer")).read_text(encoding="utf-8")
     assert "delta.caveat" in scorer
     source = apisource.api_source()
     assert "Directional, not exhaustive" in source
@@ -693,13 +706,13 @@ def test_every_destructive_control_goes_through_one_component() -> None:
     assert 'stage === "previewed" || stage === "applying"' in destructive
     # v0.23.0 (#395): the Entities screen's two resets moved into the element it opens.
     for name in (
-        "audit",
-        "settings",
-        "parts/people",
-        "parts/tokenspanel",
-        "parts/nedetail",
-        "promotion",
-        "scorer",
+        "admin/audit",
+        "admin/settings",
+        "admin/parts/people",
+        "admin/parts/tokenspanel",
+        "broker/parts/nedetail",
+        "broker/promotion",
+        "broker/scorer",
     ):
         source = (UI_DIR / "app" / "views" / f"{name}.js").read_text(encoding="utf-8")
         assert "Destructive" in source, f"{name}.js has no destructive-preview machinery"
