@@ -47,14 +47,18 @@ export function weightAt(confidence) {
   return 0.6 + 0.4 * confidence;
 }
 
-/** The confidence a gesture carries, with the number and its consequence both on screen. */
+/** The confidence a gesture carries, with the number and its consequence both on screen.
+ *
+ * ADR #506: the slider works in whole percent (0-100, step 5) and the gesture carries the fraction.
+ * It stepped 0.05 up to 1: a fractional step is rounded differently by each browser engine, and the
+ * owner could not move it to 100% — an integer step reaches its maximum everywhere. */
 export function Confidence({ value, onChange, disabled }) {
   const below = value < CONFIDENCE_FLOOR;
   return html`<div class=${cx("confidence", below && "confidence-below")}>
     <label for="fbConfidence">How sure are you?</label>
-    <input id="fbConfidence" type="range" min="0" max="1" step="0.05" value=${value}
-           disabled=${disabled} aria-describedby="fbConfidenceNote"
-           onInput=${(e) => onChange(Number(e.target.value))} />
+    <input id="fbConfidence" type="range" min="0" max="100" step="5" value=${Math.round(value * 100)}
+           disabled=${disabled} aria-describedby="fbConfidenceNote" aria-valuetext=${percent(value)}
+           onInput=${(e) => onChange(Math.min(100, Math.max(0, Number(e.target.value))) / 100)} />
     <output for="fbConfidence" class="confidence-value">${percent(value)}</output>
     <p id="fbConfidenceNote" class=${cx("hint", below && "err")}>
       ${below

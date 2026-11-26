@@ -396,7 +396,7 @@ UI_HASHES: dict[str, str] = {
     "app/shell.js": "43ebdd47f3de134aeb13d529315b320100883a51e3812532eadc6daf099f213b",
     "app/sidebar.js": "817c8bb3751662ee64d8860d1b620f0dec244e07a3aca17cf0c352579f976255",
     "app/stack.js": "7fc57239d1f7cf2de84f39a726914bcc305cfd2b90de97df08870a6570ce5185",
-    "app/store.js": "216f4a8dda057cecdf525c76295263b851e501bb76182c9fbf7d8c15cb1ccc67",
+    "app/store.js": "eb5e8965f788e5b8054d9aef7ea0ce060046203f3c17233f75bc24ed11951e0e",
     "app/theme.js": "6c51e4e51ec2a71786e8183b6e36fb1ab473a70151149123f89eb3944f33065d",
     "app/twofactor.js": "a8a55e2f44646be76a8acc511442d3f69c36005374be5888175828159cfdec6b",
     "app/views/admin/access.js": "0ade3e12b0216d74176fba115410c24e7494ba969f780dd9bd35ea1f196cef87",
@@ -508,7 +508,7 @@ UI_HASHES: dict[str, str] = {
         "cf28ead3e7d3c474821de2efefa312df206a013d425d11d7d0c7cc48fa4dd705"
     ),
     "app/views/broker/parts/finder.js": (
-        "6e80c48f449dfda45ed90fd2cd7a83d1d4db439b00da806dc011d010c2cf67bf"
+        "06ce40a3c9de03e8baa7c9e8ee54f7cd0840f583242b2d87eeac8263581d5ea1"
     ),
     "app/views/broker/parts/firstrun.js": (
         "77fe9b99fb8e7d3033a606b27a98167b8e34303beec6a06f5367b64f1bd86892"
@@ -517,7 +517,7 @@ UI_HASHES: dict[str, str] = {
         "a609b85f0fbb5725fa1fbd5c32895eb60aa21e8b375314c3aa8c7002e471f889"
     ),
     "app/views/broker/parts/judge.js": (
-        "64d94f7f1688d5fd963ee15ee0ab559066b29fd9f6fccdcb0ad2f55a3e2533dc"
+        "3e6d9faae3c987a9cde27c6c524a32a4b59f8f602470b117beb43ff0e103927c"
     ),
     "app/views/broker/parts/keeping.js": (
         "9290839265fce3ed9fcc986a89aaeadeca06462ed395b66b458c6e885032fc08"
@@ -541,7 +541,7 @@ UI_HASHES: dict[str, str] = {
         "4c8c97d20fd7f84ccaebff4ebf857d74f7d95ead97b2c19ec98de99925186a92"
     ),
     "app/views/broker/parts/members.js": (
-        "d1f34f306e87f2c7c2cd0e388f95f9f8eb39bafc1dbc5fea210e2890cdbd50da"
+        "dd7559318613c5085c2fbc5892e6a3e246c9d2b249692ad88ad8c67a72649040"
     ),
     "app/views/broker/parts/model.js": (
         "e27cf49f10d13a79ff818d1d25069bb9e86fd45f6011b6108575f0b2a55ff5eb"
@@ -592,7 +592,7 @@ UI_HASHES: dict[str, str] = {
         "91ccdc9f05e72db41cf79c3e23400ade24682fe3fa0ee16a15152201e9587043"
     ),
     "app/views/broker/parts/restructure.js": (
-        "583f7c2f95238559f2b504fb4b8b73095a6e190c8cf507ddd0643384124d62a9"
+        "efebbd2bcc84226887e27b35af94f5279b0fcc654768d1d71e94408f343f0a7f"
     ),
     "app/views/broker/parts/searchpanel.js": (
         "066193423df66775e38c33b9029ead09874dd64297b1e12f929e881f02fe20b4"
@@ -631,7 +631,7 @@ UI_HASHES: dict[str, str] = {
         "4ea60fe04227025a21538db709c9feab7233832b6a5ee33fc186ff2944228da8"
     ),
     "app/views/broker/situations.js": (
-        "46ae0021df529f3926510015dba1d28eaf6d7f7adb43852d943f47862089f025"
+        "aa0e70fff3f6e60155fe64d1dfbf90c2875155450dd06daec73483de5d11613f"
     ),
     "app/views/broker/timeline.js": (
         "9974da67722d8cf8ac928d41175ecdc8d77ae6dc08b59358497859517603c427"
@@ -859,7 +859,7 @@ UI_SIZES: dict[str, int] = {
     "app/shell.js": 17_502,
     "app/sidebar.js": 13_188,
     "app/stack.js": 6_564,
-    "app/store.js": 6_938,
+    "app/store.js": 7_101,
     "app/theme.js": 8_141,
     "app/twofactor.js": 13_070,
     "app/views/admin/access.js": 4_952,
@@ -900,10 +900,10 @@ UI_SIZES: dict[str, int] = {
     "app/views/broker/parts/declare.js": 13_101,
     "app/views/broker/parts/element.js": 6_180,
     "app/views/broker/parts/evidence.js": 12_687,
-    "app/views/broker/parts/finder.js": 6_663,
+    "app/views/broker/parts/finder.js": 7_799,
     "app/views/broker/parts/firstrun.js": 7_102,
     "app/views/broker/parts/importbox.js": 12_576,
-    "app/views/broker/parts/judge.js": 13_798,
+    "app/views/broker/parts/judge.js": 14_622,
     "app/views/broker/parts/keeping.js": 8_326,
     "app/views/broker/parts/league.js": 12_066,
     "app/views/broker/parts/leaguecharts.js": 10_705,
@@ -911,7 +911,7 @@ UI_SIZES: dict[str, int] = {
     "app/views/broker/parts/learnuml.js": 5_620,
     "app/views/broker/parts/lifecycle.js": 9_487,
     "app/views/broker/parts/marks.js": 6_007,
-    "app/views/broker/parts/members.js": 11_123,
+    "app/views/broker/parts/members.js": 11_524,
     "app/views/broker/parts/model.js": 10_299,
     "app/views/broker/parts/models.js": 5_143,
     "app/views/broker/parts/mwboard.js": 8_689,
@@ -928,7 +928,7 @@ UI_SIZES: dict[str, int] = {
     "app/views/broker/parts/oidtree.js": 6_370,
     "app/views/broker/parts/pipeline.js": 9_981,
     "app/views/broker/parts/pulse.js": 5_740,
-    "app/views/broker/parts/restructure.js": 13_359,
+    "app/views/broker/parts/restructure.js": 13_735,
     "app/views/broker/parts/searchpanel.js": 6_111,
     "app/views/broker/parts/sequence.js": 5_788,
     "app/views/broker/parts/severity.js": 3_927,
@@ -941,7 +941,7 @@ UI_SIZES: dict[str, int] = {
     "app/views/broker/promotion.js": 13_890,
     "app/views/broker/quarantine.js": 2_259,
     "app/views/broker/scorer.js": 13_483,
-    "app/views/broker/situations.js": 17_417,
+    "app/views/broker/situations.js": 17_445,
     "app/views/broker/timeline.js": 7_538,
     "app/views/noc/agents.js": 10_398,
     "app/views/noc/cases.js": 11_517,

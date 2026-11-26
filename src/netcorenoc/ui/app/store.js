@@ -134,6 +134,9 @@ export function setConnection(status) {
 
 export function isExpanded(sid) { return state.expanded.has(sid); }
 
+/** Every open card's id: what a new list (another tab) re-reads, so none shows a stale payload. */
+export function expandedIds() { return [...state.expanded]; }
+
 export function expand(sid, detail) {
   state.expanded.add(sid);
   state.held.set(sid, detail);

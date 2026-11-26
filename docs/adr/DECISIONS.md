@@ -7585,3 +7585,36 @@ From this release an entry is about six lines: decision, reason, release.*
   the router, the widgets) stay where every screen reaches them.
 - **Not done, deliberately**: no `@import` (it chains requests and a guard refuses it), no build
   step (ADR #175), no module renamed: a path moved, a name did not.
+
+## 506. A resolved situation is history; a card shows what the operator just changed (unreleased)
+
+- **Context**: the owner's review of Situations found four faults. (1) After *Confirm grouping* a
+  card under the Open tab still offered Confirm grouping, until a reload some thirty seconds later.
+  (2) *How sure are you?* would not move to 100%. (3) After a New situation was merged into an Open
+  one, the Open one was listed under New. (4) **Grave**: a situation resolved by *Clear all active*
+  offered *Clear all 10 active* again once the same alarms were raised into a new situation — and
+  pressing it hand-cleared the new situation's alarms.
+- **Cause (4)**: an alarm is one row per (element, class, instance), re-activated when the element
+  raises it again, and `situation_alarm` keeps the resolved situation's membership as history. So
+  one alarm is a member of the resolved situation and of the live one it re-raised into; the bulk
+  clear derived its set from membership alone, and `situation_of_alarm` picked either one.
+- **Decision (4)**: a resolved situation is the record, not something to operate. The bulk clear
+  answers **409** for it; a situation **holds** a member when it is the live one that has it,
+  newest first, and a resolved one only when nothing live does (`situation_of_alarm`,
+  `held_member_ids`, one rule); the bulk clear of a live situation reaches only the members it
+  holds; a single clear is recorded on — and can resolve — the situation that holds the alarm. The
+  detail names that holder per member (`held_by`), so a resolved card says *active in* that
+  situation rather than *active*, and offers no clear, no mark and no restructure. Its name stays editable: a name
+  is a label for the record.
+- **Cause and decision (1)**: an expanded card is **held** (ADR #173) — and *Confirm grouping* was
+  the one gesture that did not re-read it, so the card kept the New payload while the list moved it
+  to Open. The Confirm re-reads the card, as every other gesture did; choosing a tab re-reads every
+  open card once, so no list shows a payload from before the operator's last act.
+- **Cause and decision (3)**: a merge into an Open situation links to it, and the link pinned it
+  into the tab the operator was on. A link now opens the situation in **its own state's tab**
+  (and re-reads a card already open there, whose payload predated the merge).
+- **Decision (2)**: the slider steps in whole percent (0-100, step 5) and the gesture carries the
+  fraction. A fractional step (`max=1 step=0.05`) is rounded by each browser engine its own way;
+  an integer step reaches its maximum in every one. Chromium reached 100% before and after.
+- **Reason**: every gesture on a situation is now on the situation that holds what it touches, and
+  a card says what is true after the operator's own act, not before it.

@@ -47,6 +47,18 @@ data directory), without which sealed values and every password are unreadable (
 secrets key file** (`secrets.key`; the image keeps it on a volume of its own), without which every
 stored device credential is unreadable (#455).
 
+### Fixed — a resolved situation is history; cards follow the operator's act (#506)
+
+- **A resolved situation cannot clear another situation's alarms.** An alarm raised again after its
+  situation resolved joins a new one; the resolved card offered *Clear all active* and pressing it
+  cleared the new situation's alarms. The bulk clear answers 409 for a resolved situation, clears
+  only the members a live situation holds, and a resolved card offers no operation: each re-raised
+  member says *active in #N*, linked.
+- *Confirm grouping* re-reads the card, so it shows *Start working this* at once and under Open; a
+  tab change re-reads every open card.
+- A merge into an Open situation opens it under **Open**, with its members as they are now.
+- *How sure are you?* steps in whole percent and reaches 100% in every browser.
+
 ### Changed — the console's files by plane (#504)
 
 - `ui/style.css` (5 100 lines) is now `ui/styles/{core,broker,noc,admin}/*.css`, 32 sheets cut at

@@ -1183,6 +1183,11 @@ const scenarios = {
 
     const detailAfter = cardFor(env, params.sid).detail;
     const stillConnected = splitBefore.isConnected;
+    // The marker is read while the card is held: the Confirm below re-reads the card (ADR #506),
+    // which ends the hold — the operator asked for what they changed.
+    const heldWhileGesturing = cardFor(env, params.sid).card.textContent.includes("held while open");
+    const readsBefore = env.network.requests.filter((r) => r.method === "GET" &&
+      r.path === `/api/situations/${params.sid}`).length;
     splitBefore.dispatchEvent(new env.DomEvent("click"));
     await settle(env);
 
@@ -1191,7 +1196,10 @@ const scenarios = {
       sameDetailNode: detailBefore === detailAfter,
       buttonStillConnected: stillConnected,
       detailStillConnected: detailAfter.isConnected,
-      heldMarkerPresent: cardFor(env, params.sid).card.textContent.includes("held while open"),
+      heldMarkerPresent: heldWhileGesturing,
+      heldAfterConfirm: cardFor(env, params.sid).card.textContent.includes("held while open"),
+      rereadAfterConfirm: env.network.requests.filter((r) => r.method === "GET" &&
+        r.path === `/api/situations/${params.sid}`).length > readsBefore,
       feedbackPath: post?.path ?? null,
       feedbackBody: post?.body ?? null,
       requests: requests(env),
