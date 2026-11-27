@@ -145,6 +145,11 @@ REFERENCE: dict[tuple[str, str], Entry] = {
     ("POST", "/api/maintenance-windows/{wid}/extend"): Entry(MAINT, "Extend a running window"),
     ("GET", "/api/organizations"): Entry(MAINT, "List organizations (providers)"),
     ("POST", "/api/organizations"): Entry(MAINT, "Create an organization"),
+    ("POST", "/api/organizations/{organization_id}/name"): Entry(MAINT, "Rename a customer"),
+    ("POST", "/api/mail/oauth/start"): Entry(SETTINGS, "Start a Microsoft sign-in for a mailbox"),
+    ("POST", "/api/mail/oauth/poll"): Entry(
+        SETTINGS, "Ask whether a Microsoft sign-in was approved"
+    ),
     ("POST", "/api/entities/{ne_id}/organization"): Entry(MAINT, "Assign an element's provider"),
     ("GET", "/api/brokers"): Entry(BROKERS, "List the brokers (monitored networks) you can see"),
     ("GET", "/api/brokers/{broker_id}"): Entry(BROKERS, "One broker and how its traps arrive"),
@@ -205,6 +210,12 @@ REFERENCE: dict[tuple[str, str], Entry] = {
     ),
     ("POST", "/api/noc/customers/{customer_id}/mail/test"): Entry(
         CUSTOMERS, "Send a test email to a customer's recipients"
+    ),
+    ("POST", "/api/noc/customers/{customer_id}/mail/try"): Entry(
+        CUSTOMERS, "Try a customer's mailbox before saving it"
+    ),
+    ("POST", "/api/noc/customers/{customer_id}/mail/account"): Entry(
+        CUSTOMERS, "Keep a customer's mailbox: its login in the vault"
     ),
     ("POST", "/api/noc/cases/{sid}/open"): Entry(
         CASES, "Start working an open situation: open its case"

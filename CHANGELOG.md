@@ -47,6 +47,40 @@ data directory), without which sealed values and every password are unreadable (
 secrets key file** (`secrets.key`; the image keeps it on a volume of its own), without which every
 stored device credential is unreadable (#455).
 
+### Added — the Default customer; brokers and NOC customers given separately; a super admin (#507, #508)
+
+- **The Default customer.** The default organization is a NOC customer named *Default* (renamed in
+  place, never ended), and the Default broker points to it. A fresh appliance writes an example of
+  each part of its book: instructions, a work contact, a document, a circuit. Migration **0050**.
+- **A customer's page**: the brokers that point to it; **Access**, **Email** and **Routines** as
+  three cards above the other tabs; the workbook is the **Work Contact**; Access holds the hosts'
+  logins only, under a banner that says what it is; a circuit can be **cloned**.
+- **A broker's edit form** in three groups — the broker, its NOC customer, how its traps arrive.
+- **People & access → Brokers & customers**: each person — viewer, editor or admin — gets every,
+  some or no brokers, and every, some or no NOC customers, separately. Every `/api/noc/` route is
+  decided by the NOC side alone; the console shows only the planes a person has. A limited admin
+  administers its own brokers and customers and none of the appliance's settings, people or audit.
+- **The super admin** reaches everything, always: it cannot be limited, demoted, disabled or
+  deleted, by anyone, itself included (a database constraint holds the last two).
+
+### Added — email set up in steps; Outlook.com signs in with Microsoft (#510)
+
+- **Settings → Email and a customer's Email** are three steps — provider, account, test and save —
+  each validated; Save is offered once a test went through. The test sends the draft, storing
+  nothing.
+- **Outlook.com / Hotmail** refuse a password for SMTP (`5.7.139 basic authentication is
+  disabled`): they **sign in with Microsoft** (device code, your Entra application ID), and the
+  appliance sends as XOAUTH2, renewing the token itself. A refused password now says what it means.
+- **A customer's mailbox keeps its own login**, sealed in the vault from its Email tab (no detour
+  through Access); its inbox can be signed in to and checked in the same test.
+
+### Changed — an agent's Markdown, drawn; the agent's month, forecast (#509)
+
+- An agent's last run, its runs and its feed posts render Markdown — headings, lists, code — built
+  as elements, never as markup.
+- The agent's page forecasts the month at today's pace against its budget, instead of repeating
+  what was spent so far.
+
 ### Fixed — a resolved situation is history; cards follow the operator's act (#506)
 
 - **A resolved situation cannot clear another situation's alarms.** An alarm raised again after its

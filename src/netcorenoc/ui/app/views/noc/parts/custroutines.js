@@ -27,6 +27,24 @@ function Card({ p, on, onOpen }) {
   </button>`;
 }
 
+/* ADR #507: what a routine does, before any list — the owner's word is that the NOC's heart must be
+ * understood at a glance: a case matches it, an agent runs it in one call, the tree decides each
+ * next check, and the agent improves it after the case, every version kept. */
+const FLOW = [
+  ["cases", "A case arrives", "The routine whose “when” matches its alarm is the one run."],
+  ["bot", "An agent runs it", "Every check on this customer's hosts in one call, through a leased token — never a password."],
+  ["playbook", "The tree decides", "Each result picks the next check, until a verdict and what to do next."],
+  ["sparkle", "It gets better", "After the case the agent writes a better version and says why; every version is kept, with how its runs ended."],
+];
+
+function RoutineFlow() {
+  return html`<ol class="rt-flow" aria-label="How a routine works">
+    ${FLOW.map(([icon, title, text], i) => html`<li key=${title}>
+      <span class="rt-flow-mark"><${Icon} name=${icon} /><em>${i + 1}</em></span>
+      <span><b>${title}</b><small>${text}</small></span></li>`)}
+  </ol>`;
+}
+
 export class CustomerRoutines extends Component {
   constructor(props) {
     super(props);
@@ -69,6 +87,7 @@ export class CustomerRoutines extends Component {
         on=${routineId === p.id} onOpen=${() => this.open(p.id)} />`)}</div>` : html`<p class="muted">${none}</p>`}
     </section>`;
     return html`<div class="cust-routines">
+      <${RoutineFlow} />
       <div class="cust-routines-head">
         <p class="muted">${plural(own.length, "routine")} of ${c.name}'s, ${plural(shared.length, "shared routine")} ·
           ${" "}${plural(runs, "run")}. An agent runs one in a single call; each version is kept, with why it changed.</p>

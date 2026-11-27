@@ -239,6 +239,9 @@ class Principal:
     user_id: int | None = None
     must_change_password: bool = False
     token_id: int | None = None  # v0.7.0: the service-token row id, for per-principal policy
+    #: ADR #508: the super admin — never limited, demoted, disabled or deleted. Read with the
+    #: session, from the row the database keeps an enabled admin by constraint.
+    is_owner: bool = False
 
     @property
     def ref(self) -> str | None:
@@ -324,6 +327,7 @@ async def resolve_session(
         kind="session",
         user_id=int(row["user_id"]),
         must_change_password=bool(row["must_change_password"]),
+        is_owner=bool(row.get("is_owner", False)),
     )
 
 

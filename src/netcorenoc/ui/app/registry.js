@@ -213,7 +213,7 @@ export const VIEWS = [
     // under the one open, the four parts of its book; `#/customers/{id}/{part}` opens a part.
     id: "customers", label: "Customers", icon: "building", group: "customers", plane: "noc",
     navLabel: "All customers", capability: "cases.read", component: Customers,
-    summary: "Each customer's instructions, workbook, documents and circuits — what agents read first.",
+    summary: "Each customer's instructions, work contacts, documents and circuits — what agents read first.",
   },
   {
     // ADRs #465, #468: Paperclip's agents page. The sidebar lists each agent below this entry;

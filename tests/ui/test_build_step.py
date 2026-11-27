@@ -367,7 +367,7 @@ UI_HASHES: dict[str, str] = {
     "app.js": "8870c9345ea82cd79ea6770f42f8966a06f285a0d42e6cce6e2b022a7e1c3f90",
     "app/api.js": "db042593c344a37f646c3ab5df2c1a8b2abbae18d06bf0b2ffce789406d9ed1a",
     "app/avatar.js": "259c4a7bc6d13140d8e7629a053d55d796e2accf54acac141935c82204ddced6",
-    "app/brands.js": "18305d389a88d002f6e40b289078f03563cd9071c889af4572b3f489087348df",
+    "app/brands.js": "c3268b3b5529c9df9caecd9c2e915b3435f31f9c7efa6befd95c86b85261b073",
     "app/brokers.js": "2891961cc81d30ffab508b4cbe4aae04ce3843568bf9a8dc50bba8962b53a9b8",
     "app/chartdata.js": "b503668f63c2d46ae1017744d04d268ee2f3e365b95fdae793a0de82c5b45032",
     "app/charts.js": "f0043e04b0c4ba8b6a7e100f73bda78c67692ef00c8080497ffcb12cecee6418",
@@ -377,23 +377,25 @@ UI_HASHES: dict[str, str] = {
     "app/format.js": "270b0788ec61b5166ef4dc8589755b06caafe5ba87829bd419d115926521ac4c",
     "app/heading.js": "e4115d0da279413ab9c0855f549aeb1df6c94453e538afc05316b8aa8eaa89f5",
     "app/health.js": "0f1a629bac6126df079d88ededc8581d00cc43f2e9a6afecc293b51e3f73b090",
-    "app/icons.js": "290bf5d9e01deb13649f1f96d4b31fdd3121a8878a21d431622eb5bd21cff71c",
+    "app/icons.js": "dbd5ef0a69acff66565dbfb6ee931d71985ae00ea40d43b1a328414aeec69a39",
     "app/info.js": "15e06186daadead308f180d23feb479eccf2506d70bfadbda477ccc6f7d3c11f",
     "app/layout.js": "447b775510c160d906ed6c54831954734c1f8bd70e90079a1fc280d6a9bad577",
     "app/login.js": "4316945989de1e1526389182db7e54dfdbeed4eab85d5d00821290ffc519dabf",
     "app/logo.js": "163352a0c9a8064f151396f17fa948fecb0334a41a7a4e068de24907845b52dd",
+    "app/mailwizard.js": "a0f15c0d2059efaa008f9113ba8210f433e8911ad18168dd2437f19b667f2bcd",
+    "app/markdown.js": "489b4bfdac0ef83e06f2547d580afcfb62d3c0bec2d4435980f506a1c512960e",
     "app/modelcharts.js": "b5a2afc2b92bcb12d15fb0794cd21d0cd928472d7360616660df3c4805efff46",
     "app/netgraph.js": "30c308afc4fc650550ce0751d212a54145c293629552028ecf58c2061951251a",
     "app/notices.js": "a6d15665d53bff109c8d5e5be6e1116f4d1a014b1ba10e141b80cf9de7e62261",
     "app/parameters.js": "6c5cf807535cc2ef87d4b1d54f2ab2abb34f595f74c64cc272b26bb88113b1f4",
     "app/password.js": "24e6e0c3927e67542aacef55051cb289c5310c93cd9ab4844a581a5256a7d87c",
-    "app/plane.js": "1f46083206d6a6a2c6e8fea242e3bfeef0a9465d7846f6b7844523af6f47b382",
+    "app/plane.js": "60590abc1b498e9f2474777f588f99a97516b7ae13b67ebd7e3bcc0640ef257f",
     "app/recover.js": "4ec71b672d6d647dc311fede65c51ff407b883f85d3bfdc8cec5e229f92fa5be",
-    "app/registry.js": "f3ce96e673c05d806b46f1180b9a0479994b4282cd562459731423f197dcaa1d",
+    "app/registry.js": "189d12ca5f72366e1d1803c76195d0f27fd0fa2f4cb4afdd650542b3bb79cc4d",
     "app/roster.js": "9f6bf45a045e9d6d5ae1343d69fd330746b372f1d295344be9b93eac016c9d02",
     "app/router.js": "9d6635854bd66b18c51318ce219fdc54c8260444b95a1da6228afd03afdf313e",
     "app/session.js": "8779cdd7c8bea0dcb8427dc74d3ea6ce5e03c7dc6ea01b566eb4d85f5834c97e",
-    "app/shell.js": "43ebdd47f3de134aeb13d529315b320100883a51e3812532eadc6daf099f213b",
+    "app/shell.js": "37852d7b372dae40007dea454d2096a593bfb1dabe49b39e8a85648052666c89",
     "app/sidebar.js": "817c8bb3751662ee64d8860d1b620f0dec244e07a3aca17cf0c352579f976255",
     "app/stack.js": "7fc57239d1f7cf2de84f39a726914bcc305cfd2b90de97df08870a6570ce5185",
     "app/store.js": "eb5e8965f788e5b8054d9aef7ea0ce060046203f3c17233f75bc24ed11951e0e",
@@ -414,16 +416,16 @@ UI_HASHES: dict[str, str] = {
         "4ee4f22219de9db4e88551177e17e93c24d075ef0061750b424a6f5aab7fe6a1"
     ),
     "app/views/admin/parts/custscope.js": (
-        "a43386aac6d6d351b7dca8c96ad99a66bdcbb12cb3e844e37c3e9c420d4d10a9"
+        "f899e419e053f1876ca9c9070997cca217d88a3da1a1ce4a935c31805ce11d18"
     ),
     "app/views/admin/parts/email.js": (
-        "2fc6d0c4b0e704d39288be64fd73862124871630a34c1de2aea904272dc8623a"
+        "9d99b2cc87dcb2fad7186b4579fc2c4f3a1f798e5da06bb1fb301b52d7e33bf2"
     ),
     "app/views/admin/parts/facts.js": (
         "a4ab82c1dec7eb3065be4f86895e92425485461854753a5b16ddb5cd056f2a03"
     ),
     "app/views/admin/parts/people.js": (
-        "5fda1c72809368063ff6d5b17aff8e5d504ee92e0bbf1eb373dea61235115b29"
+        "73cbb20ca32f896afc4d1e17bfcccc956c46d7b006062be1805b9c434ae0136a"
     ),
     "app/views/admin/parts/personsecurity.js": (
         "1324bd6bdbaae5ba69e3a8b253561e079d71ca3b1e326f1671aa21c1f3097af7"
@@ -472,7 +474,7 @@ UI_HASHES: dict[str, str] = {
         "e6cb6e2333bf318dda0575ae82dbbde7b1ababf5c329811cdc5fbe11ebd1bccb"
     ),
     "app/views/broker/parts/brokerhome.js": (
-        "588f3fe08b2707f11ba8437dd7422ae8be901e555486345407bdf778ea2610c5"
+        "f860073da36af74f29329c36cd85ddf03b52595ed4d72299906732799bd023e7"
     ),
     "app/views/broker/parts/brokerlearn.js": (
         "04063ddf03e4fafdce90f01d57dd3b6312bc50a3173343cecce6f9007e6a963c"
@@ -639,7 +641,7 @@ UI_HASHES: dict[str, str] = {
     "app/views/noc/agents.js": "d670fc06955dd40e718b0b68042dd2979ad944147754bf00771e153ab4a1d179",
     "app/views/noc/cases.js": "b09a5028c50e7c6f4cbe61f47b62238724a31d9b7b412cf5c77e3a72460f8ed7",
     "app/views/noc/customers.js": (
-        "8ac6e7e3af198fcabb777c7f21eb910ad3e823472464377710d897b2c5f35325"
+        "479d2db5e149fa41da56537290e9161af613d3ea046f9309bca7492e1478a48c"
     ),
     "app/views/noc/nockpis.js": "ad145e2f67715d8aa0ec58b9d8d494d24d8a68963af6444bf33d6552262f28ed",
     "app/views/noc/nocoverview.js": (
@@ -650,7 +652,7 @@ UI_HASHES: dict[str, str] = {
         "adcef1220a5ee504931c08f4edbd45140fd0c65cf96c0eb345d18159c85aad73"
     ),
     "app/views/noc/parts/agentdash.js": (
-        "8d93b158682945eb761d453c162f75889d2752c42663e31ffbf8dc3627c59ebc"
+        "587dcf0823b65ea2d1bf3d16ea18bc29b4f6daee501928e80fa2ea80e3295643"
     ),
     "app/views/noc/parts/agentdetail.js": (
         "4b9539daac779b0977dbdc75ea7e3445b5758ac0766a23b3b06bb39a490127ff"
@@ -662,10 +664,10 @@ UI_HASHES: dict[str, str] = {
         "787004559acfc1ca5d27e04b55344f19155bb1fa2ded984eb0bd0323ee8512ba"
     ),
     "app/views/noc/parts/agentrun.js": (
-        "3fb74283113708c7a1ecc95f36e1c392dddca9d5d7d2f16d3abcd7a69c2e90e2"
+        "76d5c0bf3997fe5ef19961a33dc09c2376e8256df6906cf4472dbe90c95dc259"
     ),
     "app/views/noc/parts/agentruns.js": (
-        "b05ec443921893fa6b5b94edb23b370a0a42c39f33439a1edf361a5af6587153"
+        "6eec75d8cf677cb4a2f351cf303475ff35e9dc3adc0b91bf887acfc4591a1b88"
     ),
     "app/views/noc/parts/aiproviders.js": (
         "18af413e5aa1f26ae5b1ce8b2591086f361e1526eb1a6d886016d75bfc37e9b5"
@@ -680,13 +682,13 @@ UI_HASHES: dict[str, str] = {
         "5bd53f8b3878d74768a1ca078fcbc0a8f6f57e315493e2498a2ff91eb29244fc"
     ),
     "app/views/noc/parts/casedetail.js": (
-        "db91e3f9b27148564e20cd8c4bef72a34dddc437aa2f51088a241ece25ab2809"
+        "1fae2f12d6542cb075790c946fb92cea26bcdc18bf1f4047967d1df7a3359eb2"
     ),
     "app/views/noc/parts/caseemail.js": (
         "40d7cad5776f4383860999107a9a7b2beb97233186fc6dfd444ce857b9389a33"
     ),
     "app/views/noc/parts/casefeed.js": (
-        "ccab971c2e1bcf9310ff6198a896039b481aa3dd052de5e36863c3c64c0056ea"
+        "ed8f102189babc7eefdb7141d6cbd41917bcf9533d13923bb111a262063e0cb8"
     ),
     "app/views/noc/parts/caseform.js": (
         "8e3759332d9cce96972ff72f0d847e389715773f9a338bac3c13c5c002661641"
@@ -695,16 +697,16 @@ UI_HASHES: dict[str, str] = {
         "829f6daa4c4c15a901a4af4e71e94d4df9cef74069081fb79d1852581cd1621b"
     ),
     "app/views/noc/parts/circuitedit.js": (
-        "9091de12b6acf70a9391175526874e514e2674b658a109e99992c8c7bc6c2c18"
+        "3910b7cfc6d9fc2a82be84b8893f25ff7656d4cbf6b0335cacca290bfbf4cf95"
     ),
     "app/views/noc/parts/circuits.js": (
-        "4caa2568ed45669489209aef3b7a8b63fd63234246929deaf1afaf44e58d1c55"
+        "96dce74786b427a0af232a96a8b03f5fee3299b77dd83b6bccdd2d3caea81de1"
     ),
     "app/views/noc/parts/credlist.js": (
         "4fa1b0a6059d4da35e3baf76322b04f327e3a083699985e646569fb20c8cb93b"
     ),
     "app/views/noc/parts/custaccess.js": (
-        "7efbe7a500256cb90f7c01e256f9f182523c21faf6b419e560c45b038951d479"
+        "7b34ac51e443ebff1e3dee849755825aa3c82e2c955f09d198b995036b4e52cc"
     ),
     "app/views/noc/parts/custbook.js": (
         "ded33c77cb92e5c71f40d30d0de38d4bc1033d3483d5204dd722b9a376f14705"
@@ -715,11 +717,14 @@ UI_HASHES: dict[str, str] = {
     "app/views/noc/parts/custdocs.js": (
         "9b5c1fb247135775376ed8e06fb0ed39c2a4c83efd0dbc70eec2ef914e617683"
     ),
+    "app/views/noc/parts/custhead.js": (
+        "84daeab13a8697a00ea582c0ec9f21bfd8f64fd1b78efe9fa4d2003396247a75"
+    ),
     "app/views/noc/parts/custmail.js": (
-        "92963fd379bdc279d7786aa6b5c60384ba560e50db265837e88ee8eae2e9837a"
+        "f014f7455558838bf00e1eea1c5ecaff5b1221da48d7cd1f54e1662c8781632b"
     ),
     "app/views/noc/parts/custroutines.js": (
-        "7b81723ded559fe64a5e1b09f3ca2cd22b7da88c5698c9d9fc6205380fee73b6"
+        "a07030ac5efec1278c54b4053640362ce1a79958fc279e4a539bdda92111e8a5"
     ),
     "app/views/noc/parts/nocgrants.js": (
         "02cdbba050937aab071ceaa844db8cd8418385cbc8a3d6abf63ecc67df842ef4"
@@ -728,7 +733,7 @@ UI_HASHES: dict[str, str] = {
         "90111af0703e8900244b6040ce8d80e9e9fc8c916abe3885c209aa1b00a22065"
     ),
     "app/views/noc/parts/nocui.js": (
-        "b07bd16a382c80ebb07240458087b3a579e47d1b718343bfc0c13ebef0dff09d"
+        "06b7b3874f76a298fcae6b661e255f1ad11fc027f08b22902fbf6305bbff4346"
     ),
     "app/views/noc/parts/ollamamodels.js": (
         "d3df4a6e878bdcd397a3a23b09c28aaa92f81f82acd6bb91fa2849bd14764c1b"
@@ -758,9 +763,9 @@ UI_HASHES: dict[str, str] = {
     "index.html": "4d35d7908118371e87e47c19047354ce0b2cec589032216a8a303114b70eb4c4",
     "login-bg.svg": "5f677f3371a2828c8d21668cd83381c105ccdc1780a66dc09fc6f6bc19d211d6",
     "styles/admin/audit.css": "12f67e7c62ce398fdcf5b0721fd8aa5eee999d5bfac740ccb3d8beb624f6f5a3",
-    "styles/admin/people.css": "f12154722f16c873223317e637cd1aef7f9346b4677fc79b357a54e50133b532",
-    "styles/admin/settings.css": "0a7c6be7607714caabd9e0ff251bb3277e463be24bf6ab752df0d54bc8fc8e7d",
-    "styles/broker/brokers.css": "ae8be5141f33e6c056f28660d2be2eead7b12f08ff9fa283fcd0ed2a8939a4b7",
+    "styles/admin/people.css": "4fc298eb3967c41077ee998bf0a57cda7f5c6d561043b37d5a1f7e61bef9fb2d",
+    "styles/admin/settings.css": "f04db086d6e1d41f9cd1a55bce387609d2020ba3f044099c4dfe8ab631887565",
+    "styles/broker/brokers.css": "71e21eaf4cfbeb11a45cea9572922706c86e515fc88c7ec8843bb7107e546516",
     "styles/broker/catalogue.css": (
         "a3dbc9550bb88aac32c4722224f078f04d357af18b11fda989d1d1239d1f3764"
     ),
@@ -801,13 +806,13 @@ UI_HASHES: dict[str, str] = {
     "styles/core/sign-in.css": "f6dbf93af39880d7572dc03f6f804e8421c7d79aa22049a6fd65a14d5b643f9a",
     "styles/core/tokens.css": "8a69f87ab999e0cdadcfcc5ff24a5d7bf1a172ee4e37864f311b46bbc3524b48",
     "styles/core/widths.css": "457e0b2b769295ecf4a5a7e733d2d0a02ad5f2b685c730c12e2719f71269187d",
-    "styles/noc/agents.css": "d637a2fbab66764afc6831220fa7aae5d2aca5ef10730325cc670ab4cf6cb6e4",
+    "styles/noc/agents.css": "94773616511f5532b0e4cad7c1170dca8c3e74c8e8f6c89b813741f67a88db6c",
     "styles/noc/cases.css": "14fd38b4a4f6a56e9ac69afec5ad90e69bb0de9f54363346926dccae73b36101",
-    "styles/noc/customers.css": "c1e4447bbccafd1da93f1ed69f3b2ce24cb7e620d9e685e8abcf0b69f11a1749",
+    "styles/noc/customers.css": "63190db46d0df16f6b942be00bf356f984504f18daf841fcf004d36cfbd1b7e8",
     "styles/noc/ollama.css": "87585336e4e420fd486024762dfb99fda358582408c6745401d51d29d9b5154e",
     "styles/noc/overview.css": "6dfe622851bf4c9e98d7bebfd28261665b8dfbacc787ab653009523cb92a1550",
     "styles/noc/plane.css": "f0557e6d057e7ab08cbdb72b4c5c9026af892013b17e5599e39fe7e2758ea02c",
-    "styles/noc/routines.css": "e2376d95095d6997975c89712534a98d08a0df4c294230a5cce5bd53727df8d7",
+    "styles/noc/routines.css": "07461f834efb0609fc31736dd3937360b130f78c8ac66ceb9e6aa502aab9fab2",
     "styles/noc/secrets.css": "fa980457460a27afea63fac5ac29b6ff7c2101608b55ec1e0df7878df943d96c",
     "vendor/CHECKSUMS.txt": "d0a7c4ec48719c3cb3c86f6da7e010b7be5e822cf62ed9f2aafdf39726405ad7",
     "vendor/htm-3.1.1.module.js": (
@@ -830,7 +835,7 @@ UI_SIZES: dict[str, int] = {
     "app.js": 5_594,
     "app/api.js": 5_405,
     "app/avatar.js": 7_309,
-    "app/brands.js": 15_476,
+    "app/brands.js": 15_657,
     "app/brokers.js": 6_202,
     "app/chartdata.js": 8_533,
     "app/charts.js": 15_836,
@@ -840,23 +845,25 @@ UI_SIZES: dict[str, int] = {
     "app/format.js": 15_764,
     "app/heading.js": 1_603,
     "app/health.js": 7_617,
-    "app/icons.js": 13_900,
+    "app/icons.js": 14_134,
     "app/info.js": 2_407,
     "app/layout.js": 9_799,
     "app/login.js": 8_780,
     "app/logo.js": 1_573,
+    "app/mailwizard.js": 17_722,
+    "app/markdown.js": 5_404,
     "app/modelcharts.js": 17_564,
     "app/netgraph.js": 11_593,
     "app/notices.js": 14_771,
     "app/parameters.js": 10_388,
     "app/password.js": 6_064,
-    "app/plane.js": 3_305,
+    "app/plane.js": 4_075,
     "app/recover.js": 4_934,
-    "app/registry.js": 15_416,
+    "app/registry.js": 15_421,
     "app/roster.js": 4_070,
     "app/router.js": 5_261,
     "app/session.js": 4_224,
-    "app/shell.js": 17_502,
+    "app/shell.js": 17_571,
     "app/sidebar.js": 13_188,
     "app/stack.js": 6_564,
     "app/store.js": 7_101,
@@ -868,10 +875,10 @@ UI_SIZES: dict[str, int] = {
     "app/views/admin/parts/apiref.js": 8_853,
     "app/views/admin/parts/autonomy.js": 10_616,
     "app/views/admin/parts/capgrid.js": 6_769,
-    "app/views/admin/parts/custscope.js": 4_470,
-    "app/views/admin/parts/email.js": 12_335,
+    "app/views/admin/parts/custscope.js": 6_257,
+    "app/views/admin/parts/email.js": 7_020,
     "app/views/admin/parts/facts.js": 6_394,
-    "app/views/admin/parts/people.js": 16_287,
+    "app/views/admin/parts/people.js": 16_981,
     "app/views/admin/parts/personsecurity.js": 4_865,
     "app/views/admin/parts/retention.js": 5_110,
     "app/views/admin/parts/roles.js": 4_988,
@@ -888,7 +895,7 @@ UI_SIZES: dict[str, int] = {
     "app/views/broker/learning.js": 8_787,
     "app/views/broker/maintenance.js": 13_247,
     "app/views/broker/overview.js": 11_955,
-    "app/views/broker/parts/brokerhome.js": 9_943,
+    "app/views/broker/parts/brokerhome.js": 12_101,
     "app/views/broker/parts/brokerlearn.js": 2_767,
     "app/views/broker/parts/brokerpick.js": 1_964,
     "app/views/broker/parts/brokerwizard.js": 9_754,
@@ -945,38 +952,39 @@ UI_SIZES: dict[str, int] = {
     "app/views/broker/timeline.js": 7_538,
     "app/views/noc/agents.js": 10_398,
     "app/views/noc/cases.js": 11_517,
-    "app/views/noc/customers.js": 12_929,
+    "app/views/noc/customers.js": 13_728,
     "app/views/noc/nockpis.js": 4_785,
     "app/views/noc/nocoverview.js": 13_829,
     "app/views/noc/org.js": 12_147,
     "app/views/noc/parts/agentadmin.js": 8_066,
-    "app/views/noc/parts/agentdash.js": 13_947,
+    "app/views/noc/parts/agentdash.js": 15_464,
     "app/views/noc/parts/agentdetail.js": 9_448,
     "app/views/noc/parts/agentform.js": 12_637,
     "app/views/noc/parts/agentkey.js": 4_342,
-    "app/views/noc/parts/agentrun.js": 11_446,
-    "app/views/noc/parts/agentruns.js": 4_082,
+    "app/views/noc/parts/agentrun.js": 11_660,
+    "app/views/noc/parts/agentruns.js": 4_149,
     "app/views/noc/parts/aiproviders.js": 16_316,
     "app/views/noc/parts/caseacts.js": 6_412,
     "app/views/noc/parts/caseassign.js": 5_945,
     "app/views/noc/parts/caseclock.js": 2_735,
-    "app/views/noc/parts/casedetail.js": 12_198,
+    "app/views/noc/parts/casedetail.js": 12_203,
     "app/views/noc/parts/caseemail.js": 14_021,
-    "app/views/noc/parts/casefeed.js": 9_434,
+    "app/views/noc/parts/casefeed.js": 9_717,
     "app/views/noc/parts/caseform.js": 10_126,
     "app/views/noc/parts/casemilestones.js": 5_162,
-    "app/views/noc/parts/circuitedit.js": 8_350,
-    "app/views/noc/parts/circuits.js": 13_665,
+    "app/views/noc/parts/circuitedit.js": 8_828,
+    "app/views/noc/parts/circuits.js": 14_221,
     "app/views/noc/parts/credlist.js": 2_738,
-    "app/views/noc/parts/custaccess.js": 3_848,
+    "app/views/noc/parts/custaccess.js": 5_865,
     "app/views/noc/parts/custbook.js": 6_436,
     "app/views/noc/parts/custcontacts.js": 9_072,
     "app/views/noc/parts/custdocs.js": 8_205,
-    "app/views/noc/parts/custmail.js": 8_501,
-    "app/views/noc/parts/custroutines.js": 4_912,
+    "app/views/noc/parts/custhead.js": 5_178,
+    "app/views/noc/parts/custmail.js": 7_170,
+    "app/views/noc/parts/custroutines.js": 6_039,
     "app/views/noc/parts/nocgrants.js": 5_513,
     "app/views/noc/parts/nocstart.js": 7_403,
-    "app/views/noc/parts/nocui.js": 3_788,
+    "app/views/noc/parts/nocui.js": 3_874,
     "app/views/noc/parts/ollamamodels.js": 5_556,
     "app/views/noc/parts/orgmove.js": 4_157,
     "app/views/noc/parts/routineform.js": 17_311,
@@ -991,9 +999,9 @@ UI_SIZES: dict[str, int] = {
     "index.html": 3_414,
     "login-bg.svg": 18_884,
     "styles/admin/audit.css": 5_339,
-    "styles/admin/people.css": 14_921,
-    "styles/admin/settings.css": 10_698,
-    "styles/broker/brokers.css": 7_872,
+    "styles/admin/people.css": 15_995,
+    "styles/admin/settings.css": 14_940,
+    "styles/broker/brokers.css": 8_833,
     "styles/broker/catalogue.css": 6_296,
     "styles/broker/entities.css": 4_768,
     "styles/broker/first-run.css": 5_443,
@@ -1014,13 +1022,13 @@ UI_SIZES: dict[str, int] = {
     "styles/core/sign-in.css": 11_836,
     "styles/core/tokens.css": 10_489,
     "styles/core/widths.css": 7_450,
-    "styles/noc/agents.css": 23_473,
+    "styles/noc/agents.css": 24_542,
     "styles/noc/cases.css": 19_580,
-    "styles/noc/customers.css": 14_229,
+    "styles/noc/customers.css": 18_107,
     "styles/noc/ollama.css": 2_231,
     "styles/noc/overview.css": 8_248,
     "styles/noc/plane.css": 6_123,
-    "styles/noc/routines.css": 8_021,
+    "styles/noc/routines.css": 9_340,
     "styles/noc/secrets.css": 9_991,
     "vendor/CHECKSUMS.txt": 2_426,
     "vendor/htm-3.1.1.module.js": 1_207,

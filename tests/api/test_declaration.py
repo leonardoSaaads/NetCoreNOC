@@ -753,11 +753,18 @@ async def test_f43_every_path_served_today_still_registers(store: Store) -> None
     # (`views/broker/parts/mwboard.js`, ADR #503)
     # Unreleased: 385 -> 416 and 214 -> 214 — the stylesheet in parts (ADR #504): `style.css` became
     # the 32 sheets of `styles/`, each served
-    assert len(served) == 416, f"the served surface moved: {len(served)} method/path pairs"
+    # Unreleased: 416 -> 419 and 214 -> 215 — ADR #507 renames a customer (POST
+    # /api/organizations/{organization_id}/name); ADR #507 and #509 serve parts/custhead.js and
+    # markdown.js
+    # Unreleased: 419 -> 421 and 215 -> 217 — ADR #510 signs a mailbox in with Microsoft (POST
+    # /api/mail/oauth/start and /poll)
+    # Unreleased: 421 -> 424 and 217 -> 219 — ADR #510: a customer's mailbox tried and kept (two
+    # routes) and the shared wizard, app/mailwizard.js
+    assert len(served) == 424, f"the served surface moved: {len(served)} method/path pairs"
     api_pairs = {(method, path) for method, path in served if path.startswith("/api")}
     # **v0.19.0: 53 -> 55.** `GET /api/models` and `POST /api/models/register`: what the
     # models are doing, and turning one of this appliance's own fits into an artefact.
-    assert len(api_pairs) == 214, (
+    assert len(api_pairs) == 219, (
         f"the /api surface moved: {len(api_pairs)} pairs. v0.16.0 adds exactly five — the "
         f"operator's five gestures — v0.16.2 adds exactly one, `POST …/promote` (DECISIONS #273), "
         f"v0.16.5 adds exactly one, `POST /api/alarms/clear` (DECISIONS #301), "
@@ -981,11 +988,18 @@ async def test_f42_every_path_served_today_still_registers(store: Store) -> None
     # (`views/broker/parts/mwboard.js`, ADR #503)
     # Unreleased: 385 -> 416 and 214 -> 214 — the stylesheet in parts (ADR #504): `style.css` became
     # the 32 sheets of `styles/`, each served
-    assert len(served) == 416, f"the served surface moved: {len(served)} method/path pairs"
+    # Unreleased: 416 -> 419 and 214 -> 215 — ADR #507 renames a customer (POST
+    # /api/organizations/{organization_id}/name); ADR #507 and #509 serve parts/custhead.js and
+    # markdown.js
+    # Unreleased: 419 -> 421 and 215 -> 217 — ADR #510 signs a mailbox in with Microsoft (POST
+    # /api/mail/oauth/start and /poll)
+    # Unreleased: 421 -> 424 and 217 -> 219 — ADR #510: a customer's mailbox tried and kept (two
+    # routes) and the shared wizard, app/mailwizard.js
+    assert len(served) == 424, f"the served surface moved: {len(served)} method/path pairs"
     api_pairs = {(method, path) for method, path in served if path.startswith("/api")}
     # **v0.19.0: 53 -> 55.** `GET /api/models` and `POST /api/models/register`: what the
     # models are doing, and turning one of this appliance's own fits into an artefact.
-    assert len(api_pairs) == 214, (
+    assert len(api_pairs) == 219, (
         f"the /api surface moved: {len(api_pairs)} pairs. v0.16.0 adds exactly five — the "
         f"operator's five gestures — v0.16.2 adds exactly one, `POST …/promote` (DECISIONS #273), "
         f"v0.16.5 adds exactly one, `POST /api/alarms/clear` (DECISIONS #301), "
@@ -1091,7 +1105,9 @@ def test_every_unscoped_declaration_carries_a_written_justification() -> None:
     # checks it against the caller's scope itself (an out-of-scope case is a 404 like an unknown).
     # ADR #501: 66 -> 67 — an earlier version of a routine: a tree names no element, and the
     # version is read under its own tier and customer as the routine is.
-    assert len(entries) == 67, entries
+    # ADR #510: 67 -> 69 — starting and polling a Microsoft sign-in for a mailbox: an account at
+    # Microsoft, held for the person who started it, naming no network element.
+    assert len(entries) == 69, entries
     unjustified = [lines[i].strip() for i in entries if not lines[i - 1].strip().startswith("#")]
     assert not unjustified, (
         "every `unscoped` route must be preceded by a comment saying why it is not scoped:\n  "
@@ -1276,7 +1292,8 @@ def test_the_three_postures_are_all_populated() -> None:
     # ADR #494: 53 -> 58. Adding, changing and removing a broker, its proxy's token, moving an
     # element between brokers: `brokers.write`, admin.
     # ADR #499: 58 -> 59. Which customers one person serves, by `scope.write`, as the policy.
-    assert len(ADMIN_ONLY) == 59, len(ADMIN_ONLY)
+    # Unreleased: 59 -> 60, a customer renamed in place (ADR #507).
+    assert len(ADMIN_ONLY) == 60, len(ADMIN_ONLY)
     # v0.18.0: 6 -> 7. `GET /api/correlation` is `unscoped` for `GET /api/scorer`'s reason
     # — counters over the scorer's own decisions are a statement about arithmetic and
     # name no network element (Part II).
@@ -1299,7 +1316,8 @@ def test_the_three_postures_are_all_populated() -> None:
     # ADR #487: 63 -> 65, the two named there too.
     # ADR #492: 65 -> 66, running a routine on a case, named there too.
     # ADR #501: 66 -> 67, an earlier version of a routine, named there too.
-    assert len(UNSCOPED) == 67, UNSCOPED
+    # Unreleased: 67 -> 69, a mailbox signed in with Microsoft — start and poll (ADR #510).
+    assert len(UNSCOPED) == 69, UNSCOPED
     # v0.16.0: 12 -> 17. Every one of the five gestures names a network element and every one
     # is below `admin`, so every one is `scoped` — the write perimeter F34 established,
     # widened by exactly the routes this release adds.
@@ -1343,7 +1361,8 @@ def test_the_three_postures_are_all_populated() -> None:
     # ADR #496: 78 -> 80, the brokers a person can see (a collection, counted over their own
     # elements) and one broker (targeted: one none of whose elements they see is a 404).
     # ADR #500: 80 -> 82, an email sent from one case and its editor's draft (targeted).
-    assert len(SCOPED) == 82, SCOPED
+    # ADR #510: 82 -> 84, a customer's mailbox tried and kept (targeted).
+    assert len(SCOPED) == 84, SCOPED
     assert len(rbac.ROUTE_SCOPE) == len(ADMIN_ONLY) + len(UNSCOPED) + len(SCOPED)
 
 
@@ -1368,6 +1387,16 @@ _BODIES: dict[tuple[str, str], dict[str, Any]] = {
     ("POST", "/api/noc/cases/{sid}/resolve"): {"cause": "other", "solution": "guard"},
     # ADR #500: an email to someone, in plain text.
     ("POST", "/api/noc/cases/{sid}/email"): {"to": ["noc@example.com"], "text": "guard"},
+    # ADR #510: a customer's mailbox, tried and kept — each names one customer (targeted).
+    ("POST", "/api/noc/customers/{customer_id}/mail/try"): {
+        "to": "noc@example.com",
+        "account": {"sender": "noc@example.com", "smtp_host": "smtp.example.com", "password": "x"},
+    },
+    ("POST", "/api/noc/customers/{customer_id}/mail/account"): {
+        "sender": "noc@example.com",
+        "smtp_host": "smtp.example.com",
+        "password": "x",
+    },
     ("POST", "/api/noc/cases/{sid}/feed"): {"body": "guard", "visibility": "all"},
     # ADR #467: routing to the NOC team, and an escalation with its reason.
     ("POST", "/api/noc/cases/{sid}/assign"): {"agent_id": None},

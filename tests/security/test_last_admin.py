@@ -21,12 +21,25 @@ from __future__ import annotations
 from typing import Any
 
 import httpx
+import pytest
 
 from netcorenoc.crosscutting import administration, auth
 from netcorenoc.store import Store
 
 import authutil
 import paths
+
+
+@pytest.fixture(autouse=True)
+def _no_super_admin(monkeypatch: pytest.MonkeyPatch) -> None:
+    """ADR #508 mints the first admin as a super admin nobody can demote, which keeps F79 by
+    construction. This file is about the invariant's own code path — an appliance upgraded with no
+    admin to make the owner, or one restored from before it — so no super admin is minted here."""
+
+    async def none(self: Store, user_id: int) -> bool:
+        return False
+
+    monkeypatch.setattr(Store, "make_owner_if_none", none)
 
 
 async def _uid(store: Store, username: str) -> int:

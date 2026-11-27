@@ -66,6 +66,14 @@ class Bootstrap(NamedTuple):
     password: str
 
 
+#: ADR #508: the super admin is never demoted, disabled, deleted or limited — at least one account
+#: always reaches everything.
+OWNER_REFUSAL = (
+    "this is the super admin: they stay an enabled admin with every broker and every customer, "
+    "always — their access cannot be taken away (ADR #508)"
+)
+
+
 async def bootstrap_admin(store: Store, now: float) -> Bootstrap | None:
     """Mint an admin with a random password when the appliance has none; return it once.
 
@@ -85,13 +93,15 @@ async def bootstrap_admin(store: Store, now: float) -> Bootstrap | None:
         return None
     password = secrets.token_urlsafe(BOOTSTRAP_PASSWORD_CHARS)[:BOOTSTRAP_PASSWORD_CHARS]
     username = await _free_username(store, BOOTSTRAP_USERNAME, RECOVERY_USERNAME)
-    await store.create_user(
+    user_id = await store.create_user(
         username=username,
         password_hash=hash_password(password),
         role="admin",
         must_change_password=True,
         now=now,
     )
+    # ADR #508: the first admin is the super admin — never limited, demoted, disabled or deleted.
+    await store.make_owner_if_none(user_id)
     return Bootstrap(username, password)
 
 

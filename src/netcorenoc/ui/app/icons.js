@@ -189,6 +189,9 @@ const ICONS = {
   smartphone: { d: ["M7.5 3.5h9v17h-9v-17Z", "M10.5 17.5h3"] },
   copy: { d: ["M8.5 8.5h11v11h-11v-11Z", "M15.5 8.5v-4h-11v11h4"] },
   lock: { d: ["M6 10.5h12v9.5H6v-9.5Z", "M8.5 10.5V8a3.5 3.5 0 0 1 7 0v2.5"], c: [[12, 15, 1]] },
+  // ADR #507: rename in place, and a copy of a circuit to edit.
+  edit: { d: ["M4.5 19.5l1-4L15.5 5.5l3 3-10 10-4 1Z", "M13.5 7.5l3 3"] },
+  clone: { d: ["M8.5 8.5h11v11h-11v-11Z", "M15.5 8.5v-4h-11v11h4", "M14 11.5v5M11.5 14h5"] },
 };
 
 /** Every name this module can draw. Read by `tests/ui/test_icons.py`, never for dispatch. */

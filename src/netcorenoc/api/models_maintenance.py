@@ -309,6 +309,12 @@ class OrganizationIn(BaseModel):
     slug: str = Field(min_length=1, max_length=64, pattern=r"^[a-z0-9][a-z0-9-]*$")
 
 
+class OrganizationNameIn(BaseModel):
+    """`POST /api/organizations/{organization_id}/name`: a customer's new name (ADR #507)."""
+
+    name: str = Field(min_length=1, max_length=120)
+
+
 class NeOrganizationIn(BaseModel):
     """`POST /api/entities/{ne_id}/organization`. Which provider owns this element.
 

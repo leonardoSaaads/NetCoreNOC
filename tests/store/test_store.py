@@ -41,6 +41,7 @@ async def test_migrations_are_idempotent(db_url: str) -> None:
             (47, "0047_brokers.sql"),
             (48, "0048_case_email.sql"),
             (49, "0049_routine_versions.sql"),
+            (50, "0050_default_customer_owner.sql"),
         ]
         assert all(len(r["checksum"]) == 64 for r in rows)
         assert s.integrity_warnings == []
@@ -420,8 +421,7 @@ async def test_the_active_member_predicate_agrees_with_all_cleared(store: Store)
 # --- PostgreSQL's aborted transaction, contained (ADR #452) -----------------------------------
 
 _DUPLICATE_ORG = (
-    "INSERT INTO organization (name, slug, created_at) "
-    "VALUES ('Default organization', ?, to_timestamp(0))"
+    "INSERT INTO organization (name, slug, created_at) VALUES ('Default', ?, to_timestamp(0))"
 )
 
 

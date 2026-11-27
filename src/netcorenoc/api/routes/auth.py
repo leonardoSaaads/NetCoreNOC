@@ -26,7 +26,7 @@ from netcorenoc.crosscutting import auth, twostep
 def register(app: FastAPI, ctx: AppContext) -> None:
     """Register the auth routes on `app`."""
     store, security = ctx.store, ctx.security
-    throttle, scope_for = ctx.throttle, ctx.scope_for
+    throttle = ctx.throttle
     audit_row, write_txn = ctx.perimeter.audit_row, ctx.write_txn
     route = DeclaredRoutes(app)
 
@@ -119,7 +119,7 @@ def register(app: FastAPI, ctx: AppContext) -> None:
         inventory the caller has not otherwise been given.
         """
         capabilities: frozenset[str] = request.state.capabilities
-        scope = await scope_for(principal)
+        scope = await ctx.perimeter.full_scope_for(principal)
         person = factor = None
         if principal.user_id is not None:
             async with store.reading():
@@ -140,7 +140,15 @@ def register(app: FastAPI, ctx: AppContext) -> None:
             "scope": {
                 "scoped": not scope.unrestricted,
                 "ne_count": None if scope.unrestricted else len(scope.ne_ids),
+                # ADR #508: which planes this person has — a person given a customer's NOC and no
+                # broker sees no Broker plane, and the reverse.
+                "planes": {
+                    "broker": scope.unrestricted or scope.broker_plane,
+                    "noc": scope.noc_plane,
+                },
             },
+            # ADR #508: the super admin, whose access nobody — themselves included — can take away.
+            "owner": principal.is_owner,
             "password_policy": auth.password_policy(),
             # ADR #482: this person's authenticator — whether one is enrolled, since when, last
             # used, and how many recovery codes are left. Never the secret. Null for a token.

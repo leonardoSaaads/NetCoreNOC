@@ -53,6 +53,7 @@ MODULE_ORDER: tuple[str, ...] = (
     "catalogue_import.py",
     "governance_cache.py",
     "perimeter.py",
+    "ratelimit.py",  # ADR #508: the perimeter's token bucket, split at the size guard
     "body_limit.py",  # v0.28.0: the request-body ceiling, wrapped by the perimeter
     "declare.py",
     # v0.16.7 (F115): the live statistics payload, which `routes/read.py` and
@@ -93,6 +94,7 @@ MODULE_ORDER: tuple[str, ...] = (
     "routes/annotate.py",
     "routes/operate.py",
     "scope_subject.py",  # ADR #499: one person's customers, written by `users` and `governance`
+    "signin_flows.py",  # ADR #510: Microsoft sign-ins in progress, held by the server
     "routes/users.py",  # ADR #453: the account routes, split from `admin` in the same order
     "routes/admin.py",
     "routes/people.py",
@@ -118,6 +120,7 @@ MODULE_ORDER: tuple[str, ...] = (
     # v0.30.0, in the order `create_app` registers them.
     "routes/snmp.py",
     "routes/email.py",
+    "routes/mail_signin.py",  # ADR #510
     "routes/recovery.py",
     "routes/apidoc.py",
     # The NOC plane (ADRs #454-#458), in the order `create_app` registers them.
@@ -137,6 +140,7 @@ MODULE_ORDER: tuple[str, ...] = (
     "routes/customer_docs.py",
     "routes/circuits.py",
     "routes/customer_mail.py",
+    "routes/customer_mailbox.py",  # ADR #510
     # ADR #494: the proxy's door before `POST /api/brokers/{broker_id}`, which would read it.
     "routes/broker_ingest.py",
     "routes/brokers.py",

@@ -65,8 +65,9 @@ export function navEntries(agents) {
   }));
 }
 
-/** The four parts of a customer's book, in the order the sidebar and its page show them. */
-export const BOOK = [["instructions", "Instructions", "book"], ["workbook", "Workbook", "phone"],
+/** The parts of a customer's book, in the order the sidebar and its page show them. ADR #507: the
+ * workbook is the **Work Contact** — who to call, company by company. */
+export const BOOK = [["instructions", "Instructions", "book"], ["contacts", "Work Contact", "phone"],
   ["docs", "Additional docs", "doc"], ["circuits", "Circuits", "circuit"],
   // ADR #481: the customer's own credentials and its email, beside what the agents read.
   ["access", "Access", "vault"], ["email", "Email", "mail"],

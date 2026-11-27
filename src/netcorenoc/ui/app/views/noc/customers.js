@@ -6,11 +6,16 @@
  *
  *   * **Instructions** — how the customer wants the NOC to act, kept by people — beside the
  *     **memory** the NOC's agents keep of its network as they work;
- *   * **Workbook** — who to call, company by company, in the order they are called;
+ *   * **Work Contact** — who to call, company by company, in the order they are called (the
+ *     workbook until ADR #507);
  *   * **Additional docs** — what it handed over for troubleshooting, and the text read from each;
  *   * **Circuits** — each circuit and its path, hop by hop;
- *   * **Access** — the credentials that reach its equipment and its mail server (ADR #481);
- *   * **Email** — whom the customer update goes to, and where its replies are read from.
+ *   * **Access**, **Email** and **Routines** — what the NOC operates by — drawn as three cards
+ *     above the rest (ADR #507, `parts/custhead.js`): the logins to its hosts, the mailbox every
+ *     case writes from, and its troubleshooting trees.
+ *
+ * The **Default** customer is the one every broker points to until it is pointed elsewhere: it is
+ * renamed here, never ended.
  *
  * What a caller may change comes from the server (`actions`); a customer is an organization, which
  * an admin adds here (`organizations.write`) and puts elements in from each element's page — and
@@ -37,6 +42,7 @@ import { Circuits } from "./parts/circuits.js";
 import { CustomerAccess } from "./parts/custaccess.js";
 import { CustomerMail } from "./parts/custmail.js";
 import { CustomerRoutines } from "./parts/custroutines.js";
+import { CustomerBrokers, CustomerName, KEY_PARTS, KeyParts } from "./parts/custhead.js";
 
 export class Customers extends Loader {
   constructor(props) {
@@ -61,7 +67,7 @@ export class Customers extends Loader {
       ${data.customers.length ? html`<ul class="cust-grid">
         ${data.customers.map((c) => html`<li key=${c.id}><${CustomerCard} c=${c} /></li>`)}
       </ul>` : html`<${Empty} title="No customers yet"
-        will="Each customer the NOC serves appears here with its instructions, workbook, documents and circuits."
+        will="Each customer the NOC serves appears here with its instructions, work contacts, documents and circuits."
         meanwhile="An admin adds a customer here, then puts its elements in it from each element's page." />`}
     </div>`;
   }
@@ -71,14 +77,14 @@ function CustomerCard({ c }) {
   const href = `#/customers/${c.id}`;
   const parts = [
     ["instructions", c.has_instructions ? "Written" : "None yet", c.has_instructions],
-    ["workbook", plural(c.contacts, "contact"), c.contacts > 0],
+    ["contacts", plural(c.contacts, "contact"), c.contacts > 0],
     ["docs", plural(c.docs, "document"), c.docs > 0],
     ["circuits", plural(c.circuits, "circuit"), c.circuits > 0],
   ];
   return html`<article class="cust-card">
     <a class="cust-card-head" href=${href}>
       <span class="record-icon"><${Icon} name="building" /></span>
-      <span class="cust-card-name"><b>${c.name}</b>
+      <span class="cust-card-name"><b>${c.name}</b>${c.is_default ? html` <span class="badge">default</span>` : null}
         <span class="muted">${plural(c.elements, "element")}${c.has_memory ? " · has a memory" : ""}</span></span>
       ${c.open_cases ? html`<span class="cust-open">${plural(c.open_cases, "open case")}</span>` : null}
     </a>
@@ -189,7 +195,7 @@ class CustomerRecord extends Component {
     return html`<dl class="highlights">
       <div><dt>Instructions</dt><dd>${by(c.updated_by, c.instructions ? c.updated_at : null)}</dd></div>
       <div><dt>NOC memory</dt><dd>${by(c.memory_by, c.memory_at)}</dd></div>
-      <div><dt>Workbook</dt><dd>${plural(c.workbook.reduce((n, p) => n + p.contacts.length, 0), "contact")} · ${plural(c.workbook.length, "company", "companies")}</dd></div>
+      <div><dt>Work Contact</dt><dd>${plural(c.workbook.reduce((n, p) => n + p.contacts.length, 0), "contact")} · ${plural(c.workbook.length, "company", "companies")}</dd></div>
       <div><dt>Documents</dt><dd>${plural(c.docs.length, "file")}</dd></div>
       <div><dt>Circuits</dt><dd>${c.circuits}</dd></div>
       <div><dt>Open cases</dt><dd class=${cx(c.open_cases && "cust-open")}>${c.open_cases}</dd></div>
@@ -208,29 +214,34 @@ class CustomerRecord extends Component {
     }
     if (!c) return html`<p class="muted">Opening the customer…</p>`;
     const go = (to) => navigate(`#/customers/${c.id}/${to}`);
-    const shown = BOOK.some(([id]) => id === part) ? part : "instructions";
+    // ADR #507: the workbook's old address still opens it, as the Work Contact.
+    const asked = part === "workbook" ? "contacts" : part;
+    const shown = BOOK.some(([id]) => id === asked) ? asked : "instructions";
+    const keyed = new Set(KEY_PARTS.map(([id]) => id));
     return html`<article class="customer-record" aria-labelledby="cust-heading">
       ${back}
       <header class="record-head">
         <span class="record-icon"><${Icon} name="building" /></span>
         <div class="record-title">
           <p class="record-kind">Customer <span class="mono">${c.slug}</span></p>
-          <h2 id="cust-heading">${c.name}</h2>
+          <${CustomerName} key=${c.name} c=${c} onRenamed=${() => this.changed()} />
         </div>
         <p class="muted cust-head-note">${plural(c.element_count, "element")} · what its agents read before acting on its network</p>
-        ${can("organizations.write") && !ending ? html`<button type="button" class="danger cust-end-open"
+        ${can("organizations.write") && !ending && !c.is_default ? html`<button type="button" class="danger cust-end-open"
           onClick=${() => this.setState({ ending: true })}>End service…</button>` : null}
       </header>
+      <${CustomerBrokers} key=${`b-${c.id}`} c=${c} />
       ${ending ? html`<${EndService} c=${c} onCancel=${() => this.setState({ ending: false })}
         onEnded=${(result) => { this.setState({ ended: result }); refreshRoster(); }} />` : null}
       ${this.highlights(c)}
+      <${KeyParts} c=${c} shown=${shown} go=${go} />
       <div class="tabs-line" role="tablist" aria-label=${`${c.name}'s book`}>
-        ${BOOK.map(([id, label, icon]) => html`<button type="button" role="tab" key=${id}
+        ${BOOK.filter(([id]) => !keyed.has(id)).map(([id, label, icon]) => html`<button type="button" role="tab" key=${id}
           aria-selected=${shown === id} class=${cx("tab-line", shown === id && "on")}
           onClick=${() => go(id)}><${Icon} name=${icon} /> ${label}</button>`)}
       </div>
       ${shown === "instructions" ? html`<${BookText} c=${c} onChanged=${() => this.changed()} />` : null}
-      ${shown === "workbook" ? html`<${Workbook} c=${c} onChanged=${() => this.changed()} />` : null}
+      ${shown === "contacts" ? html`<${Workbook} c=${c} onChanged=${() => this.changed()} />` : null}
       ${shown === "docs" ? html`<${CustomerDocs} c=${c} onChanged=${() => this.changed()} />` : null}
       ${shown === "circuits" ? html`<${Circuits} c=${c} circuitId=${Number(sub) || null} query=${query}
         navigate=${navigate} onChanged=${() => this.changed()} />` : null}

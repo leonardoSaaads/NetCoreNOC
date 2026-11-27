@@ -225,7 +225,11 @@ class GovernanceMixin(StoreBase):
         un-configured appliance runs the v0.6.0 read paths untouched.
         """
         cur = await self.conn.execute(
-            "SELECT n.id, n.ip, n.broker_id, n.organization_id FROM ne n ORDER BY n.id"
+            # ADR #508: an element not yet attributed belongs to the Default customer (the sweep
+            # writes it within seconds), so `noc:<default>` reaches it from discovery on.
+            "SELECT n.id, n.ip, n.broker_id, COALESCE(n.organization_id, (SELECT id FROM "
+            "organization WHERE is_default ORDER BY id LIMIT 1)) AS organization_id FROM ne n "
+            "ORDER BY n.id"
         )
         return [dict(r) for r in await cur.fetchall()]
 

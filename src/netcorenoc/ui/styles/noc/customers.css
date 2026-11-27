@@ -169,3 +169,54 @@ td.ckt-acts .linkish + .linkish { margin-left: var(--space-3); }
 .vault-moved { display: flex; align-items: center; gap: 6px; }
 .vault-moved .icon-svg { width: 14px; height: 14px; flex: none; color: var(--accent); }
 .sf-plain { grid-column: 1 / -1; margin: 0; }
+
+/* ---------- a customer's head and what the NOC operates by (ADR #507) ---------- */
+.cust-name-line { display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap; margin: 0; }
+.cust-rename { padding: 4px; }
+.cust-rename .icon-svg { width: 15px; height: 15px; }
+.cust-rename-form { display: flex; flex-wrap: wrap; gap: var(--space-2); align-items: center; }
+.cust-rename-form input { min-width: 16rem; }
+.cust-rename-form .err { flex-basis: 100%; margin: 0; }
+.cust-brokers { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); margin: 0 0 var(--space-3);
+  font-size: var(--fs-sm); }
+.cust-brokers .icon-svg { width: 15px; height: 15px; color: var(--fg-muted); }
+.cust-keys { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--space-3); margin: var(--space-3) 0; }
+@media (max-width: 860px) { .cust-keys { grid-template-columns: minmax(0, 1fr); } }
+.cust-key { display: flex; gap: var(--space-3); align-items: flex-start; text-align: left; padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--line); border-radius: var(--radius-2); background: var(--bg-raised); color: var(--fg);
+  font: inherit; cursor: pointer; min-height: 5.5rem; }
+.cust-key:hover { border-color: var(--accent); }
+.cust-key.on { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent) inset; background: var(--accent-soft); }
+.cust-key-icon { flex: none; display: grid; place-items: center; width: 2.6rem; height: 2.6rem; border-radius: 10px;
+  background: var(--accent-soft); color: var(--accent); }
+.cust-key-icon .icon-svg { width: 22px; height: 22px; }
+.cust-key-access .cust-key-icon { background: rgba(245, 165, 36, 0.16); color: var(--warn); }
+.cust-key-text { display: grid; gap: 2px; min-width: 0; }
+.cust-key-text b { font-size: var(--fs-md); }
+.cust-key-text span { font-size: var(--fs-sm); color: var(--fg-muted); line-height: 1.35; }
+.cust-key-text em { font-style: normal; font-size: var(--fs-xs); font-weight: 600; color: var(--fg); margin-top: 2px; }
+.cust-key-text em.cust-key-todo { color: var(--warn); }
+
+/* Access opens on what it is: the keys to the customer's network. */
+.access-hero { display: flex; gap: var(--space-4); align-items: center; padding: var(--space-4);
+  margin-bottom: var(--space-3); border: 1px solid rgba(245, 165, 36, 0.45); border-radius: var(--radius-2);
+  background: linear-gradient(135deg, rgba(245, 165, 36, 0.10), transparent 60%), var(--bg-raised); }
+@media (max-width: 640px) { .access-hero { flex-direction: column; align-items: flex-start; } }
+.access-art { flex: none; width: 8.5rem; height: auto; }
+.access-art .aa-door { fill: var(--bg-raised); stroke: var(--warn); stroke-width: 2.5; }
+.access-art .aa-inner { fill: rgba(245, 165, 36, 0.08); stroke: var(--line); stroke-width: 1.5; }
+.access-art .aa-dial { fill: none; stroke: var(--warn); stroke-width: 3; }
+.access-art .aa-hub { fill: var(--warn); }
+.access-art .aa-spoke, .access-art .aa-key, .access-art .aa-lock { fill: none; stroke: var(--warn); stroke-width: 2.5;
+  stroke-linecap: round; stroke-linejoin: round; }
+.access-art .aa-key-ring { fill: none; stroke: var(--accent); stroke-width: 2.5; }
+.access-art .aa-key { stroke: var(--accent); }
+.access-hero-text { display: grid; gap: var(--space-2); min-width: 0; }
+.access-hero-text h3 { margin: 0; font-size: var(--fs-lg, 1.15rem); }
+.access-hero-text p { margin: 0; line-height: 1.5; }
+.access-eyebrow { font-size: var(--fs-xs); font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em;
+  color: var(--warn); }
+.access-protos { display: flex; flex-wrap: wrap; gap: 6px; margin: 0; padding: 0; list-style: none; }
+.access-protos li { padding: 2px 10px; border-radius: 999px; border: 1px solid var(--line); font-size: var(--fs-xs);
+  font-weight: 600; background: var(--bg); }
+.access-count { font-size: var(--fs-sm); color: var(--fg-muted); }

@@ -1166,7 +1166,13 @@ async def test_f35_an_editor_cannot_widen_their_own_scope_with_a_label(store: St
         assert "192.168.50.0/24" not in nodes and "192.168.50.1" not in nodes, nodes
         # And the behaviour change itself: a label glob now selects nothing at all, rather than
         # selecting whatever the constrained role most recently chose to call itself.
-        assert after == {"scoped": True, "ne_count": 0}, after
+        # ADR #508: the planes are reported too — a scope that reaches no element reaches no
+        # customer's NOC either.
+        assert after == {
+            "scoped": True,
+            "ne_count": 0,
+            "planes": {"broker": True, "noc": False},
+        }, after
     finally:
         await admin.aclose()
         await editor.aclose()
@@ -1426,6 +1432,10 @@ def test_f34_every_mutating_route_below_admin_resolves_scope() -> None:
     # process with the caller's own credentials, which resolves its own scope (the case routes
     # above, among them). The door itself names no network element.
     session_only |= {("POST", "/api/mcp")}
+    # ADR #510: a Microsoft sign-in for a mailbox — an account at Microsoft, held in memory for the
+    # person who started it. It names no network element and stores nothing; the routes that save
+    # what it signed in are scoped (a customer's) or the appliance's own settings (admin).
+    session_only |= {("POST", "/api/mail/oauth/start"), ("POST", "/api/mail/oauth/poll")}
     # The four spellings of *"this handler resolved the caller's visibility"*. The first is the
     # literal every route wrote until v0.21.0; the other three are `WindowAccess`'s, and
     # `test_every_indirect_scope_call_really_resolves_the_scope` reads their source so that
@@ -1644,6 +1654,16 @@ def test_f39_every_mutating_handler_uses_the_transaction_helper() -> None:
                     write in body
                     for write in ("INSERT", "UPDATE ", "DELETE ", "audit_row(", "commit()")
                 ), "the preview route started writing; it needs write_txn() after all"
+                continue
+            if route in ("/api/mail/oauth/start", "/api/mail/oauth/poll"):
+                # ADR #510: a sign-in held in memory for the person who started it; nothing is
+                # stored until the settings that use it are saved, by routes that take the helper.
+                # Read up to the end of its module, and fail the moment it starts writing.
+                own = body.split("\n\n\n", 1)[0]
+                assert not any(
+                    write in own
+                    for write in ("INSERT", "UPDATE ", "DELETE ", "audit_row(", "commit()")
+                ), "the sign-in route started writing; it needs write_txn() after all"
                 continue
             # `/api/rbac` and `/api/scope` delegate to `_write_policy`, the single write path for
             # both policy kinds, which takes the helper once on their behalf.

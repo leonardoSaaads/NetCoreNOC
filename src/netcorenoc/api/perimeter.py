@@ -18,24 +18,27 @@ from __future__ import annotations
 import contextlib
 import time
 from collections.abc import AsyncIterator, Awaitable, Callable
+from contextvars import ContextVar
 from typing import TYPE_CHECKING, Any
 from urllib.parse import urlsplit
 
 from fastapi import HTTPException, Request, Response
 
 from netcorenoc.api.governance_cache import GovernancePolicies
+from netcorenoc.api.ratelimit import (
+    PREVIEW_RATE_CAPACITY as PREVIEW_RATE_CAPACITY,
+)
+from netcorenoc.api.ratelimit import (
+    PREVIEW_RATE_REFILL as PREVIEW_RATE_REFILL,
+)
+from netcorenoc.api.ratelimit import RATE_CAPACITY as RATE_CAPACITY
+from netcorenoc.api.ratelimit import RATE_REFILL as RATE_REFILL
+from netcorenoc.api.ratelimit import RateLimiter as RateLimiter
 from netcorenoc.crosscutting import audit, auth, rbac, shaping
 
 if TYPE_CHECKING:
     from netcorenoc.store import Store
 
-RATE_CAPACITY = 30.0
-RATE_REFILL = 10.0
-# Preview re-partitions up to MAX_PREVIEW_ALARMS alarms, so it is the one endpoint whose cost is
-# worth more than a share of the general bucket: its own, much tighter bucket (3 burst, then one
-# roughly every 10 s) bounds it independently of the per-client limiter (F22).
-PREVIEW_RATE_CAPACITY = 3.0
-PREVIEW_RATE_REFILL = 0.1
 MUTATING = frozenset({"POST", "PUT", "PATCH", "DELETE"})
 
 CSP = (
@@ -82,37 +85,16 @@ assert set(DENIED_ACTION) == set(rbac.AUDITED_DENIED_PERMISSIONS), (
     "DENIED_ACTION keys must equal rbac.AUDITED_DENIED_PERMISSIONS (single source of truth)"
 )
 
+#: ADR #508: which plane the request being served is in — the NOC's for every `/api/noc/` route —
+#: set by `security` with the route, read by `scope_for`. A person may reach a customer's NOC and
+#: none of its brokers, or the reverse, so one route decides which of their two scopes applies, in
+#: one place no route can forget.
+_PLANE: ContextVar[str] = ContextVar("netcorenoc_plane", default="broker")
 
-class RateLimiter:
-    """Token bucket per client address; deliberately small and in-memory."""
 
-    def __init__(self, capacity: float, refill: float) -> None:
-        self.capacity = capacity
-        self.refill = refill
-        self.buckets: dict[str, tuple[float, float]] = {}
-
-    def allow(self, key: str, now: float) -> bool:
-        tokens, last = self.buckets.get(key, (self.capacity, now))
-        tokens = min(self.capacity, tokens + (now - last) * self.refill)
-        if len(self.buckets) > 4096:
-            self._bound(now)
-        if tokens < 1.0:
-            self.buckets[key] = (tokens, now)
-            return False
-        self.buckets[key] = (tokens - 1.0, now)
-        return True
-
-    def _bound(self, now: float) -> None:
-        """Forget the fullest buckets first: a full bucket is indistinguishable from no bucket,
-        and the emptiest belong to the clients being limited. Until v0.28.0 this cleared every
-        bucket, so 4 097 addresses touching the API reset the limit for the one client actually
-        hammering it."""
-
-        def level(item: tuple[str, tuple[float, float]]) -> float:
-            tokens, last = item[1]
-            return min(self.capacity, tokens + (now - last) * self.refill)
-
-        self.buckets = dict(sorted(self.buckets.items(), key=level)[:2048])
+def limited_admin(principal: auth.Principal, policy: shaping.ScopePolicy | None) -> bool:
+    """An admin the visibility policy limits to brokers or customers (ADR #508). Never the owner."""
+    return shaping.limits_admin(principal.role, principal.ref, principal.is_owner, policy)
 
 
 def _client_ip(request: Request) -> str:
@@ -312,7 +294,12 @@ class Perimeter:
         capabilities = rbac.resolve_capabilities(
             principal.role, principal.ref, self.governance.capability
         )
+        if limited_admin(principal, self.governance.scope):
+            # ADR #508: a limited admin administers its own brokers and customers, never the
+            # appliance — nothing that could widen its own reach.
+            capabilities = capabilities - rbac.ESTATE_ADMIN
         request.state.capabilities = capabilities
+        _PLANE.set("noc" if path.startswith("/api/noc/") else "broker")
         permission = rbac.permission_for(method, path)
         if permission is None or permission not in capabilities:
             # "Should this denial be audited?" is decided by the single rbac source.
@@ -338,13 +325,25 @@ class Perimeter:
         appliance with no scope policy (parity), which is why an un-configured install pays nothing
         for this feature and every read path below runs its unmodified v0.6.0 query.
         """
-        if not shaping.is_scopable(principal.role) or self.governance.scope is None:
+        scope = await self.full_scope_for(principal)
+        # ADR #508: a `/api/noc/` route is decided by the NOC plane's own view of this principal.
+        return scope.for_noc() if _PLANE.get() == "noc" else scope
+
+    async def full_scope_for(self, principal: auth.Principal) -> shaping.Scope:
+        """Both planes' views of this principal, whichever route is being served (`/api/me`).
+
+        The super admin is never scoped (ADR #508), nor an admin the policy does not limit.
+        """
+        policy = self.governance.scope
+        if policy is None or shaping.never_scoped(
+            principal.role, principal.ref, principal.is_owner, policy
+        ):
             return shaping.UNRESTRICTED
-        if self.governance.scope.malformed:
+        if policy.malformed:
             return shaping.DENY_ALL  # fail closed; the admin who must fix it is never scoped
         async with self._store.reading():
             nes = await self._store.list_ne_for_scope()
-        return shaping.visible_nes(principal.role, principal.ref, self.governance.scope, nes)
+        return shaping.visible_nes(principal.role, principal.ref, policy, nes)
 
     async def situation_in_scope(self, sid: int, scope: shaping.Scope) -> bool:
         """Is any member alarm of this situation in scope? The write-side membership test.

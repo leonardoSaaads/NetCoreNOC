@@ -37,7 +37,7 @@ from netcorenoc.crosscutting.settings import (
     redact_url,
 )
 from netcorenoc.crosscutting.supervisor import Supervisor as Supervisor
-from netcorenoc.engine.noc import case_loop, probe, runbook
+from netcorenoc.engine.noc import case_loop, probe, runbook, samples
 from netcorenoc.engine.operate import intake, listening, pipeline
 from netcorenoc.engine.operate.deadline import KPI_KEY, Kpi
 from netcorenoc.engine.operate.engine import Engine
@@ -280,10 +280,7 @@ async def _serve(settings: Settings, store: Store) -> None:
         engine.feed = feed  # ADR #450: each batch commits the spool's cursor
     await engine.start()
 
-    # `existing_users` is read BEFORE the bootstrap, so the banner can tell a first run from a
-    # recovery (#234). After it, both look identical — an admin exists either way.
-    existing_users = await store.count_users()
-    minted = await administration.bootstrap_admin(store, time.time())
+    minted, existing_users = await samples.first_boot(store, time.time())  # #234, ADR #507
     await store.commit()
     if minted is not None:
         administration.print_banner(minted, recovery=existing_users > 0)

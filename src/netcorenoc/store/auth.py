@@ -49,6 +49,15 @@ class AuthMixin(StoreBase):
         assert row is not None
         return int(row[0])
 
+    async def make_owner_if_none(self, user_id: int) -> bool:
+        """This admin becomes the super admin when the appliance has none (ADR #508)."""
+        cur = await self.conn.execute(
+            "UPDATE app_user SET is_owner=true WHERE id=? AND role='admin' AND NOT disabled "
+            "AND NOT EXISTS (SELECT 1 FROM app_user o WHERE o.is_owner) RETURNING id",
+            (user_id,),
+        )
+        return await cur.fetchone() is not None
+
     async def get_user_by_name(self, username: str) -> dict[str, Any] | None:
         cur = await self.conn.execute("SELECT * FROM app_user WHERE username=?", (username,))
         row = await cur.fetchone()
@@ -63,7 +72,7 @@ class AuthMixin(StoreBase):
         # v0.25.0: the display name and the photo's DIGEST, never the image (ADR #401, #402).
         cur = await self.conn.execute(
             "SELECT u.id, u.username, u.display_name, u.email, u.role, u.must_change_password, "
-            "u.disabled, u.created_at, a.sha256 AS avatar FROM app_user u "
+            "u.disabled, u.is_owner, u.created_at, a.sha256 AS avatar FROM app_user u "
             "LEFT JOIN user_avatar a ON a.user_id=u.id ORDER BY u.username"
         )
         return [open_person(dict(r)) for r in await cur.fetchall()]
@@ -123,7 +132,7 @@ class AuthMixin(StoreBase):
     async def get_session(self, session_hash: str) -> dict[str, Any] | None:
         cur = await self.conn.execute(
             "SELECT s.session_hash, s.user_id, s.created_at, s.idle_expiry, s.absolute_expiry, "
-            "u.username, u.role, u.must_change_password, u.disabled "
+            "u.username, u.role, u.must_change_password, u.disabled, u.is_owner "
             "FROM session s JOIN app_user u ON u.id=s.user_id WHERE s.session_hash=?",
             (session_hash,),
         )

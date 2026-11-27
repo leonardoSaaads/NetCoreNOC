@@ -72,6 +72,8 @@ UNAUTHENTICATED_PATHS: frozenset[str] = frozenset(
         "/app/destructive.js",
         "/app/dom.js",
         "/app/format.js",
+        "/app/markdown.js",
+        "/app/mailwizard.js",
         # v0.16.6: the chart vocabulary and the arithmetic behind it (DECISIONS #305, #307).
         "/app/charts.js",
         "/app/compare.js",
@@ -248,6 +250,7 @@ UNAUTHENTICATED_PATHS: frozenset[str] = frozenset(
         "/app/views/noc/parts/custaccess.js",
         "/app/views/noc/parts/custmail.js",
         "/app/views/noc/parts/custroutines.js",
+        "/app/views/noc/parts/custhead.js",
         "/app/views/noc/parts/agentrun.js",
         # ADR #477: what a local Ollama has, and moving an agent in the chart.
         "/app/views/noc/parts/ollamamodels.js",

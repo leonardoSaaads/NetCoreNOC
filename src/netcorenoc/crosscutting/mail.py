@@ -28,6 +28,7 @@ from email.utils import formataddr, formatdate, make_msgid
 from typing import Any
 from urllib.parse import urlsplit
 
+from netcorenoc.crosscutting import mailauth
 from netcorenoc.crosscutting.settings import read_env
 
 META_KEY = "config.email"
@@ -50,6 +51,11 @@ class Provider:
     #: What goes in the username field when it is not the address itself.
     username: str | None
     note: str
+    #: ADR #510: how this service signs in — "password" (an app password, usually) or "oauth"
+    #: (Microsoft's sign-in; a password is refused). "either" offers both.
+    auth: str = "password"
+    #: The steps to the password it takes, in the order a person follows them.
+    steps: tuple[str, ...] = ()
 
 
 PROVIDERS: dict[str, Provider] = {
@@ -61,15 +67,33 @@ PROVIDERS: dict[str, Provider] = {
         None,
         "Use an app password, not your Google password: Google Account → Security → 2-Step "
         "Verification → App passwords. Sending as your own address works at once.",
+        steps=(
+            "Turn on 2-Step Verification: myaccount.google.com → Security.",
+            "Open myaccount.google.com/apppasswords and create one named NetCoreNOC.",
+            "Paste the 16 letters here (the spaces do not matter).",
+        ),
+    ),
+    "outlook": Provider(
+        "Outlook.com / Hotmail / Live",
+        "smtp-mail.outlook.com",
+        587,
+        "starttls",
+        None,
+        "Microsoft no longer accepts a password — an app password neither — for SMTP on "
+        'personal accounts: it answers 5.7.139 "basic authentication is disabled". Sign in '
+        "with Microsoft.",
+        auth="oauth",
     ),
     "microsoft": Provider(
-        "Microsoft 365 / Outlook.com",
+        "Microsoft 365 (work or school)",
         "smtp.office365.com",
         587,
         "starttls",
         None,
-        "SMTP AUTH must be allowed for the mailbox (Microsoft 365 admin center → the user → Mail "
-        "→ Authenticated SMTP). With security defaults on, use an app password.",
+        "Sign in with Microsoft, or — while the tenant still allows it — a password: SMTP AUTH "
+        "must be on for the mailbox (Microsoft 365 admin center → the user → Mail → "
+        "Authenticated SMTP).",
+        auth="either",
     ),
     "yahoo": Provider(
         "Yahoo Mail",
@@ -78,6 +102,11 @@ PROVIDERS: dict[str, Provider] = {
         "tls",
         None,
         "Generate an app password: Yahoo Account Security → Generate app password.",
+        steps=(
+            "Open login.yahoo.com/account/security.",
+            "Choose Generate app password, name it NetCoreNOC.",
+            "Paste it here.",
+        ),
     ),
     "icloud": Provider(
         "iCloud Mail",
@@ -86,6 +115,11 @@ PROVIDERS: dict[str, Provider] = {
         "starttls",
         None,
         "Use an app-specific password from appleid.apple.com → Sign-In and Security.",
+        steps=(
+            "Sign in at account.apple.com → Sign-In and Security → App-Specific Passwords.",
+            "Create one named NetCoreNOC and paste it here.",
+            "The sender is your @icloud.com address (or a custom domain set up in iCloud).",
+        ),
     ),
     "zoho": Provider(
         "Zoho Mail",
@@ -127,6 +161,23 @@ PROVIDERS: dict[str, Provider] = {
 }
 
 
+def catalogue() -> dict[str, dict[str, Any]]:
+    """Every provider as the console's wizard shows it (ADR #510): where, how it signs in."""
+    return {
+        key: {
+            "label": p.label,
+            "host": p.host,
+            "port": p.port,
+            "security": p.security,
+            "username": p.username,
+            "note": p.note,
+            "auth": p.auth,
+            "steps": list(p.steps),
+        }
+        for key, p in PROVIDERS.items()
+    }
+
+
 @dataclass(frozen=True)
 class MailConfig:
     """Everything needed to send one message. Immutable; the routes replace it whole."""
@@ -146,6 +197,12 @@ class MailConfig:
     #: from a request's Host header — that would let anyone point a reset link at their own site.
     public_url: str = ""
     recovery: bool = True
+    #: ADR #510: "password", or "oauth" — Microsoft's sign-in, renewed with `oauth_refresh`.
+    auth: str = "password"
+    oauth_client_id: str = ""
+    oauth_tenant: str = "consumers"
+    #: The refresh token Microsoft issued at sign-in: a password by another name, kept as one.
+    oauth_refresh: str = ""
 
     @property
     def effective_password(self) -> str:
@@ -160,6 +217,11 @@ class MailConfig:
         if read_env("SMTP_PASSWORD"):
             return "environment"
         return "database" if self.password else "none"
+
+    @property
+    def signed_in(self) -> bool:
+        """ADR #510: a Microsoft sign-in is held (the refresh token is never shown)."""
+        return self.auth == "oauth" and bool(self.oauth_client_id and self.oauth_refresh)
 
     @property
     def can_recover(self) -> bool:
@@ -192,6 +254,13 @@ def problems(config: MailConfig) -> list[str]:
             found.append("the SMTP server must be a host name or an address")
         if not valid_address(config.sender):
             found.append("the sender must be an email address, for example noc@example.com")
+    if config.auth not in ("password", "oauth"):
+        found.append("sign-in must be a password or Microsoft's")
+    elif config.auth == "oauth" and config.enabled:
+        if not mailauth.valid_client_id(config.oauth_client_id):
+            found.append("Microsoft sign-in needs the application (client) ID of your registration")
+        if not mailauth.valid_tenant(config.oauth_tenant):
+            found.append("the Microsoft tenant is consumers, organizations, common or a tenant id")
     if any(ch in value for value in (config.sender_name, config.username) for ch in "\r\n"):
         found.append("names may not contain line breaks")
     if config.public_url:
@@ -222,6 +291,8 @@ def public_view(config: MailConfig) -> dict[str, Any]:
     """What the API returns: everything but the password, and where the password comes from."""
     view = asdict(config)
     view.pop("password")
+    view.pop("oauth_refresh")
+    view["signed_in"] = config.signed_in
     view["password_set"] = config.has_password
     view["password_source"] = config.password_source
     view["recovery_available"] = config.can_recover
@@ -277,16 +348,24 @@ def send(
             if config.security == "starttls":
                 client.starttls(context=_context(config))
                 client.ehlo()
-            if config.username:
+            if config.auth == "oauth":
+                # ADR #510: Microsoft's sign-in — a fresh access token, presented as XOAUTH2.
+                token = mailauth.access_token(
+                    config.oauth_client_id, config.oauth_tenant, config.oauth_refresh
+                )
+                user = config.username or config.sender
+                code, reply = client.docmd("AUTH", "XOAUTH2 " + mailauth.xoauth2(user, token))
+                if code != 235:
+                    raise smtplib.SMTPAuthenticationError(code, reply)
+            elif config.username:
                 client.login(
                     config.username, config.effective_password if password is None else password
                 )
             client.send_message(message, to_addrs=envelope or None)
+    except mailauth.AuthError as exc:
+        raise MailError(f"Microsoft sign-in: {exc}") from exc
     except smtplib.SMTPAuthenticationError as exc:
-        raise MailError(
-            "the server refused the username or password. Gmail, Microsoft 365, Yahoo and iCloud "
-            "need an app password rather than the account's own."
-        ) from exc
+        raise MailError(refusal(config, exc)) from exc
     except smtplib.SMTPNotSupportedError as exc:
         raise MailError(f"the server does not support what was asked: {exc}") from exc
     except smtplib.SMTPRecipientsRefused as exc:
@@ -305,3 +384,31 @@ def send(
         raise MailError(f"no answer from {config.host}:{config.port} within the timeout") from exc
     except (OSError, smtplib.SMTPException) as exc:
         raise MailError(f"could not send through {config.host}:{config.port}: {exc}") from exc
+
+
+def refusal(config: MailConfig, exc: smtplib.SMTPAuthenticationError) -> str:
+    """What a refused sign-in means for this server, in a sentence that says what to do (#510)."""
+    said = exc.smtp_error.decode("utf-8", "replace") if isinstance(exc.smtp_error, bytes) else ""
+    if "5.7.139" in said or "basic authentication is disabled" in said.lower():
+        return (
+            "Microsoft refused the password: basic authentication is disabled for this mailbox. "
+            "Outlook.com and Hotmail accept only Microsoft's sign-in now — choose Outlook.com and "
+            "Sign in with Microsoft. (smtp-mail.outlook.com and smtp.office365.com both answer so.)"
+        )
+    if config.auth == "oauth":
+        return (
+            "the server refused the Microsoft sign-in: check that the registration holds SMTP.Send "
+            "and that SMTP AUTH is allowed for the mailbox, then sign in again"
+        )
+    hint = {
+        "gmail": "Google wants an app password (2-Step Verification on), not the account's own.",
+        "yahoo": "Yahoo wants an app password generated in Account Security.",
+        "icloud": "iCloud wants an app-specific password from account.apple.com.",
+        "microsoft": "Microsoft 365 may refuse passwords for this tenant: sign in with Microsoft.",
+        "outlook": "Outlook.com refuses passwords: sign in with Microsoft.",
+    }.get(
+        config.provider,
+        "Gmail, Yahoo and iCloud want an app password rather than the account's own, and "
+        "Outlook.com accepts only Microsoft's sign-in.",
+    )
+    return f"the server refused the username or password ({said[:120] or exc.smtp_code}). {hint}"

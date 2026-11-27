@@ -135,4 +135,12 @@ class ScopeSubjectIn(BaseModel):
 
     subject: str = Field(max_length=20, pattern=r"^(user|token):[1-9][0-9]{0,9}$")
     organizations: list[Annotated[int, Field(ge=1)]] | None = Field(default=None, max_length=200)
+    # ADR #508: the brokers and the NOC customers, each None for every one and [] for none. When
+    # either is sent, the two say the whole of the subject's reach and `organizations` is ignored.
+    brokers: list[Annotated[int, Field(ge=1)]] | None = Field(default=None, max_length=500)
+    customers: list[Annotated[int, Field(ge=1)]] | None = Field(default=None, max_length=500)
     note: str = Field(default="", max_length=500)
+
+    def planes_sent(self) -> bool:
+        """Whether this body speaks the two planes (ADR #508) rather than customers only."""
+        return bool({"brokers", "customers"} & self.model_fields_set)

@@ -21,7 +21,7 @@ from fastapi import Depends, FastAPI, HTTPException, Query, Request
 
 from netcorenoc.api.context import AppContext
 from netcorenoc.api.declare import DeclaredRoutes
-from netcorenoc.api.models import NeOrganizationIn, OrganizationIn
+from netcorenoc.api.models import NeOrganizationIn, OrganizationIn, OrganizationNameIn
 from netcorenoc.crosscutting import auth, shaping
 from netcorenoc.crosscutting.shaping.timezones import SEARCH_LIMIT
 
@@ -94,6 +94,38 @@ def register(app: FastAPI, ctx: AppContext) -> None:
                 details={"slug": body.slug, "reinstated": found is not None},
             )
         return {"created": True, "id": organization_id, "reinstated": found is not None}
+
+    @route.post("/api/organizations/{organization_id}/name")
+    async def rename_organization(
+        organization_id: int,
+        body: OrganizationNameIn,
+        request: Request,
+        principal: auth.Principal = Depends(security),
+    ) -> dict[str, Any]:
+        """Rename a customer — the Default one too (ADR #507). Its handle stays, so the history
+        and every script that names it still do."""
+        name = " ".join(body.name.split())
+        if not name:
+            raise HTTPException(status_code=400, detail="name: required")
+        async with write_txn():
+            taken = await store.conn.execute(
+                "SELECT 1 FROM organization WHERE name=? AND id<>?", (name, organization_id)
+            )
+            if await taken.fetchone() is not None:
+                raise HTTPException(status_code=409, detail=f"a customer named {name!r} exists")
+            before = await store.rename_organization(organization_id, name)
+            if before is None:
+                raise HTTPException(status_code=404, detail="no such organization")
+            await audit_row(
+                request,
+                principal,
+                "config.change",
+                "ok",
+                object_type="organization",
+                object_id=str(organization_id),
+                details={"renamed": {"from": before, "to": name}},
+            )
+        return {"id": organization_id, "name": name}
 
     @route.post("/api/entities/{ne_id}/organization")
     async def set_ne_organization(

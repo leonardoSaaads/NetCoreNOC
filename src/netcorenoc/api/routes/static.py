@@ -53,6 +53,8 @@ _UI_MODULES = (
     "app/destructive.js",
     "app/dom.js",
     "app/format.js",
+    "app/markdown.js",  # ADR #509
+    "app/mailwizard.js",  # ADR #510
     # v0.16.6: the chart vocabulary (DECISIONS #305, #307). `charts.js` is the three types every
     # screen draws with; `chartdata.js` is the arithmetic behind them — where a line breaks, what
     # the axis reads, what span the data covers — kept separate because it is pure and is driven
@@ -260,6 +262,7 @@ _UI_MODULES = (
     "app/views/noc/parts/custaccess.js",
     "app/views/noc/parts/custmail.js",
     "app/views/noc/parts/custroutines.js",  # ADR #501
+    "app/views/noc/parts/custhead.js",  # ADR #507
     "app/views/noc/parts/agentrun.js",
     # ADR #477: what a local Ollama has, and moving an agent in the chart.
     "app/views/noc/parts/ollamamodels.js",

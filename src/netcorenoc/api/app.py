@@ -180,6 +180,7 @@ def create_app(
     # Appended, so every earlier route keeps its place in the table.
     routes.snmp.register(app, ctx)
     routes.email.register(app, ctx)
+    routes.mail_signin.register(app, ctx)  # ADR #510: a mailbox signed in with Microsoft
     routes.recovery.register(app, ctx)
     routes.apidoc.register(app, ctx)
     # The NOC plane (ADRs #454-#461), appended for the same reason: the vault, then who may hold
@@ -191,6 +192,7 @@ def create_app(
     routes.noc_overview.register(app, ctx)  # ADR #470
     routes.case_feed.register(app, ctx)
     routes.case_email.register(app, ctx)  # ADR #500: email from the case's feed
+    routes.customer_mailbox.register(app, ctx)  # ADR #510: a customer's mailbox, in steps
     routes.noc_exec.register(app, ctx)  # ADR #462: the executor
     routes.playbooks.register(app, ctx)  # ADR #463
     # ADRs #465-#467: the agents (`/me` before `/{agent_id}`, in the module), case routing.

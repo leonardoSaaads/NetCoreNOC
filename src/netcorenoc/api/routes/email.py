@@ -14,10 +14,11 @@ from typing import Any
 from fastapi import Depends, FastAPI, HTTPException, Request
 
 from netcorenoc import __version__
+from netcorenoc.api import signin_flows
 from netcorenoc.api.context import AppContext
 from netcorenoc.api.declare import DeclaredRoutes
 from netcorenoc.api.models import EmailIn, EmailTestIn
-from netcorenoc.crosscutting import auth, mail
+from netcorenoc.crosscutting import auth, mail, mailauth
 
 
 def register(app: FastAPI, ctx: AppContext) -> None:
@@ -26,6 +27,40 @@ def register(app: FastAPI, ctx: AppContext) -> None:
     audit_row, write_txn = ctx.perimeter.audit_row, ctx.write_txn
     route = DeclaredRoutes(app)
 
+    def drafted(
+        body: EmailIn, stored: mail.MailConfig, principal: auth.Principal, *, keep: bool = False
+    ) -> mail.MailConfig:
+        """The configuration a body describes: a password left out keeps the stored one, and an
+        approved sign-in (`flow`) brings its refresh token — taken from memory as it is saved,
+        or only read (`keep`) for a test."""
+        fields = body.model_dump(exclude={"password", "flow"})
+        password = stored.password if body.password is None else body.password
+        refresh = stored.oauth_refresh if body.auth == "oauth" else ""
+        if body.auth == "oauth" and body.flow:
+            owner = str(principal.ref)
+            if keep:
+                held = signin_flows.mine(owner, body.flow).tokens
+                if held is None:
+                    raise HTTPException(status_code=409, detail="the sign-in is not approved yet")
+                refresh = held.refresh_token
+            else:
+                refresh = signin_flows.take(owner, body.flow).refresh_token
+        return mail.MailConfig(**fields, password=password, oauth_refresh=refresh)
+
+    async def keep_rotation(config: mail.MailConfig) -> None:
+        """ADR #510: Microsoft replaced the refresh token while sending — store the new one."""
+        if config.auth != "oauth":
+            return
+        newer = mailauth.latest(config.oauth_client_id, config.oauth_refresh)
+        if newer is None:
+            return
+        async with write_txn():
+            current = mail.from_document(await store.get_meta(mail.META_KEY))
+            if current.oauth_refresh == config.oauth_refresh:
+                await store.set_meta(
+                    mail.META_KEY, mail.to_document(replace(current, oauth_refresh=newer))
+                )
+
     @route.get("/api/email", dependencies=guarded)
     async def get_email() -> dict[str, Any]:
         """The SMTP configuration without its password, and the providers the console offers."""
@@ -33,17 +68,7 @@ def register(app: FastAPI, ctx: AppContext) -> None:
             config = mail.from_document(await store.get_meta(mail.META_KEY))
         return {
             **mail.public_view(config),
-            "providers": {
-                key: {
-                    "label": p.label,
-                    "host": p.host,
-                    "port": p.port,
-                    "security": p.security,
-                    "username": p.username,
-                    "note": p.note,
-                }
-                for key, p in mail.PROVIDERS.items()
-            },
+            "providers": mail.catalogue(),
         }
 
     @route.post("/api/email")
@@ -52,9 +77,7 @@ def register(app: FastAPI, ctx: AppContext) -> None:
     ) -> dict[str, Any]:
         async with write_txn():
             stored = mail.from_document(await store.get_meta(mail.META_KEY))
-            fields = body.model_dump(exclude={"password"})
-            password = stored.password if body.password is None else body.password
-            config = mail.MailConfig(**fields, password=password)
+            config = drafted(body, stored, principal)
             problems = mail.problems(config)
             if problems:
                 raise HTTPException(status_code=400, detail="; ".join(problems))
@@ -72,6 +95,9 @@ def register(app: FastAPI, ctx: AppContext) -> None:
                     "security": config.security,
                     "recovery": config.recovery,
                     "password_changed": body.password is not None,
+                    # ADR #510: a Microsoft sign-in stored, and whose (never the token).
+                    "auth": config.auth,
+                    "signed_in": body.flow is not None,
                 },
             )
         return {"status": "saved", **mail.public_view(config)}
@@ -84,7 +110,10 @@ def register(app: FastAPI, ctx: AppContext) -> None:
         if not mail.valid_address(body.to):
             raise HTTPException(status_code=400, detail="that is not an email address")
         async with store.reading():
-            config = mail.from_document(await store.get_meta(mail.META_KEY))
+            stored = mail.from_document(await store.get_meta(mail.META_KEY))
+        # ADR #510: the wizard tests its draft before anything is saved; the draft's sign-in
+        # stays held (it is taken when the draft is saved).
+        config = drafted(body.draft, stored, principal, keep=True) if body.draft else stored
         if not config.host:
             raise HTTPException(status_code=409, detail="save an SMTP server first")
         message = mail.compose(
@@ -100,6 +129,8 @@ def register(app: FastAPI, ctx: AppContext) -> None:
             await asyncio.to_thread(mail.send, config, message)
         except mail.MailError as exc:
             outcome, error = "error", str(exc)
+        if body.draft is None:
+            await keep_rotation(stored)
         async with write_txn():
             await audit_row(
                 request,

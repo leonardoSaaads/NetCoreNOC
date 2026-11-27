@@ -95,7 +95,7 @@ async def test_each_customer_is_in_the_sidebar_with_the_four_parts_of_its_book(
         '"Customers"',
         '"All customers"',
         '"Instructions"',
-        '"Workbook"',
+        '"Work Contact"',  # ADR #507: the workbook's name
         '"Additional docs"',
         '"Circuits"',
     ):

@@ -74,10 +74,19 @@ class EmailIn(BaseModel):
     timeout_s: float = Field(default=15.0, ge=3.0, le=60.0)
     public_url: str = Field(default="", max_length=300)
     recovery: bool = True
+    # ADR #510: how it signs in — a password, or Microsoft's sign-in (Outlook.com, Microsoft 365).
+    auth: Literal["password", "oauth"] = "password"
+    oauth_client_id: str = Field(default="", max_length=36)
+    oauth_tenant: str = Field(default="consumers", max_length=64)
+    #: An approved sign-in (`POST /api/mail/oauth/poll`) whose tokens this save stores.
+    flow: str | None = Field(default=None, max_length=64)
 
 
 class EmailTestIn(BaseModel):
     to: str = Field(min_length=3, max_length=254)
+    #: ADR #510: the wizard tests what it is about to save — a draft that is not stored. Left out,
+    #: the saved configuration is tested.
+    draft: EmailIn | None = None
 
 
 class ResetRequestIn(BaseModel):

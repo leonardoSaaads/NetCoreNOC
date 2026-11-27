@@ -317,3 +317,18 @@ dialog.org-move::backdrop { background: rgb(0 0 0 / 55%); }
   .org-node > .org-level::before, .org-level > .org-node::before, .org-level > .org-node::after { display: none; }
   .org-card, .org-card.org-people { width: 100%; }
 }
+
+/* ---------- an agent's Markdown, drawn (ADR #509) ---------- */
+.md { display: grid; gap: var(--space-2); line-height: 1.55; overflow-wrap: anywhere; }
+.md > * { margin: 0; }
+.md .md-h { font-weight: 700; color: var(--fg); margin-top: var(--space-1); }
+.md .md-h1, .md .md-h2 { font-size: var(--fs-md); }
+.md .md-h3, .md .md-h4, .md .md-h5, .md .md-h6 { font-size: var(--fs-sm); }
+.md ul, .md ol { padding-left: 1.3rem; display: grid; gap: 2px; }
+.md blockquote { padding-left: var(--space-3); border-left: 3px solid var(--line); color: var(--fg-muted); }
+.md .md-code { font-family: var(--mono, ui-monospace, monospace); font-size: 0.92em; padding: 1px 5px;
+  border-radius: 5px; background: var(--bg-sunken); border: 1px solid var(--line); }
+.md .md-pre { font-family: var(--mono, ui-monospace, monospace); font-size: var(--fs-xs); padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-2); background: var(--bg-sunken); border: 1px solid var(--line); overflow-x: auto;
+  white-space: pre; }
+.md hr { border: 0; border-top: 1px solid var(--line); }

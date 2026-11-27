@@ -105,17 +105,20 @@ function lineHop(line) {
 export class CircuitForm extends Component {
   constructor(props) {
     super(props);
-    const k = props.circuit || {};
+    // ADR #507: a `template` is a circuit to copy — the form opens on its fields and saves a new one.
+    const k = props.circuit || props.template || {};
     const f = {};
     for (const [name] of FIELDS) f[name] = k[name] || "";
+    if (props.template) f.designation = `${props.template.designation} (copy)`.slice(0, 200);
     this.state = { f, path: (k.path || []).map(hopLine).join("\n"), busy: false, error: null };
   }
 
   async save(event) {
     event.preventDefault();
-    const { c, circuit } = this.props;
+    const { c, circuit, template } = this.props;
+    const from = circuit || template;
     const path = this.state.path.split("\n").map((l) => l.trim()).filter(Boolean).map(lineHop);
-    const body = { ...this.state.f, path, attributes: (circuit && circuit.attributes) || {},
+    const body = { ...this.state.f, path, attributes: (from && from.attributes) || {},
       notes: (circuit && circuit.notes) || "" };
     this.setState({ busy: true, error: null });
     try {
@@ -128,9 +131,10 @@ export class CircuitForm extends Component {
     }
   }
 
-  render({ circuit, onCancel }, { f, path, busy, error }) {
+  render({ circuit, template, onCancel }, { f, path, busy, error }) {
     return html`<form class="panel-block ckt-form" onSubmit=${(e) => this.save(e)}>
-      <h3>${circuit ? `Change ${circuit.designation}` : "Add a circuit"}</h3>
+      <h3>${circuit ? `Change ${circuit.designation}` : template ? `A copy of ${template.designation}` : "Add a circuit"}</h3>
+      ${template ? html`<p class="hint">Every field and hop is copied: change what differs — usually the name, an end and a port — and add it.</p>` : null}
       <div class="pe-fields">${FIELDS.map(([name, label, max]) => html`<div class="pe-field" key=${name}>
         <label for=${`ckt-f-${name}`}>${label}</label>
         <input id=${`ckt-f-${name}`} maxlength=${max} required=${name === "designation"} value=${f[name]}

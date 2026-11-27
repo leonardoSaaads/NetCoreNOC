@@ -195,7 +195,8 @@ async def test_a_customers_book_is_kept_by_people_and_its_memory_by_agents(store
     base = f"/api/noc/customers/{akamai}"
     try:
         listed = (await editor.get("/api/noc/customers")).json()
-        assert [c["name"] for c in listed["customers"]] == ["Akamai", "TIM Brasil"]
+        # ADR #507: the Default customer first, then the others by name.
+        assert [c["name"] for c in listed["customers"]] == ["Default", "Akamai", "TIM Brasil"]
 
         said = "Name every case 'AKAM-<site>-<fault>'. Call Zayo first for any fibre cut."
         resp = await editor.post(base, json={"instructions": said, "version": 0})

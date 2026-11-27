@@ -108,6 +108,8 @@ def register(app: FastAPI, ctx: AppContext) -> None:
             "messages": log,
             "may_edit": "cases.work" in request.state.capabilities,
             "look_every_s": mail_loop.LOOK_EVERY_S,
+            # ADR #510: the providers the Email tab's wizard offers.
+            "providers": mail.catalogue(),
         }
         return out
 

@@ -18,8 +18,12 @@ from typing import Any
 class FakeSmtp:
     """Start with `with FakeSmtp(user, password) as server:`; read `server.messages`."""
 
-    def __init__(self, username: str = "", password: str = "") -> None:
+    def __init__(
+        self, username: str = "", password: str = "", *, token: str = "", basic_off: bool = False
+    ) -> None:
         self.username, self.password = username, password
+        #: ADR #510: the access token XOAUTH2 must carry, and Microsoft's refusal of a password.
+        self.token, self.basic_off = token, basic_off
         self.messages: list[Message] = []
         self.logins: list[tuple[str, str]] = []
         outer = self
@@ -55,7 +59,16 @@ class FakeSmtp:
             verb = line.split(" ", 1)[0].upper()
             if verb in ("EHLO", "HELO"):
                 say("250-fake.test")
-                say("250 AUTH PLAIN")
+                say("250 AUTH PLAIN XOAUTH2")
+            elif verb == "AUTH" and line.split()[1].upper() == "XOAUTH2":
+                said = base64.b64decode(line.split()[2]).decode()
+                user = said.split("\x01")[0].removeprefix("user=")
+                bearer = said.split("\x01")[1].removeprefix("auth=Bearer ")
+                self.logins.append((user, f"xoauth2:{bearer}"))
+                ok = bool(self.token) and bearer == self.token
+                say("235 2.7.0 accepted" if ok else "535 5.7.3 authentication unsuccessful")
+            elif verb == "AUTH" and self.basic_off:
+                say("535 5.7.139 Authentication unsuccessful, basic authentication is disabled.")
             elif verb == "AUTH":
                 _user, name, secret = base64.b64decode(line.split()[2]).decode().split("\0")
                 self.logins.append((name, secret))

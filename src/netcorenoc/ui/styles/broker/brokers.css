@@ -43,10 +43,24 @@ tr.row-muted td { color: var(--fg-muted); }
 .brk-mode-icon { display: inline-grid; place-items: center; width: 36px; height: 36px; border-radius: 9px; font-size: 20px; background: color-mix(in srgb, var(--accent) 16%, transparent); color: var(--accent); }
 .brk-mode .muted { font-size: var(--fs-sm); }
 .brk-mode-fact { font-size: var(--fs-xs); color: var(--fg-muted); }
-.brk-form { margin-top: var(--space-2); }
+/* ADR #507: the edit form in three groups, a label above each field and its hint below. */
+.brk-form { margin-top: var(--space-3); display: grid; gap: var(--space-3); }
+.brk-group { margin: 0; padding: var(--space-3); border: 1px solid var(--line); border-radius: var(--radius-2);
+  display: grid; gap: var(--space-3); min-width: 0; }
+.brk-group legend { padding: 0 var(--space-1); font-size: var(--fs-sm); font-weight: 600; color: var(--fg); }
+.brk-fields { display: grid; grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr)); gap: var(--space-3);
+  align-items: start; }
 .brk-form .brk-wide { grid-column: 1 / -1; }
-.brk-form textarea { width: 100%; font-family: var(--mono, ui-monospace, monospace); }
-.brk-nav { display: flex; justify-content: flex-end; gap: var(--space-2); margin-top: var(--space-3); }
+.brk-form .pe-field > label { font-size: var(--fs-xs); font-weight: 600; color: var(--fg-muted); }
+.brk-form input, .brk-form select, .brk-form textarea { width: 100%; box-sizing: border-box; }
+.brk-form textarea { resize: vertical; font-family: inherit; }
+.brk-form .brk-name { max-width: 32rem; }
+.brk-form textarea.mono { font-family: var(--mono, ui-monospace, monospace); }
+.brk-form small { line-height: 1.4; }
+.brk-narrow { max-width: 12rem; }
+.brk-arrive { margin: 0; }
+.brk-aside { margin: 1.4rem 0 0; font-size: var(--fs-sm); }
+.brk-nav { display: flex; justify-content: flex-end; gap: var(--space-2); }
 .brk-facts { display: grid; grid-template-columns: max-content 1fr; gap: var(--space-2) var(--space-4); margin: var(--space-3) 0 0; }
 .brk-facts dt { font-size: var(--fs-xs); font-weight: 600; color: var(--fg-muted); text-transform: uppercase; letter-spacing: 0.06em; padding-top: 2px; }
 .brk-facts dd { margin: 0; min-width: 0; overflow-wrap: anywhere; }

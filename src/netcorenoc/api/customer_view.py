@@ -37,8 +37,8 @@ __all__ = [
 ]
 
 AGENTS_KEEP_MEMORY = (
-    "what the customer told the NOC — its instructions, workbook, documents and circuits — is kept "
-    "by people; an agent keeps what it learns: the customer's memory and a circuit's notes"
+    "what the customer told the NOC — its instructions, Work Contact, documents and circuits — is "
+    "kept by people; an agent keeps what it learns: the customer's memory and a circuit's notes"
 )
 _HIDDEN = "hidden for your role"
 NO_SUCH = "no such customer"
@@ -192,6 +192,8 @@ def customer_view(
         "id": row["id"],
         "name": row["name"],
         "slug": row["slug"],
+        # ADR #507: the Default customer is renamed, never ended; its brokers' customer by default.
+        "is_default": bool(row.get("is_default", False)),
         "instructions": row["instructions"],
         "memory": row["memory"],
         "version": row["version"],

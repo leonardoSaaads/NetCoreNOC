@@ -61,6 +61,7 @@ from netcorenoc.crosscutting.rbac.route_map import (
 from netcorenoc.crosscutting.rbac.tables import _CEILINGS as _CEILINGS
 from netcorenoc.crosscutting.rbac.tables import (
     AUDITED_DENIED_PERMISSIONS,
+    ESTATE_ADMIN,
     FIXED_ROLES,
     PERMISSIONS,
     ROLE_RANK,
@@ -68,6 +69,7 @@ from netcorenoc.crosscutting.rbac.tables import (
 
 __all__ = [
     "AUDITED_DENIED_PERMISSIONS",
+    "ESTATE_ADMIN",
     "FIXED_ROLES",
     "FIXED_ROLE_REFUSAL",
     "PERMISSIONS",

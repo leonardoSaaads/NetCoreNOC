@@ -69,23 +69,28 @@ from netcorenoc.crosscutting.shaping.project import (
     project_situation_detail,
     project_situation_row,
 )
-from netcorenoc.crosscutting.shaping.scope import _ADDRESS_CHARS as _ADDRESS_CHARS
-from netcorenoc.crosscutting.shaping.scope import _GLOB_CHARS as _GLOB_CHARS
 from netcorenoc.crosscutting.shaping.scope import (
+    BROKER_ALL,
     DENY_ALL,
+    NOC_ALL,
+    NOC_NONE,
     UNRESTRICTED,
     Scope,
     ScopePolicy,
     is_scopable,
+    limits_admin,
+    never_scoped,
     parse_scope_policy,
-    scope_policy_errors,
     visible_nes,
     within,
 )
-from netcorenoc.crosscutting.shaping.scope import _can_never_match as _can_never_match
 from netcorenoc.crosscutting.shaping.scope import _layers as _layers
 from netcorenoc.crosscutting.shaping.scope import _matches as _matches
 from netcorenoc.crosscutting.shaping.scope import _selector_lists as _selector_lists
+from netcorenoc.crosscutting.shaping.scope_checks import _ADDRESS_CHARS as _ADDRESS_CHARS
+from netcorenoc.crosscutting.shaping.scope_checks import _GLOB_CHARS as _GLOB_CHARS
+from netcorenoc.crosscutting.shaping.scope_checks import _can_never_match as _can_never_match
+from netcorenoc.crosscutting.shaping.scope_checks import scope_policy_errors as scope_policy_errors
 from netcorenoc.crosscutting.shaping.timezones import CURATED as CURATED
 from netcorenoc.crosscutting.shaping.timezones import DEFAULT_ZONE as DEFAULT_ZONE
 from netcorenoc.crosscutting.shaping.timezones import Zone as Zone
@@ -98,11 +103,14 @@ from netcorenoc.crosscutting.shaping.timezones import (
 from netcorenoc.crosscutting.shaping.timezones import wall_clock as wall_clock
 
 __all__ = [
+    "BROKER_ALL",
     "CURATED",
     "DEFAULT_ZONE",
     "DENY_ALL",
     "FIELD_RULES",
     "MAX_NAME_CHARS",
+    "NOC_ALL",
+    "NOC_NONE",
     "NO_MEMBERS",
     "UNRESTRICTED",
     "Scope",
@@ -114,6 +122,8 @@ __all__ = [
     "derive_situation_name",
     "filter_rows",
     "is_scopable",
+    "limits_admin",
+    "never_scoped",
     "offset_label",
     "parse_scope_policy",
     "project_graph",
