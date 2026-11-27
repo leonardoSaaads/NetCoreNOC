@@ -164,7 +164,7 @@ def register(app: FastAPI, ctx: AppContext) -> None:
             "This is a test from the NOC. Emails about your cases will come from this address; "
             "replying to them adds your answer to the case.\n"
         )
-        sent, sent_detail = True, f"sent to {body.to}"
+        sent, sent_detail = True, f"the message went to {body.to}"
         try:
             await asyncio.to_thread(mail.send, config, message, password=fields["password"])
         except mail.MailError as exc:

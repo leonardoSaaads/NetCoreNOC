@@ -227,7 +227,11 @@ async def test_the_email_settings_name_the_customers_own_credentials(store: Stor
         )
         assert chosen.status_code == 200, chosen.text
         body = chosen.json()
-        assert body["smtp"]["name"] == "acme smtp" and "password" not in str(body)
+        # The provider catalogue (ADR #510) is public instructions ("App password"); everything
+        # else names no password, and the secret's value appears nowhere.
+        described = {k: v for k, v in body.items() if k != "providers"}
+        assert body["smtp"]["name"] == "acme smtp" and "password" not in str(described)
+        assert "Mail-Passw0rd!" not in str(body)
         assert [c["name"] for c in body["choices"]] == ["acme smtp"]
         async with store.reading():
             cur = await store.conn.execute(

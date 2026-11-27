@@ -55,6 +55,7 @@ _UI_MODULES = (
     "app/format.js",
     "app/markdown.js",  # ADR #509
     "app/mailwizard.js",  # ADR #510
+    "app/mssignin.js",  # ADR #510
     # v0.16.6: the chart vocabulary (DECISIONS #305, #307). `charts.js` is the three types every
     # screen draws with; `chartdata.js` is the arithmetic behind them — where a line breaks, what
     # the axis reads, what span the data covers — kept separate because it is pure and is driven

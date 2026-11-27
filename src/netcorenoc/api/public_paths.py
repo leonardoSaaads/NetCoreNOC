@@ -74,6 +74,7 @@ UNAUTHENTICATED_PATHS: frozenset[str] = frozenset(
         "/app/format.js",
         "/app/markdown.js",
         "/app/mailwizard.js",
+        "/app/mssignin.js",
         # v0.16.6: the chart vocabulary and the arithmetic behind it (DECISIONS #305, #307).
         "/app/charts.js",
         "/app/compare.js",

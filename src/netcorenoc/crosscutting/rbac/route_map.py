@@ -22,6 +22,10 @@ from netcorenoc.crosscutting.rbac.account_map import (
 )
 from netcorenoc.crosscutting.rbac.broker_map import BROKER_ROUTE_PERMISSIONS, BROKER_ROUTE_SCOPE
 from netcorenoc.crosscutting.rbac.noc_map import NOC_ROUTE_PERMISSIONS, NOC_ROUTE_SCOPE
+from netcorenoc.crosscutting.rbac.settings_map import (
+    SETTINGS_ROUTE_PERMISSIONS,
+    SETTINGS_ROUTE_SCOPE,
+)
 from netcorenoc.crosscutting.rbac.tables import PERMISSIONS
 
 # Route (METHOD, templated path) -> required capability. THE authorization map.
@@ -119,10 +123,6 @@ ROUTE_PERMISSIONS: dict[tuple[str, str], str] = {
     ("GET", "/api/organizations"): "organizations.read",
     ("POST", "/api/organizations"): "organizations.write",
     ("POST", "/api/organizations/{organization_id}/name"): "organizations.write",
-    # ADR #510: a mailbox signed in with Microsoft — whoever may set one up (checked in the handler:
-    # the appliance's settings, or a vault custodian for a customer's).
-    ("POST", "/api/mail/oauth/start"): "secrets.write",
-    ("POST", "/api/mail/oauth/poll"): "secrets.write",
     # Which provider owns one element. **The same capability as creating an organization**,
     # because a feature whose only reachable state is its seeded default is not a feature:
     # without this route D1 is a column nobody can set. Not `label.write` — a rename is an
@@ -173,13 +173,7 @@ ROUTE_PERMISSIONS: dict[tuple[str, str], str] = {
     ("POST", "/api/search"): "search.write",
     ("POST", "/api/search/stop"): "search.write",
     ("GET", "/api/judge"): "model.read",
-    # v0.30.0: the SNMP policy (#444), the SMTP server (#445) and the API reference, settings.
-    ("GET", "/api/reference"): "tokens.manage",
-    ("GET", "/api/snmp"): "config.read",
-    ("POST", "/api/snmp"): "config.write",
-    ("GET", "/api/email"): "config.read",
-    ("POST", "/api/email"): "config.write",
-    ("POST", "/api/email/test"): "config.write",
+    **SETTINGS_ROUTE_PERMISSIONS,  # the appliance's settings (`settings_map.py`, ADR #510)
     **NOC_ROUTE_PERMISSIONS,  # the NOC plane's, with their own prose (`noc_map.py`, ADR #454)
 }
 
@@ -327,11 +321,6 @@ ROUTE_SCOPE: dict[tuple[str, str], Literal["scoped", "unscoped", "admin_only"]] 
     ("GET", "/api/organizations"): "unscoped",
     ("POST", "/api/organizations"): "admin_only",
     ("POST", "/api/organizations/{organization_id}/name"): "admin_only",
-    # ADR #510: a Microsoft sign-in for a mailbox — an account at Microsoft, held for the person
-    # who started it (`signin_flows`); it names no network element and stores nothing.
-    ("POST", "/api/mail/oauth/start"): "unscoped",
-    # ADR #510: the same sign-in, asked whether it was approved — the caller's own, or a 404.
-    ("POST", "/api/mail/oauth/poll"): "unscoped",
     ("POST", "/api/entities/{ne_id}/organization"): "admin_only",
     **BROKER_ROUTE_SCOPE,  # the brokers' postures, each with its reason (`broker_map.py`)
     # A property of the host's `tzdata`. Public information about a public database, naming no
@@ -395,12 +384,7 @@ ROUTE_SCOPE: dict[tuple[str, str], Literal["scoped", "unscoped", "admin_only"]] 
     # The judge: the shipped model's generated-data numbers, this site's label counts and verdicts,
     # and the live monitor — the reasoning `/api/models` and `/api/correlation` already carry.
     ("GET", "/api/judge"): "unscoped",
-    ("GET", "/api/reference"): "admin_only",
-    ("GET", "/api/snmp"): "admin_only",
-    ("POST", "/api/snmp"): "admin_only",
-    ("GET", "/api/email"): "admin_only",
-    ("POST", "/api/email"): "admin_only",
-    ("POST", "/api/email/test"): "admin_only",
+    **SETTINGS_ROUTE_SCOPE,  # the appliance's settings, each with its reason (`settings_map.py`)
     **NOC_ROUTE_SCOPE,
 }
 

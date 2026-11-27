@@ -36,6 +36,7 @@ from netcorenoc.crosscutting import auth, rbac
 from netcorenoc.crosscutting.rbac import account_map as _account_map
 from netcorenoc.crosscutting.rbac import noc_map as _noc_map
 from netcorenoc.crosscutting.rbac import route_map as _route_map  # noqa: F401  (rbac.route_map)
+from netcorenoc.crosscutting.rbac import settings_map as _settings_map
 from netcorenoc.store import Store
 
 import authutil
@@ -760,7 +761,9 @@ async def test_f43_every_path_served_today_still_registers(store: Store) -> None
     # /api/mail/oauth/start and /poll)
     # Unreleased: 421 -> 424 and 217 -> 219 — ADR #510: a customer's mailbox tried and kept (two
     # routes) and the shared wizard, app/mailwizard.js
-    assert len(served) == 424, f"the served surface moved: {len(served)} method/path pairs"
+    # Unreleased: 424 -> 425 — ADR #510: the Microsoft sign-in, app/mssignin.js, split from the
+    # wizard at the module byte budget
+    assert len(served) == 425, f"the served surface moved: {len(served)} method/path pairs"
     api_pairs = {(method, path) for method, path in served if path.startswith("/api")}
     # **v0.19.0: 53 -> 55.** `GET /api/models` and `POST /api/models/register`: what the
     # models are doing, and turning one of this appliance's own fits into an artefact.
@@ -995,7 +998,9 @@ async def test_f42_every_path_served_today_still_registers(store: Store) -> None
     # /api/mail/oauth/start and /poll)
     # Unreleased: 421 -> 424 and 217 -> 219 — ADR #510: a customer's mailbox tried and kept (two
     # routes) and the shared wizard, app/mailwizard.js
-    assert len(served) == 424, f"the served surface moved: {len(served)} method/path pairs"
+    # Unreleased: 424 -> 425 — ADR #510: the Microsoft sign-in, app/mssignin.js, split from the
+    # wizard at the module byte budget
+    assert len(served) == 425, f"the served surface moved: {len(served)} method/path pairs"
     api_pairs = {(method, path) for method, path in served if path.startswith("/api")}
     # **v0.19.0: 53 -> 55.** `GET /api/models` and `POST /api/models/register`: what the
     # models are doing, and turning one of this appliance's own fits into an artefact.
@@ -1072,8 +1077,9 @@ def test_every_unscoped_declaration_carries_a_written_justification() -> None:
     # ADR #454: and the NOC plane's table, in `noc_map.py`, which `route_map.py` folds in — the
     # guard follows the table into the file that holds it.
     # ADR #482: and the caller's own account's table, in `account_map.py`, folded in the same way.
+    # ADR #510: and the appliance's settings, in `settings_map.py`.
     lines: list[str] = []
-    for module in (_account_map, rbac.route_map, _noc_map):
+    for module in (_account_map, rbac.route_map, _noc_map, _settings_map):
         source = Path(str(module.__file__)).read_text(encoding="utf-8")
         lines += source.split("ROUTE_SCOPE: dict[", 1)[1].split("\n}\n", 1)[0].splitlines()
     entries = [i for i, line in enumerate(lines) if line.strip().endswith(': "unscoped",')]

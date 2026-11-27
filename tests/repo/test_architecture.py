@@ -412,6 +412,7 @@ ROUTE_ORDER_BASELINE: list[tuple[str, str]] = [
     ("GET", "/app/format.js"),
     ("GET", "/app/markdown.js"),
     ("GET", "/app/mailwizard.js"),
+    ("GET", "/app/mssignin.js"),
     ("GET", "/app/charts.js"),
     ("GET", "/app/compare.js"),
     ("GET", "/app/chartdata.js"),
@@ -1626,8 +1627,8 @@ def test_the_queue_put_on_the_hot_path_is_non_blocking() -> None:
 #: `engine/noc/` `commands`, `executor`, `playbook` and `runbook`, `store/noc_playbooks.py`,
 #: migration `0035_noc_automation.sql`, the `noc_exec` and `playbooks` routes, and the
 #: `views/playbooks` console module.
-SRC_TREE_DIGEST = "48d05fc1bc5f40ae972569448f54a9cbaf011d5a16f00f9fda34eb5dcd8155d4"
-SRC_FILE_COUNT = 607
+SRC_TREE_DIGEST = "8a6295dd0d9888779cb5bc4d0013741a5ad300c8176e6e6ffcdeb1023b004d21"
+SRC_FILE_COUNT = 609
 SRC_VERSION_FILE = "src/netcorenoc/__init__.py"
 
 

@@ -104,7 +104,7 @@ export class EmailPanel extends Component {
       ${changing && writable ? html`<${MailWizard} providers=${data.providers} initial=${data}
           me=${session().email || ""} onCancel=${data.host ? () => this.setState({ changing: false }) : null}
           onTry=${async (draft, to) => { await post("/api/email/test", { to, draft: body(data, draft, extra) });
-            return { ok: true, sent: true, detail: `sent to ${to}. Check the inbox (and spam).` }; }}
+            return { ok: true, sent: true, detail: `the message went to ${to}. Check the inbox (and spam).` }; }}
           onSave=${async (draft) => { await post("/api/email", body(data, draft, extra)); await this.load(); }}>
           ${this.extras(writable)}
         <//>`

@@ -191,17 +191,17 @@
   display: grid; gap: var(--space-2); }
 .mw-imap legend { display: flex; align-items: center; gap: 6px; font-weight: 600; padding: 0 4px; }
 .mw-label { margin: 0; font-weight: 600; }
-.mw-targets { display: grid; gap: var(--space-1); }
-.mw-target { display: flex; align-items: center; gap: var(--space-2); padding: var(--space-2) var(--space-3);
+.mw-sendto { display: grid; gap: var(--space-1); }
+.mw-sendto-opt { display: flex; align-items: center; gap: var(--space-2); padding: var(--space-2) var(--space-3);
   border: 1px solid var(--line); border-radius: var(--radius-2); cursor: pointer; }
-.mw-target.on { border-color: var(--accent); background: var(--accent-soft); }
+.mw-sendto-opt.on { border-color: var(--accent); background: var(--accent-soft); }
 .mw-test > button { justify-self: start; }
 .mw-result { padding: var(--space-2) var(--space-3); border-radius: var(--radius-2); border: 1px solid var(--line); }
 .mw-result.ok { border-color: var(--accent); }
 .mw-result.bad { border-color: var(--alarm); background: var(--alarm-bg); }
 .mw-result p { margin: 2px 0; }
 .mw-problem { margin: 0; color: var(--warn); }
-.mw-nav { display: flex; justify-content: flex-end; align-items: center; gap: var(--space-2); }
+.mw-foot { display: flex; justify-content: flex-end; align-items: center; gap: var(--space-2); }
 .email-summary-head, .cm-box { display: flex; align-items: center; gap: var(--space-3); flex-wrap: wrap; }
 .email-summary-head > div, .cm-box > div { flex: 1 1 16rem; min-width: 0; }
 .email-summary-head p, .cm-box p { margin: 2px 0 0; }

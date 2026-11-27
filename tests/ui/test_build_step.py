@@ -382,9 +382,10 @@ UI_HASHES: dict[str, str] = {
     "app/layout.js": "447b775510c160d906ed6c54831954734c1f8bd70e90079a1fc280d6a9bad577",
     "app/login.js": "4316945989de1e1526389182db7e54dfdbeed4eab85d5d00821290ffc519dabf",
     "app/logo.js": "163352a0c9a8064f151396f17fa948fecb0334a41a7a4e068de24907845b52dd",
-    "app/mailwizard.js": "a0f15c0d2059efaa008f9113ba8210f433e8911ad18168dd2437f19b667f2bcd",
+    "app/mailwizard.js": "7949b74b58aeec04522524c5821966357687e9df5487b1e99f496cdf26e3defb",
     "app/markdown.js": "489b4bfdac0ef83e06f2547d580afcfb62d3c0bec2d4435980f506a1c512960e",
     "app/modelcharts.js": "b5a2afc2b92bcb12d15fb0794cd21d0cd928472d7360616660df3c4805efff46",
+    "app/mssignin.js": "239400e0d230589bcb93a57077286007fe9f34862e027ccf00dd22b761e546db",
     "app/netgraph.js": "30c308afc4fc650550ce0751d212a54145c293629552028ecf58c2061951251a",
     "app/notices.js": "a6d15665d53bff109c8d5e5be6e1116f4d1a014b1ba10e141b80cf9de7e62261",
     "app/parameters.js": "6c5cf807535cc2ef87d4b1d54f2ab2abb34f595f74c64cc272b26bb88113b1f4",
@@ -419,7 +420,7 @@ UI_HASHES: dict[str, str] = {
         "f899e419e053f1876ca9c9070997cca217d88a3da1a1ce4a935c31805ce11d18"
     ),
     "app/views/admin/parts/email.js": (
-        "9d99b2cc87dcb2fad7186b4579fc2c4f3a1f798e5da06bb1fb301b52d7e33bf2"
+        "d3e18c3f39fe8c55ddc53a8b6c5afdc6d0a304a62731a398e92978800c47ca57"
     ),
     "app/views/admin/parts/facts.js": (
         "a4ab82c1dec7eb3065be4f86895e92425485461854753a5b16ddb5cd056f2a03"
@@ -764,7 +765,7 @@ UI_HASHES: dict[str, str] = {
     "login-bg.svg": "5f677f3371a2828c8d21668cd83381c105ccdc1780a66dc09fc6f6bc19d211d6",
     "styles/admin/audit.css": "12f67e7c62ce398fdcf5b0721fd8aa5eee999d5bfac740ccb3d8beb624f6f5a3",
     "styles/admin/people.css": "4fc298eb3967c41077ee998bf0a57cda7f5c6d561043b37d5a1f7e61bef9fb2d",
-    "styles/admin/settings.css": "f04db086d6e1d41f9cd1a55bce387609d2020ba3f044099c4dfe8ab631887565",
+    "styles/admin/settings.css": "e09f093707cb5a4f65ceecf9d9eb172997f862aec587047f20e7d1fe8b71d895",
     "styles/broker/brokers.css": "71e21eaf4cfbeb11a45cea9572922706c86e515fc88c7ec8843bb7107e546516",
     "styles/broker/catalogue.css": (
         "a3dbc9550bb88aac32c4722224f078f04d357af18b11fda989d1d1239d1f3764"
@@ -850,9 +851,10 @@ UI_SIZES: dict[str, int] = {
     "app/layout.js": 9_799,
     "app/login.js": 8_780,
     "app/logo.js": 1_573,
-    "app/mailwizard.js": 17_722,
+    "app/mailwizard.js": 13_833,
     "app/markdown.js": 5_404,
     "app/modelcharts.js": 17_564,
+    "app/mssignin.js": 4_521,
     "app/netgraph.js": 11_593,
     "app/notices.js": 14_771,
     "app/parameters.js": 10_388,
@@ -876,7 +878,7 @@ UI_SIZES: dict[str, int] = {
     "app/views/admin/parts/autonomy.js": 10_616,
     "app/views/admin/parts/capgrid.js": 6_769,
     "app/views/admin/parts/custscope.js": 6_257,
-    "app/views/admin/parts/email.js": 7_020,
+    "app/views/admin/parts/email.js": 7_032,
     "app/views/admin/parts/facts.js": 6_394,
     "app/views/admin/parts/people.js": 16_981,
     "app/views/admin/parts/personsecurity.js": 4_865,
@@ -1000,7 +1002,7 @@ UI_SIZES: dict[str, int] = {
     "login-bg.svg": 18_884,
     "styles/admin/audit.css": 5_339,
     "styles/admin/people.css": 15_995,
-    "styles/admin/settings.css": 14_940,
+    "styles/admin/settings.css": 14_948,
     "styles/broker/brokers.css": 8_833,
     "styles/broker/catalogue.css": 6_296,
     "styles/broker/entities.css": 4_768,

@@ -5,17 +5,16 @@
  * write from, `withImap`), which differ only in where the draft is tried and kept — `onTry` and
  * `onSave` — and in the customer's inbox for replies.
  *
- * Outlook.com and Hotmail refuse a password: their account step is **Sign in with Microsoft** — a
- * code to type at microsoft.com/devicelogin, polled until the owner approves (`/api/mail/oauth`).
- * The other providers take an app password, with the steps to one. The server's details are folded
+ * Outlook.com and Hotmail refuse a password: their account step is **Sign in with Microsoft**
+ * (`mssignin.js`). The other providers take an app password, with the steps to one. The server's details are folded
  * away and filled from the provider; Save is offered once a test went through.
  */
 
 import { html, Component, cx } from "./dom.js";
-import { post } from "./api.js";
 import { Icon } from "./icons.js";
 import { BrandMark } from "./brands.js";
 import { PasswordInput } from "./password.js";
+import { MicrosoftSignIn } from "./mssignin.js";
 
 const STEPS = [["provider", "Provider"], ["account", "Account"], ["test", "Test and save"]];
 const SECURITY = [["starttls", "STARTTLS (587)"], ["tls", "SSL/TLS (465)"], ["none", "None (25)"]];
@@ -23,16 +22,6 @@ const ADDRESS = /^[^@\s<>"',;:]{1,64}@[A-Za-z0-9.-]{1,253}\.[A-Za-z]{2,63}$/;
 /** Where each provider's replies are read (IMAPS 993), for the customer's inbox. */
 const IMAP = { gmail: "imap.gmail.com", outlook: "outlook.office365.com", microsoft: "outlook.office365.com",
   yahoo: "imap.mail.yahoo.com", icloud: "imap.mail.me.com", zoho: "imap.zoho.com" };
-const TENANTS = [["consumers", "Personal account — Outlook.com, Hotmail, Live"],
-  ["organizations", "Work or school — Microsoft 365"]];
-const REGISTER = [
-  "Open entra.microsoft.com → App registrations → New registration (free).",
-  "Supported account types: personal Microsoft accounts (and work accounts, for Microsoft 365).",
-  "Authentication → Allow public client flows → Yes.",
-  "API permissions → Add → APIs my organization uses → Office 365 Exchange Online → Delegated: SMTP.Send and IMAP.AccessAsUser.All.",
-  "Copy the Application (client) ID here.",
-];
-
 export const validAddress = (text) => ADDRESS.test(String(text || "").trim());
 
 /** A provider's mark; a custom server is a plain tile, never another company's logo. */
@@ -52,70 +41,6 @@ export function startFrom(saved) {
     imap_host: saved.imap_host || "", imap_port: saved.imap_port || 993, imap_security: saved.imap_security || "tls",
     reads: saved.imap_host ? true : !!saved.reads,
   };
-}
-
-/** Microsoft's sign-in: the code, the link, and the wait until it is approved. */
-class MicrosoftSignIn extends Component {
-  constructor(props) {
-    super(props);
-    this.state = { code: null, busy: false, error: null, account: null };
-  }
-
-  componentWillUnmount() { clearTimeout(this.timer); }
-
-  async start() {
-    const { d } = this.props;
-    this.setState({ busy: true, error: null, account: null });
-    try {
-      const code = await post("/api/mail/oauth/start", { client_id: d.oauth_client_id.trim(), tenant: d.oauth_tenant });
-      this.setState({ code, busy: false });
-      this.props.onFlow(null);
-      this.wait(code);
-    } catch (error) {
-      this.setState({ busy: false, error: error.detail || error.message });
-    }
-  }
-
-  wait(code) {
-    this.timer = setTimeout(async () => {
-      try {
-        const answer = await post("/api/mail/oauth/poll", { flow: code.flow });
-        if (answer.status === "signed_in") {
-          this.setState({ code: null, account: answer.account || "the mailbox" });
-          this.props.onFlow(code.flow);
-        } else this.wait(code);
-      } catch (error) {
-        this.setState({ code: null, error: error.detail || error.message });
-      }
-    }, Math.max(2, code.interval || 5) * 1000);
-  }
-
-  render({ d, signedIn, onChange }, { code, busy, error, account }) {
-    const ok = /^[0-9a-f]{8}-([0-9a-f]{4}-){3}[0-9a-f]{12}$/i.test(d.oauth_client_id.trim());
-    return html`<div class="mw-signin">
-      <div class="mw-fields">
-        <div class="pe-field"><label for="mw-client">Application (client) ID</label>
-          <input id="mw-client" class="mono" value=${d.oauth_client_id} placeholder="1a2b3c4d-…"
-            onInput=${(e) => onChange({ oauth_client_id: e.currentTarget.value })} /></div>
-        <div class="pe-field"><label for="mw-tenant">Account</label>
-          <select id="mw-tenant" value=${d.oauth_tenant} onChange=${(e) => onChange({ oauth_tenant: e.currentTarget.value })}>
-            ${TENANTS.map(([v, l]) => html`<option key=${v} value=${v}>${l}</option>`)}</select></div>
-      </div>
-      <details class="mw-how"><summary>How to get an application ID</summary>
-        <ol>${REGISTER.map((s) => html`<li key=${s}>${s}</li>`)}</ol></details>
-      ${code ? html`<div class="mw-code" role="status">
-          <p>Open <a href=${code.verification_uri} target="_blank" rel="noopener noreferrer">${code.verification_uri}</a>,
-            type this code and sign in as <b>${d.sender || "the mailbox"}</b>:</p>
-          <p class="mw-code-value mono">${code.user_code}</p>
-          <p class="muted">Waiting for Microsoft… this page notices by itself.</p></div>`
-        : account || signedIn
-        ? html`<p class="ok-note" role="status"><${Icon} name="check" /> Signed in with Microsoft${account ? ` as ${account}` : ""}.
-            <button type="button" class="linkish" disabled=${!ok || busy} onClick=${() => this.start()}>Sign in again</button></p>`
-        : html`<button type="button" class="primary" disabled=${!ok || busy} onClick=${() => this.start()}>
-            ${busy ? "Asking Microsoft…" : "Sign in with Microsoft"}</button>`}
-      ${error ? html`<p class="err" role="alert">${error}</p>` : null}
-    </div>`;
-  }
 }
 
 export class MailWizard extends Component {
@@ -257,8 +182,8 @@ export class MailWizard extends Component {
       ...(this.props.me ? [["me", `Me — ${this.props.me}`]] : []), ["other", "Another address"]];
     return html`<div class="mw-test">
       <p class="mw-label">Send a test message to</p>
-      <div class="mw-targets" role="radiogroup" aria-label="Send the test to">
-        ${options.map(([v, l]) => html`<label key=${v} class=${cx("mw-target", testTo === v && "on")}>
+      <div class="mw-sendto" role="radiogroup" aria-label="Send the test to">
+        ${options.map(([v, l]) => html`<label key=${v} class=${cx("mw-sendto-opt", testTo === v && "on")}>
           <input type="radio" name="mw-to" checked=${testTo === v} onChange=${() => this.setState({ testTo: v, test: null })} /> ${l}</label>`)}
       </div>
       ${testTo === "other" ? html`<input type="email" class="mw-other" aria-label="Test address" value=${other}
@@ -281,7 +206,7 @@ export class MailWizard extends Component {
       ${step === 0 ? this.providerStep() : step === 1 ? this.accountStep() : this.testStep()}
       ${problem && step === 1 ? html`<p class="hint mw-problem">${problem}</p>` : null}
       ${error ? html`<p class="err" role="alert">${error}</p>` : null}
-      <footer class="mw-nav">
+      <footer class="mw-foot">
         ${onCancel ? html`<button type="button" class="linkish" onClick=${onCancel}>Cancel</button>` : null}
         ${step > 0 ? html`<button type="button" onClick=${() => this.setState({ step: step - 1, test: null })}>Back</button>` : null}
         ${step === 1 ? html`<button type="button" class="primary" disabled=${!!problem}
