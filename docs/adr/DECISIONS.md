@@ -7585,3 +7585,129 @@ From this release an entry is about six lines: decision, reason, release.*
   the router, the widgets) stay where every screen reaches them.
 - **Not done, deliberately**: no `@import` (it chains requests and a guard refuses it), no build
   step (ADR #175), no module renamed: a path moved, a name did not.
+
+## 506. A resolved situation is history; a card shows what the operator just changed (unreleased)
+
+- **Context**: the owner's review of Situations found four faults. (1) After *Confirm grouping* a
+  card under the Open tab still offered Confirm grouping, until a reload some thirty seconds later.
+  (2) *How sure are you?* would not move to 100%. (3) After a New situation was merged into an Open
+  one, the Open one was listed under New. (4) **Grave**: a situation resolved by *Clear all active*
+  offered *Clear all 10 active* again once the same alarms were raised into a new situation — and
+  pressing it hand-cleared the new situation's alarms.
+- **Cause (4)**: an alarm is one row per (element, class, instance), re-activated when the element
+  raises it again, and `situation_alarm` keeps the resolved situation's membership as history. So
+  one alarm is a member of the resolved situation and of the live one it re-raised into; the bulk
+  clear derived its set from membership alone, and `situation_of_alarm` picked either one.
+- **Decision (4)**: a resolved situation is the record, not something to operate. The bulk clear
+  answers **409** for it; a situation **holds** a member when it is the live one that has it,
+  newest first, and a resolved one only when nothing live does (`situation_of_alarm`,
+  `held_member_ids`, one rule); the bulk clear of a live situation reaches only the members it
+  holds; a single clear is recorded on — and can resolve — the situation that holds the alarm. The
+  detail names that holder per member (`held_by`), so a resolved card says *active in* that
+  situation rather than *active*, and offers no clear, no mark and no restructure. Its name stays editable: a name
+  is a label for the record.
+- **Cause and decision (1)**: an expanded card is **held** (ADR #173) — and *Confirm grouping* was
+  the one gesture that did not re-read it, so the card kept the New payload while the list moved it
+  to Open. The Confirm re-reads the card, as every other gesture did; choosing a tab re-reads every
+  open card once, so no list shows a payload from before the operator's last act.
+- **Cause and decision (3)**: a merge into an Open situation links to it, and the link pinned it
+  into the tab the operator was on. A link now opens the situation in **its own state's tab**
+  (and re-reads a card already open there, whose payload predated the merge).
+- **Decision (2)**: the slider steps in whole percent (0-100, step 5) and the gesture carries the
+  fraction. A fractional step (`max=1 step=0.05`) is rounded by each browser engine its own way;
+  an integer step reaches its maximum in every one. Chromium reached 100% before and after.
+- **Reason**: every gesture on a situation is now on the situation that holds what it touches, and
+  a card says what is true after the operator's own act, not before it.
+
+## 507. The Default customer: every broker points to exactly one NOC customer (unreleased)
+
+- **Context**: a broker has always belonged to one organization (`broker.organization_id`), and the
+  Default broker to the default organization — but that organization was no customer of the NOC:
+  its cases had no book to open, it was not listed under Customers, and its broker's edit screen
+  offered "Default organization". The owner asked for a **Default** customer from the first boot,
+  renamed at will, so that every broker — ten of them may share two customers — points to one.
+- **Decision**: the default organization **is** the Default customer. Migration `0050` renames
+  "Default organization" to "Default" where nobody renamed it; the NOC lists it first, opens its
+  book from a case, emails it, and refuses to end it (409, "rename it instead"). A customer is
+  renamed in place (`POST /api/organizations/{id}/name`, admin, audited; its handle stays).
+- **Decision**: a fresh appliance writes one example of each part of the Default customer's book —
+  instructions, a work contact, an additional document and a circuit — by `system:example`, in the
+  first boot's transaction and only when that book is wholly empty; an upgraded appliance is never
+  touched (`engine/noc/samples.py`).
+- **Decision (the customer's page)**: the workbook is the **Work Contact**; the page names the
+  brokers that point to the customer; **Access**, **Email** and **Routines** — what the NOC
+  operates by — are three cards above the other tabs, each saying what it holds. Access is for the
+  customer's **hosts** only (SSH, SNMP, Telnet, SFTP, an API) and opens on a banner that says so:
+  sealed in the vault, leased to agents as a token, never shown to them. A circuit can be
+  **cloned**: a new one with every field and hop, its name marked as a copy.
+- **Decision (a broker's page)**: the edit form has three groups — the broker, its NOC customer
+  (with what that means), how its traps arrive — each field with its label above and one line
+  below; the read view names the customer, linked.
+
+## 508. A person reaches brokers and NOC customers separately; one super admin reaches everything (unreleased)
+
+- **Context**: ADR #499 limited a person by customer, which gave them that customer on both planes
+  at once, and never limited an admin. The owner asked for the brokers and the NOC customers to be
+  given separately — a person may watch brokers and have no NOC, or work a customer's NOC and see
+  none of its brokers — for viewers, editors **and admins** alike, with at least one account that
+  always reaches everything and cannot be limited, even by itself.
+- **Decision (two planes)**: a person's entry in the visibility policy now holds `broker:*` or
+  `broker:<id>` (the Broker plane) and `noc:*`, `noc:<id>` or `noc:none` (the NOC plane). The
+  resolved scope carries the NOC's own view (`Scope.noc`: the customers given and every element
+  they own); **every `/api/noc/` route is decided by it**, chosen by the perimeter from the route
+  being served — one place, which no route can forget. An entry without a `noc:` selector keeps
+  the old meaning (#499). `/api/me` says which planes a person has, and the console shows only
+  those.
+- **Decision (limited admins)**: an admin may be limited by its own entry (never a role-wide one).
+  A limited admin loses every **estate-wide** capability (`rbac.ESTATE_ADMIN`): people and their
+  access, the visibility and capability policies, tokens, settings, the audit log, quarantine,
+  customers and brokers themselves, the vault's grants, the agents and their keys, and the
+  correlation's models — so it administers its own brokers and customers and can never widen its
+  own reach.
+- **Decision (the super admin)**: `app_user.is_owner` — the first admin of a fresh appliance, the
+  first enabled admin of an upgraded one. Never scoped (`scope_for` answers before any policy), and
+  every path that would limit, demote or delete it is refused with the reason; the database holds
+  that it stays an **enabled admin** as a constraint. People & access shows it with a crown and
+  says why nothing on its "Brokers & customers" tab can change.
+- **Not tenant isolation**: correlation still learns per broker (ADR #366); this decides what a
+  person is shown and may act on.
+
+## 509. An agent's Markdown is drawn; the agent's page forecasts its month (unreleased)
+
+- **Context**: models answer in Markdown, and an agent's last run and its feed posts showed
+  `## Findings` and `**down**` as symbols. The agent's page showed this month's spend twice.
+- **Decision**: `ui/app/markdown.js` draws the part of CommonMark an answer uses — headings,
+  paragraphs, bold, italic, inline and fenced code, lists, quotes, a rule, links — as elements built
+  through Preact: never `innerHTML`, no HTML passes through, a link only when `http(s)` or
+  `mailto` and opened without a referrer. Run summaries and agents' feed posts use it.
+- **Decision**: the side panel is the **month's forecast** at today's pace — the spend so far per
+  day times the month's days — against the budget, with the day the budget would be reached; the
+  strip above keeps what was spent so far.
+
+## 510. Email set up in steps; Outlook.com signs in with Microsoft (unreleased)
+
+- **Context**: the owner could not send from a personal Outlook account: the console said the
+  password was wrong and to use an app password. Microsoft no longer accepts a password — an app
+  password neither — for SMTP or IMAP on Outlook.com and Hotmail: it answers `535 5.7.139 basic
+  authentication is disabled`, and `smtp-mail.outlook.com` and `smtp.office365.com` answer alike.
+  Gmail, Yahoo and iCloud still take an app password. The owner also asked for the email setup in
+  steps, as Maintenance is — provider, account, test, save, each step validated — and for a
+  customer's email to keep its own login on its Email tab rather than in Access.
+- **Decision (Microsoft's sign-in)**: OAuth 2.0 with Microsoft's **device code** flow
+  (`crosscutting/mailauth.py`): the console shows a code and `microsoft.com/devicelogin`, the
+  mailbox's owner approves on any device, and the appliance polls — no redirect has to reach it,
+  so it works behind NAT. It needs the application (client) ID of the owner's own Microsoft Entra
+  registration (personal accounts allowed, public client flows on, `SMTP.Send` and
+  `IMAP.AccessAsUser.All`). Sending presents a fresh access token as `XOAUTH2` (SMTP and IMAP);
+  a refresh token Microsoft rotates is stored. The sign-in belongs to whoever started it
+  (`api/signin_flows.py`); the device code and the tokens stay in the server and reach storage
+  only when the settings are saved — sealed, never returned, logged or audited.
+- **Decision (the providers)**: *Outlook.com / Hotmail / Live* (`smtp-mail.outlook.com`, Microsoft's
+  sign-in only) is its own choice beside *Microsoft 365* (sign-in, or a password while the tenant
+  allows it); each provider carries the steps to its app password. A refused sign-in says what it
+  means — 5.7.139 names Microsoft's sign-in — instead of calling the password wrong.
+- **Decision (test before save)**: `POST /api/email/test` takes the draft the wizard is about to
+  save, and a customer's `POST …/mail/try` sends a test and signs in to its inbox, storing
+  nothing. `POST …/mail/account` keeps a customer's mailbox: its login sealed in the **vault** as the
+  customer's SMTP (and IMAP) credential — the same box, custodians only, every act audited — and
+  its email settings pointed at them. Access lists host credentials only.

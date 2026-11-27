@@ -278,12 +278,23 @@ def register(app: FastAPI, ctx: AppContext) -> None:
             await audit_scope_denial(request, principal, "alarm.clear_all", "situation", str(sid))
             raise HTTPException(status_code=404, detail="no such situation")
         async with store.reading():
+            cur = await store.conn.execute("SELECT status FROM situation WHERE id=?", (sid,))
+            head = await cur.fetchone()
             members = await store.situation_members(sid)
+            held = await store.held_member_ids(sid)
+        if head is not None and str(head[0]) == "resolved":
+            # A resolved situation is the record of what happened, not something to operate. Its
+            # alarms may have been raised again since, into another situation that holds them now:
+            # a clear from here reached THAT situation's alarms (the owner's report, ADR #506).
+            raise HTTPException(
+                status_code=409, detail="that situation has resolved; its alarms are history"
+            )
         hidden = await ctx.perimeter.hidden_member_ids(sid, scope)
         # Derived, then narrowed — never the other way round. `only_ids` can subtract from what the
         # caller can already see and can never add to it, so no id in a request body ever reaches a
-        # row this principal was not already served.
-        visible = [row["id"] for row in members if row["id"] not in hidden]
+        # row this principal was not already served. Only the members this situation HOLDS: one
+        # re-raised into a newer live situation is that situation's to clear (ADR #506).
+        visible = [row["id"] for row in members if row["id"] not in hidden and row["id"] in held]
         if body.only_ids is not None:
             wanted = set(body.only_ids)
             visible = [aid for aid in visible if aid in wanted]

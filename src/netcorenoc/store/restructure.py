@@ -147,12 +147,37 @@ class RestructureMixin(SituationMixin):
         return await cur.fetchone() is not None
 
     async def situation_of_alarm(self, alarm_id: int) -> int | None:
-        """Which situation currently holds this alarm, if any. The route's 404 decision."""
+        """Which situation currently holds this alarm, if any. The route's 404 decision.
+
+        An alarm is one row per (element, class, instance), re-activated when it is raised again, so
+        it can be a member of a RESOLVED situation (its history) and of the live one it re-raised
+        into. The live one holds it, newest first; a resolved one only when it is all there is.
+        """
         cur = await self.conn.execute(
-            "SELECT situation_id FROM situation_alarm WHERE alarm_id=?", (alarm_id,)
+            "SELECT sa.situation_id FROM situation_alarm sa "
+            "JOIN situation s ON s.id=sa.situation_id WHERE sa.alarm_id=? "
+            "ORDER BY (s.status='resolved'), sa.situation_id DESC LIMIT 1",
+            (alarm_id,),
         )
         row = await cur.fetchone()
         return int(row[0]) if row is not None else None
+
+    async def held_member_ids(self, situation_id: int) -> set[int]:
+        """The members this situation HOLDS: each one `situation_of_alarm` names it for.
+
+        A member re-raised into a newer live situation belongs to that one now; a gesture on this
+        situation (the bulk clear) must not reach it.
+        """
+        cur = await self.conn.execute(
+            # `situation_of_alarm`'s order, per member: live before resolved, newest first.
+            "SELECT alarm_id FROM (SELECT sa.alarm_id, sa.situation_id, ROW_NUMBER() OVER ("
+            "PARTITION BY sa.alarm_id ORDER BY (s.status='resolved'), sa.situation_id DESC) AS rk "
+            "FROM situation_alarm sa JOIN situation s ON s.id=sa.situation_id WHERE sa.alarm_id IN "
+            "(SELECT alarm_id FROM situation_alarm WHERE situation_id=?)) AS ranked "
+            "WHERE rk=1 AND situation_id=?",
+            (situation_id, situation_id),
+        )
+        return {int(r[0]) for r in await cur.fetchall()}
 
     async def alarm_ne(self, alarm_id: int) -> tuple[bool, int | None]:
         """`(the alarm exists, its NE id)` — the scope decision for a gesture that names an alarm.

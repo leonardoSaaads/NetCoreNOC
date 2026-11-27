@@ -21,7 +21,7 @@ from netcorenoc.api import scope_subject
 from netcorenoc.api.context import AppContext
 from netcorenoc.api.declare import DeclaredRoutes
 from netcorenoc.api.models import RoleIn, UserIn
-from netcorenoc.crosscutting import administration, auth, rbac
+from netcorenoc.crosscutting import administration, auth
 
 
 def _within(request: Request, role: str) -> None:
@@ -62,7 +62,11 @@ def register(app: FastAPI, ctx: AppContext) -> None:
                 "sole_admin": row["id"] == sole,
                 "two_factor": int(row["id"]) in enrolled,
                 "organizations": scope_subject.organizations_of(document, f"user:{row['id']}"),
-                "scopable": row["role"] not in rbac.FIXED_ROLES,
+                # ADR #508: the brokers and NOC customers each reaches (None: every one), and the
+                # super admin, whose reach nobody can limit — every other person can be.
+                "access": scope_subject.access_of(document, f"user:{row['id']}"),
+                "owner": bool(row.get("is_owner")),
+                "scopable": not row.get("is_owner"),
             }
             for row in rows
         ]
@@ -85,9 +89,18 @@ def register(app: FastAPI, ctx: AppContext) -> None:
             )
             if display := (body.display_name or "").strip() or None:
                 await store.set_display_name(uid, display, now)
-            if body.organizations is not None:  # ADR #499: limited from the first commit
-                if body.role in rbac.FIXED_ROLES:
-                    raise HTTPException(status_code=400, detail=rbac.FIXED_ROLE_REFUSAL)
+            planes = bool({"brokers", "customers"} & body.model_fields_set)
+            scoped: dict[str, Any] | None = None
+            if planes:  # ADR #508: its brokers and NOC customers, from the first commit
+                scoped = await scope_subject.set_access(
+                    store,
+                    f"user:{uid}",
+                    body.brokers,
+                    body.customers,
+                    principal.actor,
+                    f"new: {body.username}",
+                )
+            elif body.organizations is not None:  # ADR #499: limited from the first commit
                 scoped = await scope_subject.set_organizations(
                     store,
                     f"user:{uid}",
@@ -95,6 +108,7 @@ def register(app: FastAPI, ctx: AppContext) -> None:
                     principal.actor,
                     f"new: {body.username}",
                 )
+            if scoped is not None:
                 await audit_row(
                     request,
                     principal,
@@ -116,6 +130,8 @@ def register(app: FastAPI, ctx: AppContext) -> None:
                     "role": body.role,
                     "display_name_set": display is not None,
                     "organizations": body.organizations,
+                    "brokers": body.brokers if planes else "unchanged",
+                    "customers": body.customers if planes else "unchanged",
                 },
             )
         return {"id": uid, "username": body.username, "role": body.role, "display_name": display}
@@ -130,6 +146,9 @@ def register(app: FastAPI, ctx: AppContext) -> None:
             if user is None:
                 raise HTTPException(status_code=404, detail="no such user")
             _within(request, str(user["role"]))  # nor demote someone holding more than you
+            if user.get("is_owner") and body.role != "admin":
+                # ADR #508: the super admin stays an admin; the database refuses it too.
+                raise HTTPException(status_code=400, detail=administration.OWNER_REFUSAL)
             # F79: the invariant, refused server-side. The console hides the control too, and that
             # is an affordance — this is the control (principle 6, DECISIONS #233).
             if await administration.would_remove_last_admin(store, user, new_role=body.role):
@@ -157,6 +176,8 @@ def register(app: FastAPI, ctx: AppContext) -> None:
             user = await store.get_user(uid)
             if user is None:
                 raise HTTPException(status_code=404, detail="no such user")
+            if user.get("is_owner"):
+                raise HTTPException(status_code=400, detail=administration.OWNER_REFUSAL)
             # Self-deletion is already refused above; this is the case where an admin deletes
             # ANOTHER admin that happens to be the last enabled one (F79).
             if await administration.would_remove_last_admin(store, user, deleting=True):

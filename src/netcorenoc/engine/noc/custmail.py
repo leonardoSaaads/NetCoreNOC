@@ -279,6 +279,11 @@ def smtp_config(
         username=str(fields.get("username") or ""),
         sender=sender or str(fields.get("username") or ""),
         sender_name=sender_name or "NetCoreNOC",
+        # ADR #510: a mailbox signed in with Microsoft sends with its refresh token, as XOAUTH2.
+        auth="oauth" if fields.get("oauth_refresh") else "password",
+        oauth_client_id=str(fields.get("oauth_client_id") or ""),
+        oauth_tenant=str(fields.get("oauth_tenant") or "consumers"),
+        oauth_refresh=str(fields.get("oauth_refresh") or ""),
     )
 
 
@@ -290,4 +295,7 @@ def mailbox(secret: Mapping[str, Any], fields: Mapping[str, str]) -> inbox.Mailb
         security=_IMAP_SECURITY.get(str(secret["protocol_version"]), "tls"),
         username=str(fields.get("username") or ""),
         password=str(fields.get("password") or ""),
+        oauth_client_id=str(fields.get("oauth_client_id") or ""),
+        oauth_tenant=str(fields.get("oauth_tenant") or "consumers"),
+        oauth_refresh=str(fields.get("oauth_refresh") or ""),
     )

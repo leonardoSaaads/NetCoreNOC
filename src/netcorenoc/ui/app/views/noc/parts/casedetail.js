@@ -179,7 +179,7 @@ export class CaseDetail extends Component {
       ${(c.organizations || []).some((o) => o.customer) ? html`<section class="panel-block" aria-label="Its customers">
         <h3>Its customers</h3>
         ${c.organizations.filter((o) => o.customer).map((o) => html`<p key=${o.id}><a class="tap"
-          href=${`#/customers/${o.id}`}>${o.name}: instructions, workbook, circuits →</a></p>`)}
+          href=${`#/customers/${o.id}`}>${o.name}: instructions, work contacts, circuits →</a></p>`)}
       </section>` : null}
       <section class="panel-block" aria-label="The situation">
         <h3>The situation</h3>

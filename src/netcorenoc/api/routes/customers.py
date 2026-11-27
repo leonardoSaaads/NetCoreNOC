@@ -76,9 +76,20 @@ def register(app: FastAPI, ctx: AppContext) -> None:
             docs = await store.noc_docs(customer_id)
             elements = await store.noc_customer_elements(customer_id, limit=50)
             statuses = await store.noc_circuit_statuses(customer_id)
-        return customer_view(
+            keys = await store.noc_customer_keys(customer_id)
+        view = customer_view(
             row, editor, contacts=contacts, docs=docs, elements=elements, statuses=statuses
         )
+        # ADR #507: what Access, Email and Routines hold, for their cards. The credentials are
+        # counted for a caller who may read the vault, never named here.
+        may_vault = "secrets.read" in request.state.capabilities
+        return {
+            **view,
+            "access_count": int(keys["access_count"]) if may_vault else None,
+            "routine_count": int(keys["routine_count"]),
+            "mail_ready": bool(keys["mail_ready"]),
+            "mail_sender": keys["mail_sender"] or "",
+        }
 
     async def own_contact(customer_id: int, contact_id: int) -> dict[str, Any]:
         contact = await store.noc_contact(contact_id)
@@ -109,6 +120,7 @@ def register(app: FastAPI, ctx: AppContext) -> None:
                     "id": r["id"],
                     "name": r["name"],
                     "slug": r["slug"],
+                    "is_default": bool(r["is_default"]),
                     "elements": r["elements"],
                     "contacts": r["contacts"],
                     "docs": r["docs"],
@@ -131,9 +143,10 @@ def register(app: FastAPI, ctx: AppContext) -> None:
         customer_id: int, request: Request, principal: auth.Principal = Depends(security)
     ) -> dict[str, Any]:
         """One customer's book: its instructions (how it wants the NOC to act and to name its
-        cases), the NOC's memory of its network, its workbook (who to call, company by company,
-        in escalation order), its documents (read one with `noc_read_customer_doc`), how many
-        circuits it has (`noc_list_circuits`), its elements and its open cases."""
+        cases), the NOC's memory of its network, its Work Contact (`workbook`: who to call,
+        company by company, in escalation order), its documents (read one with
+        `noc_read_customer_doc`), how many circuits it has (`noc_list_circuits`), its elements and
+        its open cases."""
         return await book(customer_id, request, principal)
 
     @route.post("/api/noc/customers/{customer_id}", operation_id="noc_set_customer_instructions")
@@ -303,6 +316,12 @@ def register(app: FastAPI, ctx: AppContext) -> None:
             row = await store.noc_customer(customer_id)
         if row is None:
             raise HTTPException(status_code=404, detail="no such customer")
+        if row["is_default"]:
+            # ADR #507: every element no other customer owns is the Default customer's, and the
+            # Default broker points to it. It is renamed, never ended.
+            raise HTTPException(
+                status_code=409, detail="the Default customer cannot be ended; rename it instead"
+            )
         if body.name.strip().casefold() != str(row["name"]).strip().casefold():
             raise HTTPException(status_code=400, detail="name: type the customer's name to confirm")
         outcome = await gate.confirm(

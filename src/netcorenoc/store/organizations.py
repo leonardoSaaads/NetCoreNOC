@@ -129,6 +129,20 @@ class OrganizationMixin(StoreBase):
         )
         return gone
 
+    async def rename_organization(self, organization_id: int, name: str) -> str | None:
+        """Rename a customer (ADR #507); its previous name, or None when there is no such one.
+
+        The handle (slug) stays: it is what scripts and the history name, and a rename must not
+        re-point them. A name another organization holds is the database's UNIQUE refusal.
+        """
+        cur = await self.conn.execute(
+            "UPDATE organization o SET name=? FROM organization was WHERE was.id=o.id "
+            "AND o.id=? AND o.ended_at IS NULL RETURNING was.name",
+            (name[:MAX_ORGANIZATION_NAME], organization_id),
+        )
+        row = await cur.fetchone()
+        return None if row is None else str(row[0])
+
     async def create_organization(self, name: str, slug: str, now: float) -> int:
         """Add an organization. The caller owns the transaction, as every write path here does."""
         cur = await self.conn.execute(

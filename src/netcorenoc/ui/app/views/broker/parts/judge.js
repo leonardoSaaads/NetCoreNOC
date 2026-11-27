@@ -96,6 +96,9 @@ export class Detail extends Component {
     try {
       await post(`/api/situations/${sid}/feedback`, body);
       this.setState({ sending: false, outcome: { ok: true, kind } });
+      // ADR #506: a Confirm moves the situation to Open, and the card must show Open's actions —
+      // it kept the held New payload, and offered Confirm grouping again under the Open tab.
+      this.props.onChanged();
     } catch (error) {
       this.setState({ sending: false, outcome: { ok: false, error } });
     }
@@ -176,11 +179,15 @@ export class Detail extends Component {
     }
     const byId = new Map(detail.alarms.map((a) => [a.id, a]));
     const root = byId.get(detail.root_alarm_id);
-    const editable = canEdit();
-    // What the bulk clear can act on: active members, and how many of those are marked. Counted
-    // from the rows this principal was served, which is the same set the server derives — a
-    // scoped viewer's hidden members are absent from `detail.alarms` and so from both numbers.
-    const active = detail.alarms.filter((a) => a.status === "active");
+    // ADR #506: a resolved situation is the record of what happened — nothing on it is operated.
+    // Its alarms may be raised again into another situation, and a clear from here reached THAT
+    // situation's alarms; the server refuses it too (409), so the card offers none of it.
+    const editable = canEdit() && detail.status !== "resolved";
+    // What the bulk clear can act on: active members this situation holds, and how many of those
+    // are marked. Counted from the rows this principal was served, which is the same set the server
+    // derives — a scoped viewer's hidden members are absent from `detail.alarms` and so from both
+    // numbers, and a member another live situation holds now (`held_by`) is that one's to clear.
+    const active = detail.alarms.filter((a) => a.status === "active" && a.held_by == null);
     const activeCount = active.length;
     const markedActive = active.filter((a) => this.state.marked.has(a.id)).length;
     // **What the bar offers is the status's** (ADR #491). Open means somebody confirmed the
@@ -244,7 +251,9 @@ export class Detail extends Component {
       <${WhyGrouped} links=${detail.links} byId=${byId} threshold=${detail.threshold}
         table=${detail.link_terms} scale=${detail.score_scale} />
 
-      ${editable ? html`<${NameField} sid=${sid} post=${post}
+      ${/* A name is a label for the record (an RFO reads it), not an act on the situation: a
+            resolved one can still be named. */ null}
+      ${canEdit() ? html`<${NameField} sid=${sid} post=${post}
           operatorName=${detail.operator_name} derivedName=${detail.derived_name}
           onDone=${() => this.props.onChanged()} />` : null}
 

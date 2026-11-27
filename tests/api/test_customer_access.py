@@ -4,7 +4,8 @@
 then sees Claro's brokers (one with no element yet too), Claro's situations and map, and Claro's
 side of the NOC; Vivo's broker, Vivo's book and Vivo's credentials are the same 404 as a record
 that does not exist. An editor limited the same way, named a custodian, holds Claro's credentials
-only — never Vivo's and never a shared one. An admin is never limited.
+only — never Vivo's and never a shared one. Since ADR #508 an admin may be limited too; only the
+super admin never is.
 """
 
 from __future__ import annotations
@@ -38,7 +39,9 @@ def test_org_selector_names_a_customers_elements_and_the_customers_it_reaches() 
     other = shaping.visible_nes("viewer", "user:8", policy, nes)
     assert other.ne_ids == frozenset({2}) and other.orgs == frozenset({6})
     assert other.named_orgs == frozenset(), "a broker selector names no customer's brokers"
-    assert shaping.visible_nes("admin", "user:9", policy, nes).unrestricted
+    # ADR #508: an admin is limited by its own entry; one without an entry is not.
+    assert not shaping.visible_nes("admin", "user:9", policy, nes).unrestricted
+    assert shaping.visible_nes("admin", "user:7", policy, nes).unrestricted
     assert shaping.scope_policy_errors(
         shaping.parse_scope_policy(json.dumps({"principals": {"user:1": ["org:claro"]}}))
     ), "a customer is named by its id"
@@ -103,7 +106,9 @@ async def test_claro_viewer_sees_claro_and_nothing_of_vivo(store: Store) -> None
     listed = {u["username"]: u for u in (await admin.get("/api/users")).json()}
     assert listed["claro-viewer"]["organizations"] == [claro]
     assert listed["claro-viewer"]["scopable"] is True
-    assert listed["adm"]["scopable"] is False and listed["adm"]["organizations"] is None
+    # ADR #508: only the super admin (the first admin) cannot be limited.
+    assert listed["admin"]["scopable"] is False and listed["admin"]["owner"] is True
+    assert listed["adm"]["scopable"] is True and listed["adm"]["organizations"] is None
 
     names = {b["name"] for b in (await viewer.get("/api/brokers")).json()["brokers"]}
     assert names == {"Claro Nordeste", "Claro Sul"}, "Claro's, the one with no element too"
@@ -128,7 +133,8 @@ async def test_claro_viewer_sees_claro_and_nothing_of_vivo(store: Store) -> None
     ref = f"user:{listed['claro-viewer']['id']}"
     cleared = await admin.post("/api/scope/subject", json={"subject": ref, "organizations": None})
     assert cleared.status_code == 200, cleared.text
-    assert len((await viewer.get("/api/noc/customers")).json()["customers"]) == 2
+    # ADR #507: every customer — the Default one too.
+    assert len((await viewer.get("/api/noc/customers")).json()["customers"]) == 3
 
 
 async def test_the_limits_are_an_admins_and_never_an_admins_own(store: Store) -> None:
@@ -136,21 +142,25 @@ async def test_the_limits_are_an_admins_and_never_an_admins_own(store: Store) ->
     admin, orgs = env["admin"], env["orgs"]
     users = {u["username"]: u for u in (await admin.get("/api/users")).json()}
     for body, status in (
-        ({"subject": f"user:{users['adm']['id']}", "organizations": [orgs["Claro"]]}, 400),
+        # ADR #508: the super admin is never limited; any other admin may be (not done here: the
+        # client below is `adm`, and limiting it would take its own administration away).
+        ({"subject": f"user:{users['admin']['id']}", "organizations": [orgs["Claro"]]}, 400),
         ({"subject": "user:99999", "organizations": [orgs["Claro"]]}, 404),
-        ({"subject": f"user:{users['vwr']['id']}", "organizations": [1]}, 400),  # the default
+        # ADR #507: the Default customer is a customer like any other.
+        ({"subject": f"user:{users['vwr']['id']}", "organizations": [1]}, 200),
         ({"subject": f"user:{users['vwr']['id']}", "organizations": []}, 400),  # sees nothing
         ({"subject": f"user:{users['vwr']['id']}", "organizations": [orgs["Vivo"]]}, 200),
     ):
         resp = await admin.post("/api/scope/subject", json=body)
         assert resp.status_code == status, (body, resp.text)
-    refused = await admin.post(
+    # ADR #508: an admin may be made limited, in the same commit as the account.
+    made = await admin.post(
         "/api/users",
         json={"username": "x", "password": PW, "role": "admin", "organizations": [orgs["Claro"]]},
     )
-    assert refused.status_code == 400
-    async with store.reading():
-        assert await store.get_user_by_name("x") is None, "refused in the same commit"
+    assert made.status_code == 200, made.text
+    listed = {u["username"]: u for u in (await admin.get("/api/users")).json()}
+    assert listed["x"]["organizations"] == [orgs["Claro"]]
     editor = await authutil.client_as(env["app"], "editor")
     denied = await editor.post(
         "/api/scope/subject", json={"subject": "user:1", "organizations": [orgs["Claro"]]}

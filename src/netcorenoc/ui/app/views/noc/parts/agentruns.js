@@ -11,6 +11,7 @@ import { get } from "../../../api.js";
 import { relative, timeTitle, absolute } from "../../../format.js";
 import { RunState, money } from "./nocui.js";
 import { span } from "./caseclock.js";
+import { Markdown } from "../../../markdown.js";
 
 const KIND = { wake: "Woken", tool: "Tool", text: "Said", error: "Error" };
 const INLINE = 80;
@@ -71,7 +72,7 @@ export class AgentRuns extends Component {
           <span class="muted wide-only">${money(r.cost_cents)}</span>
         </button>
         ${shown ? html`<div class="run-body">
-          ${r.summary ? html`<p class="run-summary">${r.summary}</p>` : null}
+          ${r.summary ? html`<${Markdown} text=${r.summary} className="run-summary" />` : null}
           ${r.error ? html`<p class="err">${r.error}</p>` : null}
           ${r.input_tokens || r.output_tokens ? html`<p class="muted">${r.input_tokens} tokens in ·
             ${r.output_tokens} out${r.requested_by ? ` · asked by ${r.requested_by}` : ""}</p>`

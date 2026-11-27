@@ -314,7 +314,13 @@ class SituationReadsMixin(GovernanceMixin, SituationEventMixin):
             "AND a.last_seen <= COALESCE(a.surfaced_at, a.last_seen) "
             "THEN a.surfaced_from_window_id END AS outlived_window_id, "
             "dl.label AS device_label, c.oid AS class_oid, "
-            "c.id AS class_id, cl.label AS class_label, sl.label AS class_severity_label "
+            "c.id AS class_id, cl.label AS class_label, sl.label AS class_severity_label, "
+            # ADR #506: an alarm is one row, re-activated when raised again — so a member of a
+            # resolved situation can be active now, held by the live situation it re-raised into.
+            # That situation's id, so the record says where the alarm went rather than "active".
+            "(SELECT MAX(o.situation_id) FROM situation_alarm o JOIN situation os "
+            "ON os.id=o.situation_id WHERE o.alarm_id=a.id AND o.situation_id<>sa.situation_id "
+            "AND os.status<>'resolved') AS held_by "
             "FROM situation_alarm sa JOIN alarm a ON a.id=sa.alarm_id "
             "JOIN ne d ON d.id=a.ne_id JOIN alarm_class c ON c.id=a.class_id "
             # v0.16.3: the equipment label is keyed on `ne`, reached through the alarm's own

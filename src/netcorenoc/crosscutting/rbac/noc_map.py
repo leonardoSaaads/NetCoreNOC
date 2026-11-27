@@ -120,6 +120,9 @@ NOC_ROUTE_PERMISSIONS: dict[tuple[str, str], str] = {
     ("GET", "/api/noc/customers/{customer_id}/mail"): "cases.read",
     ("POST", "/api/noc/customers/{customer_id}/mail"): "cases.work",
     ("POST", "/api/noc/customers/{customer_id}/mail/test"): "cases.work",
+    # ADR #510: the mailbox set up in steps — tried without storing, then kept in the vault.
+    ("POST", "/api/noc/customers/{customer_id}/mail/try"): "secrets.write",
+    ("POST", "/api/noc/customers/{customer_id}/mail/account"): "secrets.write",
     # The MCP endpoint (ADR #466): every tool behind it is checked as its own route.
     ("POST", "/api/mcp"): "mcp.use",
 }
@@ -238,6 +241,8 @@ NOC_ROUTE_SCOPE: dict[tuple[str, str], Literal["scoped", "unscoped", "admin_only
     ("GET", "/api/noc/customers/{customer_id}/mail"): "scoped",
     ("POST", "/api/noc/customers/{customer_id}/mail"): "scoped",
     ("POST", "/api/noc/customers/{customer_id}/mail/test"): "scoped",
+    ("POST", "/api/noc/customers/{customer_id}/mail/try"): "scoped",
+    ("POST", "/api/noc/customers/{customer_id}/mail/account"): "scoped",
     ("POST", "/api/noc/customers/{customer_id}/docs"): "scoped",
     ("GET", "/api/noc/customers/{customer_id}/docs/{doc_id}"): "scoped",
     ("GET", "/api/noc/customers/{customer_id}/docs/{doc_id}/file"): "scoped",

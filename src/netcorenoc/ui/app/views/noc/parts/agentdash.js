@@ -21,6 +21,7 @@ import { relative, timeTitle } from "../../../format.js";
 import { Series } from "../../../charts.js";
 import { RunState, Tier, money } from "./nocui.js";
 import { span } from "./caseclock.js";
+import { Markdown } from "../../../markdown.js";
 
 const DAY = 86400;
 const ENDED_BAD = new Set(["failed", "timed_out"]);
@@ -51,7 +52,8 @@ function LatestRun({ run, onRuns }) {
       ? html` · case <a href=${`#/cases/${run.situation_id}`}>#${run.situation_id}</a>` : null}${" · "}<span
         title=${timeTitle(run.started_at || run.queued_at)}>${relative(run.started_at || run.queued_at)}</span>${
       `${took ? ` · took ${took}` : ""} · ${run.tool_calls} tool call${run.tool_calls === 1 ? "" : "s"} · ${money(run.cost_cents)}`}</p>
-    ${run.summary ? html`<p class="run-summary">${run.summary}</p>` : null}
+    ${/* ADR #509: an agent answers in Markdown; drawn as what it means, never as markup. */ null}
+    ${run.summary ? html`<${Markdown} text=${run.summary} className="run-summary" />` : null}
     ${run.error ? html`<p class="err">${run.error}</p>` : null}
     <button type="button" class="linkish" onClick=${onRuns}>Every run and its steps →</button>
   </section>`;
@@ -208,17 +210,38 @@ const PRICED_NOTE = {
   elsewhere: "It runs elsewhere: what it spends there is not counted here.",
 };
 
-function Spend({ agent }) {
+/* ADR #509: the side panel forecasts the month. The strip above already says what was spent so
+ * far ("This month"); repeating it here said one number twice. What an owner plans with is where
+ * that pace ends: the month at today's rate, against the budget, and the day the budget would be
+ * reached. */
+const MONTHS = ["January", "February", "March", "April", "May", "June", "July", "August",
+  "September", "October", "November", "December"];
+
+function Forecast({ agent }) {
+  const now = new Date();
+  const start = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1);
+  const end = Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1);
+  const elapsed = Math.max((now.getTime() - start) / 864e5, 0.25);
+  const length = (end - start) / 864e5;
+  const spent = Number(agent.spent_month_cents) || 0;
+  const perDay = spent / elapsed;
+  const forecast = Math.round(perDay * length);
   const budget = agent.budget_month_cents;
-  const used = budget ? Math.min(100, (100 * agent.spent_month_cents) / budget) : null;
-  return html`<section class="panel-block spend-panel" aria-label="This month's spend">
-    <h3>This month</h3>
-    <p class="success-figure">${money(agent.spent_month_cents)}</p>
+  const share = budget ? Math.min(100, (100 * forecast) / budget) : null;
+  const reachDay = budget && perDay > 0 && forecast > budget
+    ? new Date(start + (budget / perDay) * 864e5) : null;
+  const month = MONTHS[now.getUTCMonth()];
+  return html`<section class="panel-block spend-panel" aria-label="This month's forecast">
+    <h3>Forecast for ${month}</h3>
+    <p class="success-figure">${money(forecast)}</p>
+    <p class="muted">At today's pace: ${money(spent)} in ${Math.floor(elapsed)} of ${length} days,
+      about ${money(Math.round(perDay))} a day.</p>
     ${budget ? html`<span class="gauge-track" aria-hidden="true"><span
-        class=${cx("gauge-fill", used >= 80 && used < 100 && "gauge-low", used >= 100 && "gauge-over")}
-        style=${`width:${used.toFixed(1)}%`}></span></span>
-      <p class="muted">${Math.round(used)}% of a ${money(budget)} budget; reached, it is paused until
-        someone resumes it.</p>`
+        class=${cx("gauge-fill", share >= 80 && share < 100 && "gauge-low", share >= 100 && "gauge-over")}
+        style=${`width:${share.toFixed(1)}%`}></span></span>
+      <p class=${reachDay ? "warn-text" : "muted"}>${reachDay
+        ? `Would reach its ${money(budget)} budget around ${reachDay.getUTCDate()} ${MONTHS[reachDay.getUTCMonth()].slice(0, 3)} (UTC) — then it is paused until someone resumes it.`
+        : `${Math.round(share)}% of its ${money(budget)} budget.`}</p>`
       : html`<p class="muted">No budget is set.</p>`}
     <p class="hint">${PRICED_NOTE[agent.priced] || PRICED_NOTE.elsewhere}</p>
   </section>`;
@@ -240,7 +263,7 @@ export function AgentOverview({ d, onRuns }) {
     </div>
     <aside class="agent-overview-side">
       <${Chain} agent=${d.agent} />
-      <${Spend} agent=${d.agent} />
+      <${Forecast} agent=${d.agent} />
       ${d.agent.capabilities ? html`<section class="panel-block"><h3>What it can do</h3>
         <p class="case-text">${d.agent.capabilities}</p></section>` : null}
     </aside>

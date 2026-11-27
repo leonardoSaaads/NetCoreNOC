@@ -411,3 +411,7 @@ set_subject_scope  # unused function (netcorenoc/api/routes/governance.py) — A
 send_email  # unused function (netcorenoc/api/routes/case_email.py) — ADR #500
 email_draft  # unused function (netcorenoc/api/routes/case_email.py)
 get_playbook_version  # unused function (netcorenoc/api/routes/playbooks.py) — ADR #501
+try_mailbox  # unused function (netcorenoc/api/routes/customer_mailbox.py) — ADR #510
+save_mailbox  # unused function (netcorenoc/api/routes/customer_mailbox.py) — ADR #510
+start_signin  # unused function (netcorenoc/api/routes/mail_signin.py) — ADR #510
+poll_signin  # unused function (netcorenoc/api/routes/mail_signin.py) — ADR #510

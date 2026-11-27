@@ -155,3 +155,57 @@
   border: 1px solid var(--line); border-radius: var(--radius-2);
 }
 .kpi-fields legend { padding: 0 var(--space-1); font-size: var(--fs-sm); color: var(--fg-muted); }
+
+/* ---------- email in three steps — provider, account, test (ADR #510) ---------- */
+.mail-wizard { display: grid; gap: var(--space-4); }
+.mw-stepper { display: flex; flex-wrap: wrap; gap: var(--space-2); margin: 0; padding: 0; list-style: none; }
+.mw-stepper li { display: flex; align-items: center; gap: var(--space-2); padding: 6px 12px 6px 6px; border-radius: 999px;
+  border: 1px solid var(--line); color: var(--fg-muted); font-size: var(--fs-sm); }
+.mw-stepper li span { display: grid; place-items: center; width: 1.5rem; height: 1.5rem; border-radius: 50%;
+  background: var(--bg-sunken); font-weight: 700; font-size: var(--fs-xs); }
+.mw-stepper li.on { border-color: var(--accent); color: var(--fg); font-weight: 600; }
+.mw-stepper li.on span { background: var(--accent); color: var(--accent-fg); }
+.mw-stepper li.done span { background: var(--accent-soft); color: var(--accent); }
+.mw-providers { display: grid; grid-template-columns: repeat(auto-fill, minmax(15rem, 1fr)); gap: var(--space-2); }
+.mw-provider { display: flex; align-items: center; gap: var(--space-3); padding: var(--space-3); text-align: left;
+  border: 1px solid var(--line); border-radius: var(--radius-2); background: var(--bg-raised); color: var(--fg);
+  font: inherit; cursor: pointer; }
+.mw-provider:hover, .mw-provider.on { border-color: var(--accent); }
+.mw-provider span { display: grid; gap: 2px; }
+.mw-provider small { font-size: var(--fs-xs); }
+.mw-account, .mw-test { display: grid; gap: var(--space-3); }
+.mw-note { display: flex; gap: var(--space-2); align-items: flex-start; margin: 0; padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-2); background: var(--bg-sunken); font-size: var(--fs-sm); line-height: 1.45; }
+.mw-fields { display: grid; grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr)); gap: var(--space-3); align-items: start; }
+.mw-fields input, .mw-fields select, .mw-pass input, .mw-other { width: 100%; box-sizing: border-box; }
+.mw-steps, .mw-how ol { margin: var(--space-1) 0 0; padding-left: 1.3rem; display: grid; gap: 2px; font-size: var(--fs-sm); }
+.mw-toggle { justify-self: start; display: inline-flex; align-items: center; gap: 4px; }
+.mw-toggle[aria-expanded="true"] .icon-svg { transform: rotate(90deg); }
+.mw-signin { display: grid; gap: var(--space-3); padding: var(--space-3); border: 1px solid var(--line);
+  border-radius: var(--radius-2); }
+.mw-signin > button { justify-self: start; }
+.mw-code { display: grid; gap: var(--space-1); }
+.mw-code p { margin: 0; }
+.mw-code-value { font-size: 1.6rem; font-weight: 700; letter-spacing: 0.12em; color: var(--accent); }
+.mw-imap { margin: 0; padding: var(--space-3); border: 1px solid var(--line); border-radius: var(--radius-2);
+  display: grid; gap: var(--space-2); }
+.mw-imap legend { display: flex; align-items: center; gap: 6px; font-weight: 600; padding: 0 4px; }
+.mw-label { margin: 0; font-weight: 600; }
+.mw-sendto { display: grid; gap: var(--space-1); }
+.mw-sendto-opt { display: flex; align-items: center; gap: var(--space-2); padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--line); border-radius: var(--radius-2); cursor: pointer; }
+.mw-sendto-opt.on { border-color: var(--accent); background: var(--accent-soft); }
+.mw-test > button { justify-self: start; }
+.mw-result { padding: var(--space-2) var(--space-3); border-radius: var(--radius-2); border: 1px solid var(--line); }
+.mw-result.ok { border-color: var(--accent); }
+.mw-result.bad { border-color: var(--alarm); background: var(--alarm-bg); }
+.mw-result p { margin: 2px 0; }
+.mw-problem { margin: 0; color: var(--warn); }
+.mw-foot { display: flex; justify-content: flex-end; align-items: center; gap: var(--space-2); }
+.email-summary-head, .cm-box { display: flex; align-items: center; gap: var(--space-3); flex-wrap: wrap; }
+.email-summary-head > div, .cm-box > div { flex: 1 1 16rem; min-width: 0; }
+.email-summary-head p, .cm-box p { margin: 2px 0 0; }
+.email-extra { display: grid; gap: var(--space-2); }
+.cm-empty { display: grid; gap: var(--space-2); justify-items: start; }
+.cm-empty p { margin: 0; }
+.mw-own { display: inline-grid; place-items: center; width: 28px; height: 28px; border-radius: 8px; background: var(--bg-sunken); color: var(--fg-muted); }

@@ -55,6 +55,9 @@ from netcorenoc.api.models_maintenance import (
     OrganizationIn as OrganizationIn,
 )
 from netcorenoc.api.models_maintenance import (
+    OrganizationNameIn as OrganizationNameIn,
+)
+from netcorenoc.api.models_maintenance import (
     WindowExtendIn as WindowExtendIn,
 )
 from netcorenoc.api.models_restructure import MergeIn as MergeIn
@@ -277,6 +280,10 @@ class UserIn(BaseModel):
     display_name: str | None = Field(default=None, max_length=MAX_DISPLAY_NAME)
     # ADR #499: the customers this person serves, set in the same commit as the account.
     organizations: list[Annotated[int, Field(ge=1)]] | None = Field(default=None, max_length=200)
+    # ADR #508: the brokers and the NOC customers this person reaches, set in the same commit.
+    # Sent: None is every one, [] none. Not sent: no limit on that plane.
+    brokers: list[Annotated[int, Field(ge=1)]] | None = Field(default=None, max_length=500)
+    customers: list[Annotated[int, Field(ge=1)]] | None = Field(default=None, max_length=500)
 
     _clean = field_validator("display_name")(_printable)
 

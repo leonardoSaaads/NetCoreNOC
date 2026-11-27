@@ -386,6 +386,10 @@ async def test_a_held_card_says_it_is_stale_while_it_is_held(routes: dict[str, A
         "sseDuringGesture", {"routes": routes["editor"], "sid": sid, "mark": [], "update": update}
     )
     assert result["heldMarkerPresent"] is True
+    # ADR #506: a Confirm re-reads the card, so it shows Open's actions rather than the held New
+    # payload — and the hold, the marker with it, starts again from what the operator changed.
+    assert result["rereadAfterConfirm"] is True
+    assert result["heldAfterConfirm"] is False
 
 
 # --- Invariant 4: no render path writes unescaped data into the document ------------------------

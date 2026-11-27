@@ -19,8 +19,9 @@
  */
 
 import { html, cx } from "./dom.js";
-import { reachableViews } from "./router.js";
+import { navigate, reachableViews } from "./router.js";
 import { Icon } from "./icons.js";
+import { session } from "./session.js";
 
 /** Each plane's mark beside its name (ADR #479): the network for the Broker, the headset for the
  *  NOC. Decoration beside the label, never instead of it. */
@@ -41,9 +42,17 @@ export const PLANES = [
   },
 ];
 
+/** Whether the server says this person has `plane` at all (ADR #508): a person given a customer's
+ *  NOC and no broker has no Broker plane, and the reverse. Absent means yes. */
+export function planeAllowed(key) {
+  const planes = session() && session().scope && session().scope.planes;
+  return !planes || planes[key] !== false;
+}
+
 /** The planes this principal can reach at least one screen of, in display order. */
 export function reachablePlanes(capabilities) {
-  return PLANES.filter((plane) => reachableViews(capabilities, plane.key).length > 0);
+  return PLANES.filter((plane) => planeAllowed(plane.key) &&
+    reachableViews(capabilities, plane.key).length > 0);
 }
 
 /** Where choosing `plane` goes: the last screen seen in it, else its first reachable one. */
@@ -66,4 +75,11 @@ export function PlaneSwitch({ capabilities, plane, last, onNavigate }) {
         <${Icon} name=${PLANE_ICON[p.key] || "kpi"} />${p.label}</a>`;
     })}
   </nav>`;
+}
+
+/** ADR #508: a route in a plane this person does not have goes to the other one's landing. */
+export function planeRedirect(capabilities, plane) {
+  const other = plane === "broker" ? "noc" : "broker";
+  const to = !planeAllowed(plane) && planeAllowed(other) ? landing(capabilities, other, null) : null;
+  if (to) queueMicrotask(() => navigate(to));
 }

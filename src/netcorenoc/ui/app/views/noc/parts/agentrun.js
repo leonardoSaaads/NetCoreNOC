@@ -43,7 +43,10 @@ export class RunSettings extends Component {
 
   componentDidUpdate(previous) {
     const { st, catalogue } = this.props;
-    if (providerFor(previous.st) !== providerFor(st)) this.setState({ models: null, details: null, error: null });
+    if (providerFor(previous.st) !== providerFor(st)) {
+      this.setState({ models: null, details: null, error: null });
+      if (this.state.keys) this.preselect(this.state.keys);
+    }
     if (providerFor(st) && this.state.keys === null) this.readKeys();
     // A local Ollama is asked for its models as soon as it is chosen: nothing but its list is asked.
     const local = (catalogue.providers || []).find((x) => x.id === providerFor(st) && x.own_host);
@@ -58,13 +61,18 @@ export class RunSettings extends Component {
       const keys = vault.secrets.filter((s) => s.agent_access
         && (s.kind.startsWith("ai_") || s.kind === "api_token"));
       this.setState({ keys });
-      // The lab found it: one key for this provider, and the form still asked to choose it.
-      const pid = providerFor(this.props.st);
-      const mine = keys.filter((k) => k.kind === `ai_${pid}` || (pid === "anthropic" && k.kind === "api_token"));
-      if (mine.length === 1 && !this.props.st.secret_id) this.props.onChange({ secret_id: String(mine[0].id) });
+      this.preselect(keys);
     } catch {
       this.setState({ keys: [] });
     }
+  }
+
+  /** The lab found it (ADR #505): one key for this provider, and the form still asked to choose it —
+   *  whenever the provider is chosen, not only when the keys were first read. */
+  preselect(keys) {
+    const pid = providerFor(this.props.st);
+    const mine = keys.filter((k) => k.kind === `ai_${pid}` || (pid === "anthropic" && k.kind === "api_token"));
+    if (mine.length === 1 && !this.props.st.secret_id) this.props.onChange({ secret_id: String(mine[0].id) });
   }
 
   async ask() {

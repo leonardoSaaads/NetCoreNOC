@@ -149,9 +149,12 @@ async def test_the_vault_offers_each_ai_provider_and_a_card_per_device_kind(
     cid = tables["customer"]
     picker = _act(tables["admin"], f"#/customers/{cid}/access", click=["New credential"])
     assert "What does this credential open?" in picker["dump"]
-    for kind in ("SFTP", "SMTP", "IMAP — mailbox", "Telnet — username and password", "API token"):
+    for kind in ("SFTP", "Telnet — username and password", "API token"):
         assert f'"{kind}"' in picker["dump"], kind
     assert '"Anthropic — Claude"' not in picker["dump"], "an AI key belongs to no customer"
+    # ADR #507: Access holds the hosts' logins; the mailbox is set up on the Email tab.
+    for kind in ("SMTP", "IMAP — mailbox"):
+        assert f'"{kind}"' not in picker["dump"], kind
 
 
 @dom_test

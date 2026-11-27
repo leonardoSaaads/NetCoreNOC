@@ -283,6 +283,42 @@ AUDITED_DENIED_PERMISSIONS: frozenset[str] = frozenset(
 # service tokens of any role (a program's least privilege).
 FIXED_ROLES: frozenset[str] = frozenset({"admin"})
 
+#: ADR #508: what an admin **limited to brokers or customers** does not hold — every act that
+#: reaches the whole appliance: who may sign in and what each sees, the appliance's settings, its
+#: audit log, its customers and brokers themselves, the vault's grants, the agents and their keys,
+#: and the correlation's models. A limited admin administers its own brokers and customers and
+#: nothing that could widen its own reach; the super admin, and an admin with no limit, hold it all.
+ESTATE_ADMIN: frozenset[str] = frozenset(
+    {
+        "users.manage",
+        "tokens.manage",
+        "config.read",
+        "config.write",
+        "quarantine.read",
+        "audit.read",
+        "audit.export",
+        "audit.prune",
+        "rbac.read",
+        "rbac.write",
+        "scope.read",
+        "scope.write",
+        "organizations.write",
+        "brokers.write",
+        "secrets.grants",
+        "agents.manage",
+        "model.register",
+        "decider.write",
+        "autonomy.write",
+        "autonomy.audit",
+        "search.write",
+        "scorer.preview",
+        "scorer.write",
+        "promotion.write",
+        "entity.reset",
+        "profile.reset",
+    }
+)
+
 # Per-role ceilings, computed once from the compiled map. This is exactly v0.6.0's `role_allows`
 # expressed as a set, which is what lets the resolver be an intersection.
 _CEILINGS: dict[str, frozenset[str]] = {

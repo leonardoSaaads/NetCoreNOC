@@ -71,6 +71,7 @@ async def test_the_top_bar_switches_planes_and_the_sidebar_follows(store: Store)
         "KPIs",
         "Routines",
         "All customers",
+        "Default",  # ADR #507: the Default customer is a customer, listed under them
         "All agents",
         "Organization",
         "Vault access",
@@ -88,7 +89,7 @@ async def test_the_top_bar_switches_planes_and_the_sidebar_follows(store: Store)
     # vault: never a greyed half.
     viewer = _render(tables["viewer"], "#/cases")
     assert ".plane-noc.plane-on" in viewer["dump"]
-    assert viewer["navItems"] == ["Overview", "Cases", "All customers"]
+    assert viewer["navItems"] == ["Overview", "Cases", "All customers", "Default"]
     assert viewer["navGroups"] == ["Work", "Customers"]
     refused = _render(tables["viewer"], "#/secrets")
     assert refused["refused"] is True

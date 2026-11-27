@@ -33,6 +33,7 @@
 
 import { html, cx } from "../../../dom.js";
 import { count, plural } from "../../../format.js";
+import { Empty } from "../../../widgets.js";
 
 /* The three states the schema now has, and the fourth entry that is not a state.
  *
@@ -109,4 +110,24 @@ export function Counts({ stats, status, onPick }) {
       </button>`;
     })}
   </div>`;
+}
+
+/** What an empty list says: no match for this filter, or a quiet network (moved from the list). */
+export function NoRows({ query, status }) {
+  const quiet = !query && status === "new";
+  return html`<${Empty}
+    title=${quiet ? "The network is quiet." : "No situations match this filter."}
+    will=${query
+      ? "The search reads the operator's name, the derived name, the device, the trap OID " +
+        "and the instance — and only the ones your account is shown. Clearing the box " +
+        "returns to the live list."
+      : !quiet
+      ? "Clearing the filter will show everything the appliance currently holds."
+      : "Situations appear here the moment two or more alarms correlate. Nothing has to be " +
+        "configured first: the appliance learns alarm classes, network elements and their " +
+        "affinities from the trap stream itself."}
+    meanwhile=${quiet
+      ? "Point your devices' trap destination at this appliance. The Alarm classes screen " +
+        "fills in as soon as the first trap arrives, before any grouping happens."
+      : null} />`;
 }

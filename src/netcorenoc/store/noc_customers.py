@@ -1,8 +1,9 @@
 """The NOC's customers: their instructions, their memory and their workbook (ADR #473).
 
 Storage only; what may be written is `api/routes/customers.py`'s, what a circuit or a document is
-`engine/noc/circuits.py` and `engine/noc/doctext.py`'s. A customer is an organization other than
-the default one, and **who may see it is decided by the caller's scope**: the organizations it
+`engine/noc/circuits.py` and `engine/noc/doctext.py`'s. A customer is an organization — the
+default one too, the **Default** customer (ADR #507) — and **who may see it is decided by the
+caller's scope**: the organizations it
 names (`org:<id>`, ADR #499) and the owners of the elements it reaches (`Scope.orgs`). A customer
 outside them is answered as if it did not exist. That narrows, and never widens.
 """
@@ -37,7 +38,7 @@ class NocCustomerMixin(StoreBase):
         what its book holds."""
         where, args = ("", ()) if org_ids is None else (" AND o.id = ANY(?)", (sorted(org_ids),))
         cur = await self.conn.execute(
-            "SELECT o.id, o.name, o.slug, "  # nosec B608 - fixed fragments, values bound
+            "SELECT o.id, o.name, o.slug, o.is_default, "  # nosec B608 - fixed fragments, bound
             "(SELECT COUNT(*) FROM ne WHERE ne.organization_id = o.id) AS elements, "
             "(SELECT COUNT(*) FROM noc_contact x WHERE x.organization_id = o.id) AS contacts, "
             "(SELECT COUNT(*) FROM noc_customer_doc d WHERE d.organization_id = o.id) AS docs, "
@@ -46,7 +47,8 @@ class NocCustomerMixin(StoreBase):
             "COALESCE(length(m.instructions), 0) AS instructions_chars, "
             "COALESCE(length(m.memory), 0) AS memory_chars, m.updated_at, m.memory_at "
             "FROM organization o LEFT JOIN noc_customer m ON m.organization_id = o.id "
-            f"WHERE NOT o.is_default AND o.ended_at IS NULL{where} ORDER BY o.name, o.id",
+            # ADR #507: the Default organization is the Default customer — first, as on the brokers.
+            f"WHERE o.ended_at IS NULL{where} ORDER BY o.is_default DESC, o.name, o.id",
             args,
         )
         return [dict(r) for r in await cur.fetchall()]
@@ -54,7 +56,7 @@ class NocCustomerMixin(StoreBase):
     async def noc_customer(self, organization_id: int) -> dict[str, Any] | None:
         """One customer and its book's own fields, or None when it is not a customer."""
         cur = await self.conn.execute(
-            "SELECT o.id, o.name, o.slug, "  # nosec B608 - fixed fragments, values bound
+            "SELECT o.id, o.name, o.slug, o.is_default, "  # nosec B608 - fixed fragments, bound
             "(SELECT COUNT(*) FROM ne WHERE ne.organization_id = o.id) AS elements, "
             "(SELECT COUNT(*) FROM noc_circuit k WHERE k.organization_id = o.id) AS circuits, "
             f"{_OPEN_CASES} AS open_cases, "
@@ -63,11 +65,26 @@ class NocCustomerMixin(StoreBase):
             "m.updated_at, m.updated_by, m.memory_at, "
             "m.memory_by FROM organization o "
             "LEFT JOIN noc_customer m ON m.organization_id = o.id "
-            "WHERE o.id = ? AND NOT o.is_default AND o.ended_at IS NULL",
+            "WHERE o.id = ? AND o.ended_at IS NULL",
             (organization_id,),
         )
         row = await cur.fetchone()
         return dict(row) if row else None
+
+    async def noc_customer_keys(self, organization_id: int) -> dict[str, Any]:
+        """What the three operated parts hold (ADR #507): host credentials, routines, the mail."""
+        cur = await self.conn.execute(
+            "SELECT (SELECT COUNT(*) FROM noc_secret s WHERE s.organization_id = ? "
+            "AND s.kind NOT IN ('smtp', 'imap')) AS access_count, "
+            "(SELECT COUNT(*) FROM noc_playbook p WHERE p.organization_id = ? AND p.enabled) "
+            "AS routine_count, m.sender AS mail_sender, (m.smtp_secret_id IS NOT NULL "
+            "AND m.sender <> '') AS mail_ready FROM (SELECT 1) AS one "
+            "LEFT JOIN noc_customer_mail m ON m.organization_id = ?",
+            (organization_id, organization_id, organization_id),
+        )
+        row = await cur.fetchone()
+        assert row is not None
+        return dict(row)
 
     async def noc_customer_elements(
         self, organization_id: int, limit: int = 200

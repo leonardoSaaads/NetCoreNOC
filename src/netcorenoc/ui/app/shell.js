@@ -39,7 +39,7 @@ import { Refused, Unknown } from "./widgets.js";
 import { Icon } from "./icons.js";
 import { resolve, navigate, startRouting, currentFragment } from "./router.js";
 import { planeOf } from "./registry.js";
-import { PlaneSwitch } from "./plane.js";
+import { PlaneSwitch, planeRedirect } from "./plane.js";
 import { session, scopeSummary, onSessionChange, can } from "./session.js";
 import { Avatar } from "./avatar.js";
 import { theme, setTheme, nextTheme, navState, setNavState, nextNavState } from "./theme.js";
@@ -123,6 +123,7 @@ export class Shell extends Component {
     if (decision.kind === "view") {
       this.plane = planeOf(decision.view);
       this.lastByPlane[this.plane] = this.state.fragment || `#/${decision.view.id}`;
+      planeRedirect(active.capabilities, this.plane);
     }
     // The sidebar badge has always meant "situations that have not left", and it still does:
     // v0.16.0 split that population into `new` and `open`, so the filter names what it excludes

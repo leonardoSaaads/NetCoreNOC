@@ -410,6 +410,9 @@ ROUTE_ORDER_BASELINE: list[tuple[str, str]] = [
     ("GET", "/app/destructive.js"),
     ("GET", "/app/dom.js"),
     ("GET", "/app/format.js"),
+    ("GET", "/app/markdown.js"),
+    ("GET", "/app/mailwizard.js"),
+    ("GET", "/app/mssignin.js"),
     ("GET", "/app/charts.js"),
     ("GET", "/app/compare.js"),
     ("GET", "/app/chartdata.js"),
@@ -548,6 +551,7 @@ ROUTE_ORDER_BASELINE: list[tuple[str, str]] = [
     ("GET", "/app/views/noc/parts/custaccess.js"),
     ("GET", "/app/views/noc/parts/custmail.js"),
     ("GET", "/app/views/noc/parts/custroutines.js"),
+    ("GET", "/app/views/noc/parts/custhead.js"),
     ("GET", "/app/views/noc/parts/agentrun.js"),
     ("GET", "/app/views/noc/parts/ollamamodels.js"),
     ("GET", "/app/views/noc/parts/orgmove.js"),
@@ -702,6 +706,7 @@ ROUTE_ORDER_BASELINE: list[tuple[str, str]] = [
     ("POST", "/api/maintenance-windows/{wid}"),
     ("GET", "/api/organizations"),
     ("POST", "/api/organizations"),
+    ("POST", "/api/organizations/{organization_id}/name"),
     ("POST", "/api/entities/{ne_id}/organization"),
     ("GET", "/api/timezones"),
     ("GET", "/api/resources"),
@@ -730,6 +735,8 @@ ROUTE_ORDER_BASELINE: list[tuple[str, str]] = [
     ("GET", "/api/email"),
     ("POST", "/api/email"),
     ("POST", "/api/email/test"),
+    ("POST", "/api/mail/oauth/start"),
+    ("POST", "/api/mail/oauth/poll"),
     ("GET", "/api/login/options"),
     ("POST", "/api/password-reset"),
     ("POST", "/api/password-reset/confirm"),
@@ -769,6 +776,8 @@ ROUTE_ORDER_BASELINE: list[tuple[str, str]] = [
     ("GET", "/api/noc/people"),
     ("POST", "/api/noc/cases/{sid}/email"),
     ("GET", "/api/noc/cases/{sid}/email/draft"),
+    ("POST", "/api/noc/customers/{customer_id}/mail/try"),
+    ("POST", "/api/noc/customers/{customer_id}/mail/account"),
     ("POST", "/api/noc/exec"),
     ("POST", "/api/noc/secrets/{secret_id}/hostkey"),
     ("GET", "/api/noc/playbooks"),
@@ -964,7 +973,10 @@ async def test_the_api_route_order_is_unchanged_by_the_ui_rewrite(store: Store) 
     # ADR #500: +2 (`POST /api/noc/cases/{sid}/email`, `GET …/email/draft`: concrete segments
     # below a case's id) — 213.
     # ADR #501: an earlier version of a routine — 214.
-    assert len(live) == 214, (
+    # ADR #507: a customer renamed in place — 215.
+    # ADR #510: a mailbox signed in with Microsoft — 217.
+    # ADR #510: a customer's mailbox, tried and kept — 219.
+    assert len(live) == 219, (
         f"the /api surface is {len(live)} pairs; v0.16.0 adds exactly five, v0.16.2 exactly one, "
         f"v0.16.3 exactly one, v0.16.5 exactly one — `POST /api/alarms/clear` — v0.18.0 exactly "
         f"one, `GET /api/correlation`, and v0.21.0 exactly thirteen for maintenance windows, "
@@ -1615,8 +1627,8 @@ def test_the_queue_put_on_the_hot_path_is_non_blocking() -> None:
 #: `engine/noc/` `commands`, `executor`, `playbook` and `runbook`, `store/noc_playbooks.py`,
 #: migration `0035_noc_automation.sql`, the `noc_exec` and `playbooks` routes, and the
 #: `views/playbooks` console module.
-SRC_TREE_DIGEST = "2bf12926ca8a97bbfb2a4df06df4089f640584007d5094f19567918ed5c6c20f"
-SRC_FILE_COUNT = 596
+SRC_TREE_DIGEST = "8a6295dd0d9888779cb5bc4d0013741a5ad300c8176e6e6ffcdeb1023b004d21"
+SRC_FILE_COUNT = 609
 SRC_VERSION_FILE = "src/netcorenoc/__init__.py"
 
 

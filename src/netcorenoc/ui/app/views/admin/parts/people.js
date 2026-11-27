@@ -22,7 +22,7 @@ import { Destructive } from "../../../destructive.js";
 import { session, can, passwordPolicy } from "../../../session.js";
 import { CapGrid, sameSet, isFixed } from "./capgrid.js";
 import { PasswordReset, TwoFactorReset } from "./personsecurity.js";
-import { CustomerScope, CustomerBadge, customerNames } from "./custscope.js";
+import { AccessScope, AccessBadge } from "./custscope.js";
 import { relative, timeTitle } from "../../../format.js";
 
 export const ROLES = [["viewer", "Viewer"], ["editor", "Editor"], ["admin", "Admin"]];
@@ -59,14 +59,10 @@ export function RoleSwitch({ value, onChange, disabled, name }) {
 export class PeopleList extends Component {
   constructor(props) {
     super(props);
-    this.state = { q: "", names: {} };
+    this.state = { q: "" };
   }
 
-  async componentDidMount() {
-    if (this.props.users.some((u) => u.organizations)) this.setState({ names: await customerNames() });
-  }
-
-  render({ users, rbac, onOpen }, { q, names }) {
+  render({ users, rbac, onOpen }, { q }) {
     const me = session();
     const needle = q.trim().toLowerCase();
     const shown = users.filter((u) => !needle || [u.username, u.display_name, u.role]
@@ -91,7 +87,7 @@ export class PeopleList extends Component {
               <span class="person-access">${access == null ? null : access.custom
                 ? html`<span class="badge badge-warn">custom · ${access.value.size}</span>`
                 : html`<span class="muted">role default</span>`}
-                <${CustomerBadge} organizations=${u.organizations} names=${names} /></span>
+                <${AccessBadge} user=${u} /></span>
               <span class="person-meta muted" title=${timeTitle(u.created_at)}>
                 ${u.must_change_password ? "must set password" : `added ${relative(u.created_at)}`}
                 ${u.two_factor ? null : html` · <span class="warn-text">no two-factor yet</span>`}</span>
@@ -108,11 +104,17 @@ function sameList(a, b) {
   return (a == null && b == null) || (a != null && b != null && a.join(",") === b.join(","));
 }
 
+/** ADR #508: a person's reach as the server answers it — None on a plane is every one. */
+const UNLIMITED = { brokers: null, customers: null };
+const limited = (a) => a.brokers != null || a.customers != null;
+const sameAccess = (a, b) => sameList(a.brokers, b.brokers) && sameList(a.customers, b.customers);
+
 /** Create or edit one person. `user` is null for a new account. */
 export class PersonEditor extends Component {
-  /** Whether the Customers choice is sent: an admin may write it, and the role may be limited. */
+  /** Whether the brokers-and-customers choice is sent (ADR #508): an admin who may write it, for
+   * anyone but the super admin — an admin too. */
   scoping() {
-    return can("scope.write") && !accessOf(this.props.rbac, this.state.role, null)?.fixed;
+    return can("scope.write") && !(this.props.user && this.props.user.owner);
   }
 
   constructor(props) {
@@ -124,7 +126,7 @@ export class PersonEditor extends Component {
       name: u ? u.display_name || "" : "", email: u ? u.email || "" : "", username: "", password: "",
       role,
       caps: access ? access.value : null, photo: undefined, busy: false, error: null, tab: "profile",
-      orgs: u ? u.organizations || null : null,
+      reach: u ? { ...UNLIMITED, ...(u.access || {}) } : UNLIMITED,
     };
   }
 
@@ -136,22 +138,25 @@ export class PersonEditor extends Component {
   async save(event) {
     event.preventDefault();
     const { user, rbac } = this.props;
-    const { name, email, username, password, role, caps, photo, orgs } = this.state;
-    if (this.scoping() && orgs && !orgs.length) {
-      this.setState({ tab: "customers", error: "Choose at least one customer, or Every customer." });
+    const { name, email, username, password, role, caps, photo, reach } = this.state;
+    const emptyOnly = (l) => l != null && l.only && !l.length;
+    if (this.scoping() && (emptyOnly(reach.brokers) || emptyOnly(reach.customers))) {
+      this.setState({ tab: "customers", error: "Choose at least one broker and one customer, or None." });
       return;
     }
+    const plain = (l) => (l == null ? null : [...l]);
+    const planes = { brokers: plain(reach.brokers), customers: plain(reach.customers) };
     this.setState({ busy: true, error: null });
     try {
       let id = user && user.id;
       if (!user) {
-        // ADR #499: limited to its customers in the same commit as the account.
+        // ADR #508: limited to its brokers and customers in the same commit as the account.
         id = (await post("/api/users", { username: username.trim(), password, role,
-          display_name: name.trim() || null, ...(this.scoping() ? { organizations: orgs } : {}) })).id;
+          display_name: name.trim() || null, ...(this.scoping() && limited(planes) ? planes : {}) })).id;
       } else {
         if (role !== user.role) await post(`/api/users/${id}/role`, { role });
-        if (this.scoping() && !sameList(orgs, user.organizations || null)) {
-          await post("/api/scope/subject", { subject: `user:${id}`, organizations: orgs });
+        if (this.scoping() && !sameAccess(planes, { ...UNLIMITED, ...(user.access || {}) })) {
+          await post("/api/scope/subject", { subject: `user:${id}`, ...planes });
         }
       }
       // A new account's name went with its creation; its address, and any edit, go here.
@@ -180,7 +185,8 @@ export class PersonEditor extends Component {
   }
 
   render({ user, rbac, onClose, onSaved }, { name, email, username, password, role, caps, busy, error, tab }) {
-    const sole = user && user.sole_admin;
+    // ADR #508: the super admin's role is fixed, like the sole admin's.
+    const sole = user && (user.sole_admin || user.owner);
     const base = accessOf(rbac, role, null);
     const policy = passwordPolicy();
     const self = user && user.username === session().user;
@@ -189,7 +195,7 @@ export class PersonEditor extends Component {
     // ADR #490: the same shape as Your account — a header with the photo and who this is, then
     // tabs of cards. The form is one, so Save keeps whatever was changed on either tab.
     const tabs = [["profile", "Profile", "account"],
-      ...(can("scope.write") ? [["customers", "Customers", "network"]] : []),
+      ...(can("scope.write") ? [["customers", "Brokers & customers", "network"]] : []),
       ...(rbac && caps ? [["access", "Access", "key"]] : []),
       ...(user && !self ? [["security", "Security", "shield"]] : [])];
     const on = tabs.some(([key]) => key === tab) ? tab : "profile";
@@ -203,6 +209,7 @@ export class PersonEditor extends Component {
           <p class="acct-meta">
             ${user || username ? html`<span class="muted">@${user ? user.username : username}</span>` : null}
             <span class=${`role-pill role-${role}`}>${role}</span>
+            ${user && user.owner ? html`<${AccessBadge} user=${user} />` : null}
             ${user ? user.two_factor
               ? html`<span class="acct-2fa-on"><${Icon} name="shield" /> Two-factor on</span>`
               : html`<span class="badge badge-warn">no two-factor yet</span>` : null}
@@ -241,15 +248,16 @@ export class PersonEditor extends Component {
         </div>
         <div class="pe-field pe-role"><span>Role</span>
           <${RoleSwitch} value=${role} disabled=${sole} onChange=${(r) => this.setRole(r)} />
-          <small class="muted">${sole ? "The only admin: add another admin first."
+          <small class="muted">${user && user.owner ? "The super admin: always an admin, with everything."
+            : sole ? "The only admin: add another admin first."
             : `The most this person can ever hold — narrow it on Access.${user ? " Changing it signs them out." : ""}`}</small>
         </div>
       </section>` : null}
 
       ${on === "customers" ? html`<section class="panel-block acct-card pe-customers">
-        <h3><${Icon} name="network" /> Customers</h3>
-        <${CustomerScope} value=${this.state.orgs} fixed=${base.fixed} roleName=${role}
-          onChange=${(next) => this.setState({ orgs: next })} />
+        <h3><${Icon} name="network" /> Brokers & customers</h3>
+        <${AccessScope} value=${this.state.reach} owner=${user && user.owner}
+          onChange=${(next) => this.setState({ reach: next })} />
       </section>` : null}
 
       ${on === "access" ? html`<section class="panel-block acct-card pe-access">

@@ -18,6 +18,7 @@ import { Icon } from "../../../icons.js";
 import { roster } from "../../../roster.js";
 import { AgentGlyph } from "./nocui.js";
 import { EmailComposer, EmailCard, draftFor } from "./caseemail.js";
+import { Markdown } from "../../../markdown.js";
 
 const SHORT = { internal: "Internal", specified: "Specified", all: "All with access" };
 
@@ -183,6 +184,9 @@ export class CaseFeed extends Component {
           </div>
           ${p.mail ? html`<${EmailCard} mail=${p.mail} canReply=${can("cases.work")}
               onReply=${(mid, all) => this.write({ replyTo: mid, all })} />`
+            : p.author && p.author.kind === "agent" && p.kind !== "event"
+            // ADR #509: an agent writes Markdown; its post is drawn as what it means.
+            ? html`<${Markdown} text=${p.body} className="feed-body" />`
             : html`<p class="feed-body"><${Body} post=${p} /></p>`}
         </div>
       </li>`)}</ol>

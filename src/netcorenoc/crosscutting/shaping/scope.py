@@ -35,8 +35,6 @@ import json
 from dataclasses import dataclass
 from typing import Any
 
-from netcorenoc.crosscutting.rbac import ROLE_RANK
-
 
 @dataclass(frozen=True)
 class ScopePolicy:
@@ -77,6 +75,24 @@ class Scope:
     orgs: frozenset[int] = frozenset()
     #: Only those its policy names: whose every broker it sees, even one with no element yet.
     named_orgs: frozenset[int] = frozenset()
+    #: ADR #508: the brokers its policy names (`broker:<id>`), listed even before their first trap.
+    named_brokers: frozenset[int] = frozenset()
+    #: ADR #508: the NOC plane's own view, when the policy grants the NOC separately (`noc:`
+    #: selectors); None when it does not, and the NOC follows the elements above as before.
+    noc: Scope | None = None
+    #: ADR #508: False when the policy names brokers or customers and no broker at all — the
+    #: person has no Broker plane, and the console does not show one.
+    broker_plane: bool = True
+
+    def for_noc(self) -> Scope:
+        """The scope a NOC read or write is decided by (`/api/noc/...`, ADR #508)."""
+        return self.noc if self.noc is not None else self
+
+    @property
+    def noc_plane(self) -> bool:
+        """Whether this principal has a NOC plane at all: unrestricted, or some customer in it."""
+        noc = self.for_noc()
+        return noc.unrestricted or bool(noc.orgs)
 
     def allows_ne(self, ne_id: int | None) -> bool:
         if self.unrestricted:
@@ -94,6 +110,11 @@ class Scope:
 UNRESTRICTED = Scope(unrestricted=True)
 DENY_ALL = Scope(unrestricted=False)
 
+#: ADR #508: the NOC plane's selectors — every customer, one customer, or none at all.
+NOC_ALL = "noc:*"
+NOC_NONE = "noc:none"
+BROKER_ALL = "broker:*"
+
 
 def is_scopable(role: str) -> bool:
     """False for the roles scoping never applies to. **Admin is never scoped** (DECISIONS #58).
@@ -105,6 +126,28 @@ def is_scopable(role: str) -> bool:
     a wasted query rather than a disclosure.
     """
     return role != "admin"
+
+
+def limits_admin(
+    role: str, principal_ref: str | None, is_owner: bool, policy: ScopePolicy | None
+) -> bool:
+    """ADR #508: an admin the visibility policy limits to brokers or customers — by its own entry,
+    never a role-wide one — and never the super admin."""
+    return (
+        role == "admin"
+        and not is_owner
+        and policy is not None
+        and not policy.malformed
+        and principal_ref is not None
+        and principal_ref in policy.principals
+    )
+
+
+def never_scoped(
+    role: str, principal_ref: str | None, is_owner: bool, policy: ScopePolicy | None
+) -> bool:
+    """ADR #508: the super admin, and an admin the policy does not limit, see everything."""
+    return is_owner or (role == "admin" and not limits_admin(role, principal_ref, False, policy))
 
 
 def _selector_lists(raw: Any) -> dict[str, tuple[str, ...]] | None:
@@ -183,6 +226,10 @@ def _matches(
     """
     if selector.startswith("ne:"):
         return selector[3:].strip() == str(ne_id)
+    if selector == BROKER_ALL:  # ADR #508: every broker's elements
+        return True
+    if selector.startswith("noc:"):  # ADR #508: the NOC plane's, never an element of the Broker's
+        return False
     if selector.startswith("broker:"):
         return broker_id is not None and selector[7:].strip() == str(broker_id)
     if selector.startswith("org:"):  # ADR #499: every element a customer owns, in every broker
@@ -245,14 +292,23 @@ def visible_nes(
        nothing for this feature;
     3. **malformed ⇒ deny**, never widen (DECISIONS #55);
     4. otherwise the **union of the layers that express an opinion**; if neither does, unrestricted.
+
+    ADR #508: an **admin** is limited by its own entry only — a role-wide `admin` entry is refused
+    at write time and ignored here — and the super admin never has one (the write path refuses it,
+    and `scope_for` answers before this function for them).
     """
-    if role == "admin":
-        return UNRESTRICTED
     if policy is None:
         return UNRESTRICTED
-    if policy.malformed:
+    if role == "admin":
+        if policy.malformed or principal_ref is None or principal_ref not in policy.principals:
+            return UNRESTRICTED  # the admin who must repair a broken policy is never locked out
+    elif policy.malformed:
         return DENY_ALL
-    layers = _layers(policy, role, principal_ref)
+    layers = (
+        _layers(policy, role, principal_ref)
+        if role != "admin"
+        else [policy.principals[principal_ref or ""]]
+    )
     if not layers:
         return UNRESTRICTED
     selectors = {selector for layer in layers for selector in layer}
@@ -260,6 +316,9 @@ def visible_nes(
     ips: set[str] = set()
     named = frozenset(
         int(s[4:].strip()) for s in selectors if s.startswith("org:") and s[4:].strip().isdigit()
+    )
+    brokers = frozenset(
+        int(s[7:].strip()) for s in selectors if s.startswith("broker:") and s[7:].strip().isdigit()
     )
     orgs: set[int] = set(named)
     for ne in nes:
@@ -273,12 +332,50 @@ def visible_nes(
                 ips.add(str(ip))
             if org is not None:
                 orgs.add(org)
+    broker_side = BROKER_ALL in selectors or any(
+        not s.startswith(("noc:", "org:")) for s in selectors
+    )
     return Scope(
         unrestricted=False,
         ne_ids=frozenset(ne_ids),
         ips=frozenset(ips),
         orgs=frozenset(orgs),
         named_orgs=named,
+        named_brokers=brokers,
+        noc=_noc_scope(selectors, named, nes),
+        broker_plane=broker_side or bool(named),
+    )
+
+
+def _noc_scope(
+    selectors: set[str], named: frozenset[int], nes: list[dict[str, Any]]
+) -> Scope | None:
+    """ADR #508: the NOC plane's view, when the policy grants it on its own (`noc:` selectors).
+
+    `noc:*` is every customer; `noc:<id>` that customer — its book, cases, routines and the
+    credentials it holds, and every element it owns, in whichever broker; `noc:none` is no NOC. A
+    legacy `org:<id>` still reaches that customer on both planes. With no `noc:` selector at all the
+    NOC follows the Broker plane's elements, as it did (ADR #499) — None.
+    """
+    if not any(s.startswith("noc:") for s in selectors):
+        return None
+    if NOC_ALL in selectors:
+        return UNRESTRICTED
+    customers = set(named) | {
+        int(s[4:].strip()) for s in selectors if s.startswith("noc:") and s[4:].strip().isdigit()
+    }
+    ne_ids = {
+        int(ne["id"])
+        for ne in nes
+        if ne.get("organization_id") is not None and int(ne["organization_id"]) in customers
+    }
+    ips = {str(ne["ip"]) for ne in nes if int(ne["id"]) in ne_ids and ne.get("ip")}
+    return Scope(
+        unrestricted=False,
+        ne_ids=frozenset(ne_ids),
+        ips=frozenset(ips),
+        orgs=frozenset(customers),
+        named_orgs=frozenset(customers),
     )
 
 
@@ -297,65 +394,7 @@ def within(scope: Scope, nes: list[dict[str, Any]]) -> Scope:
         ips=frozenset(ips),
         orgs=scope.orgs,
         named_orgs=scope.named_orgs,
+        named_brokers=scope.named_brokers,
+        noc=scope.noc,
+        broker_plane=scope.broker_plane,
     )
-
-
-# Characters that can appear in a textual IP address: hex digits, the IPv4 dot, the IPv6 colon,
-# and the CIDR slash. A glob whose literal parts contain anything else can never match an address.
-_ADDRESS_CHARS = frozenset("0123456789abcdefABCDEF.:/")
-_GLOB_CHARS = frozenset("*?[]!-")
-
-
-def _can_never_match(selector: str) -> bool:
-    """True if this selector cannot match **any** address, now or ever (v0.7.1, F35).
-
-    A *static* property of the selector, deliberately **not** "matches nothing right now". Scope
-    selectors are resolved against the live inventory on every request precisely because NetCoreNOC
-    discovers NEs continuously (DECISIONS #57), so a CIDR covering a range that is empty today is a
-    perfectly good forward-looking policy and must not be rejected. What *is* always wrong is a
-    selector made of characters an address never contains — ``core-*``, ``POP-SUL`` — which is
-    exactly the label glob that v0.7.0 resolved against the operator label and v0.7.1 does not.
-    Reporting it at write time is how an admin upgrading from v0.7.0 finds out (see `MIGRATION.md`)
-    rather than discovering it from behaviour.
-    """
-    if selector.startswith("broker:"):
-        return not selector[7:].strip().isdigit()  # a broker is named by its id, as on its page
-    if selector.startswith("org:"):
-        return not selector[4:].strip().isdigit()  # a customer is named by its id too
-    if selector.startswith("ne:"):
-        return False
-    literal = "".join(c for c in selector if c not in _GLOB_CHARS)
-    return bool(literal) and not set(literal) <= _ADDRESS_CHARS
-
-
-def scope_policy_errors(policy: ScopePolicy) -> list[str]:
-    """Operator-facing problems with a scope policy an admin is *writing*. Usability, not security.
-
-    Nothing here can widen a scope — an unmatched selector simply selects nothing — so these are
-    reported so an admin learns immediately that a line will not do what they meant.
-    """
-    if policy.malformed:
-        return [policy.reason or "policy is malformed"]
-    problems: list[str] = []
-    for subject, selectors in (*policy.roles.items(), *policy.principals.items()):
-        for selector in selectors:
-            if _can_never_match(selector):
-                problems.append(
-                    f"selector {selector!r} for {subject!r} can never match a network element. "
-                    "Since v0.7.1 a selector resolves against NE id and address only — never the "
-                    "operator label, which the role being scoped can write (F35) — so a label glob "
-                    "selects nothing. Use an address, a CIDR, 'ne:<id>', 'broker:<id>' or "
-                    "'org:<id>' (see MIGRATION.md)."
-                )
-    for role in policy.roles:
-        if role not in ROLE_RANK:
-            problems.append(f"unknown role {role!r}")
-        elif role == "admin":
-            problems.append(
-                "role 'admin' cannot be scoped: an admin must never be locked out of the data "
-                "they are responsible for, and this entry would have no effect"
-            )
-    for subject in policy.principals:
-        if not subject.startswith(("user:", "token:")):
-            problems.append(f"principal {subject!r} must be 'user:<id>' or 'token:<id>'")
-    return problems

@@ -68,9 +68,19 @@ async def test_settings_has_an_snmp_tab_with_versions_communities_and_users(stor
 @dom_test
 async def test_settings_has_an_email_tab_with_providers_and_a_test(store: Store) -> None:
     dump = (await _admin(store, "#/settings?tab=email"))["dump"]
-    for text in ("Gmail / Google Workspace", "Microsoft 365 / Outlook.com", "Custom SMTP server"):
+    # ADR #510: not set up yet, so the three steps open on the provider; Outlook.com signs in with
+    # Microsoft (its password is refused), the others take an app password.
+    for text in ("Provider", "Account", "Test and save"):
+        assert f'"{text}"' in dump, text
+    for text in (
+        "Gmail / Google Workspace",
+        "Outlook.com / Hotmail / Live",
+        "Microsoft 365 (work or school)",
+        "Custom SMTP server",
+        "Sign in with Microsoft",
+        "App password",
+    ):
         assert text in dump, text
-    assert "Send a test message to" in dump and "Console address for links" in dump
 
 
 @dom_test

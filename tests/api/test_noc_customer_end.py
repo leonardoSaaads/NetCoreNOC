@@ -75,7 +75,8 @@ async def test_an_admin_ends_a_customer_and_its_history_stays(store: Store) -> N
             ended.json() | {"contacts": 1, "circuits": 1, "book": 1, "elements": 1} == ended.json()
         )
         assert (await admin.get(base)).status_code == 404
-        assert (await admin.get("/api/noc/customers")).json()["customers"] == []
+        listed = (await admin.get("/api/noc/customers")).json()["customers"]
+        assert [c["slug"] for c in listed] == ["default"], "only the Default customer is left"
         orgs = (await admin.get("/api/organizations")).json()["organizations"]
         assert [o["slug"] for o in orgs] == ["default"], "an ended customer is on no picker"
         async with store.reading():
@@ -123,7 +124,9 @@ async def test_the_default_organization_is_never_ended_and_no_agent_can_end_one(
         refused = await admin.post(
             f"/api/noc/customers/{default}/end", json={"name": "Default", "stepup": STEP}
         )
-        assert refused.status_code == 404
+        # ADR #507: the Default customer is renamed, never ended — said, not hidden behind a 404.
+        assert refused.status_code == 409, refused.text
+        assert "rename" in refused.json()["detail"]
     finally:
         await admin.aclose()
     paths = {tool.path for tool in mcp_tools.TOOLS}

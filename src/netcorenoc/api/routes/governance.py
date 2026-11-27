@@ -140,6 +140,17 @@ def register(app: FastAPI, ctx: AppContext) -> None:
         if any(users.get(ref) in rbac.FIXED_ROLES for ref in principals):
             raise HTTPException(status_code=400, detail=rbac.FIXED_ROLE_REFUSAL)
 
+    async def _refuse_scoping_the_owner(principals: Any) -> None:
+        """400 when a visibility document names the super admin (ADR #508): they reach everything,
+        and a policy that says otherwise is refused rather than ignored. Any other admin may be
+        limited to brokers and customers, as a viewer or an editor is."""
+        if not isinstance(principals, dict):
+            return
+        async with store.reading():
+            owners = {f"user:{u['id']}" for u in await store.list_users() if u.get("is_owner")}
+        if owners & set(principals):
+            raise HTTPException(status_code=400, detail=scope_subject.OWNER_REFUSAL)
+
     def _capability_problems(text: str) -> list[str]:
         return rbac.capability_policy_errors(rbac.parse_capability_policy(text))
 
@@ -273,7 +284,9 @@ def register(app: FastAPI, ctx: AppContext) -> None:
             "malformed_reason": policy.reason if policy is not None and policy.malformed else "",
             "ne_count": len(nes),
             "resolved_ne_ids": resolved,
-            "admin_is_never_scoped": True,
+            # ADR #508: only the super admin is never scoped; any other admin may be limited.
+            "admin_is_never_scoped": False,
+            "owner_is_never_scoped": True,
             "not_tenant_isolation": (
                 "Visibility scoping is a presentation control, NOT tenant isolation. Correlation "
                 "learns per broker; within a broker a situation may still form across a boundary "
@@ -287,12 +300,15 @@ def register(app: FastAPI, ctx: AppContext) -> None:
     async def set_subject_scope(
         body: ScopeSubjectIn, request: Request, principal: auth.Principal = Depends(security)
     ) -> dict[str, Any]:
-        """Set or clear which customers ONE person or token serves (ADR #499).
+        """Set or clear which brokers and NOC customers ONE person or token reaches (ADR #508).
 
-        `org:<id>` selectors in that subject's entry of the visibility policy: the customer's
-        brokers (every element it owns) and its side of the NOC — its book, cases, routines and
-        credentials. A new version of the whole policy, audited with before and after and
-        reversible from its history. An admin is never scoped, so narrowing one is refused.
+        `brokers` (the Broker plane) and `customers` (the NOC plane), each None for every one and
+        [] for none, written as `broker:`/`noc:` selectors in that subject's entry of the
+        visibility policy — so a person may reach a customer's NOC and none of its brokers, or the
+        reverse. The older `organizations` (ADR #499: a customer on both planes) still works when
+        neither is sent. A new version of the whole policy, audited with before and after and
+        reversible from its history. Any person may be limited — an admin too — except the super
+        admin, whose reach nobody can take away.
         """
         kind, key = body.subject.split(":", 1)
         async with write_txn():
@@ -300,17 +316,27 @@ def register(app: FastAPI, ctx: AppContext) -> None:
                 user = await store.get_user(int(key))
                 if user is None:
                     raise HTTPException(status_code=404, detail="no such user")
-                if user["role"] in rbac.FIXED_ROLES and body.organizations is not None:
-                    raise HTTPException(status_code=400, detail=rbac.FIXED_ROLE_REFUSAL)
+                if user.get("is_owner"):
+                    raise HTTPException(status_code=400, detail=scope_subject.OWNER_REFUSAL)
             elif not any(int(t["id"]) == int(key) for t in await store.list_tokens()):
                 raise HTTPException(status_code=404, detail="no such token")
-            details = await scope_subject.set_organizations(
-                store,
-                body.subject,
-                body.organizations,
-                principal.actor,
-                body.note or f"customers: {body.subject}",
-            )
+            if body.planes_sent():
+                details = await scope_subject.set_access(
+                    store,
+                    body.subject,
+                    body.brokers,
+                    body.customers,
+                    principal.actor,
+                    body.note or f"access: {body.subject}",
+                )
+            else:
+                details = await scope_subject.set_organizations(
+                    store,
+                    body.subject,
+                    body.organizations,
+                    principal.actor,
+                    body.note or f"customers: {body.subject}",
+                )
             await audit_row(
                 request,
                 principal,
@@ -327,6 +353,8 @@ def register(app: FastAPI, ctx: AppContext) -> None:
         body: PolicyIn, request: Request, principal: auth.Principal = Depends(security)
     ) -> dict[str, Any]:
         """Apply, roll back, or clear the visibility scope. Audited; reversible in one call."""
+        if body.document is not None:
+            await _refuse_scoping_the_owner(body.document.get("principals"))
         return await _write_policy(
             "scope", body, request, principal, "scope.policy.update", _scope_problems
         )

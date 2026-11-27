@@ -116,7 +116,8 @@ def register(app: FastAPI, ctx: AppContext) -> None:
             customers = [
                 (int(o["id"]), str(o["name"]))
                 for o in await store.noc_case_organizations(sid)
-                if not o["is_default"] and scope.allows_org(int(o["id"]))
+                # ADR #507: the Default customer is emailed like any other.
+                if scope.allows_org(int(o["id"]))
             ]
         if answered is not None:
             wanted = int(answered["organization_id"])

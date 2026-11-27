@@ -55,7 +55,7 @@ function Path({ circuit }) {
 class CircuitDetail extends Component {
   constructor(props) {
     super(props);
-    this.state = { k: null, error: null, line: "", editing: false, removing: false, busy: false };
+    this.state = { k: null, error: null, line: "", editing: false, cloning: false, removing: false, busy: false };
   }
 
   componentDidMount() { this.reload(); }
@@ -95,9 +95,14 @@ class CircuitDetail extends Component {
     }
   }
 
-  render({ c, onBack, onChanged }, { k, error, line, editing, removing, busy }) {
+  render({ c, onBack, onChanged, onOpen }, { k, error, line, editing, cloning, removing, busy }) {
     const back = html`<button type="button" class="linkish" onClick=${onBack}>← ${c.name}'s circuits</button>`;
     if (!k) return html`<div>${back}${error ? html`<p class="err" role="alert">${error}</p>` : html`<p class="muted">Opening the circuit…</p>`}</div>`;
+    if (cloning) {
+      return html`<div>${back}<${CircuitForm} c=${c} template=${k}
+        onDone=${(saved) => { this.setState({ cloning: false }); onChanged(); if (onOpen) onOpen(saved.id); }}
+        onCancel=${() => this.setState({ cloning: false })} /></div>`;
+    }
     if (editing) {
       return html`<div>${back}<${CircuitForm} c=${c} circuit=${k}
         onDone=${(saved) => { this.setState({ k: saved, editing: false }); onChanged(); }}
@@ -116,6 +121,8 @@ class CircuitDetail extends Component {
         <${Status} status=${k.status} />
         ${this.may("edit_circuits") ? html`<span class="record-actions">
           <button type="button" onClick=${() => this.setState({ editing: true })}>Change</button>
+          <button type="button" title="A new circuit with every field and hop of this one, to change what differs"
+            onClick=${() => this.setState({ cloning: true })}><${Icon} name="clone" /> Clone</button>
           ${removing ? html`<span class="wb-confirm">Remove this circuit?${" "}
               <button type="button" class="danger" disabled=${busy} onClick=${() => this.remove()}>Remove</button>
               <button type="button" onClick=${() => this.setState({ removing: false })}>Keep</button></span>`
@@ -193,7 +200,7 @@ export class Circuits extends Component {
   render({ c, circuitId, navigate, onChanged }, { list, q, status, offset, error, mode, removing, busy }) {
     if (circuitId) {
       return html`<${CircuitDetail} key=${circuitId} c=${c} id=${circuitId} onChanged=${onChanged}
-        onBack=${() => navigate(`#/customers/${c.id}/circuits`)} />`;
+        onOpen=${(id) => this.open(id)} onBack=${() => navigate(`#/customers/${c.id}/circuits`)} />`;
     }
     return html`<div class="circuits">
       <div class="part-bar">

@@ -85,6 +85,8 @@ export class BrokerHome extends Loader {
         ${editing ? html`<${BrokerEdit} broker=${b} busy=${busy === "save"}
           onSave=${(patch) => this.change(b, patch)} onCancel=${() => this.setState({ editing: false })} />`
           : html`<dl class="brk-facts">
+            <dt>NOC customer</dt><dd><a href=${`#/customers/${b.organization_id}`}>${b.customer}</a>
+              <span class="muted"> · its situations are this customer's cases</span></dd>
             <dt>Traps arrive</dt><dd>${INTAKE[b.intake][0]} — <span class="muted">${INTAKE[b.intake][1]}</span></dd>
             ${b.intake === "port" ? html`<dt>Its port</dt><dd><code class="mono">${(globalThis.location && globalThis.location.hostname) || "this-server"}:${b.udp_port}</code>
               <span class="muted"> · UDP; its devices send their traps here</span></dd>` : null}
@@ -163,23 +165,54 @@ class BrokerEdit extends Component {
     });
   }
 
+  /* ADR #507: three groups an owner reads top to bottom — what the broker is called, which NOC
+   * customer it belongs to (exactly one), and how its traps arrive — each field with its label above
+   * it and one line saying what it does; the buttons under the last group, right-aligned. */
   render({ broker: b, busy, onCancel }, s) {
-    return html`<form class="grid-form brk-form" onSubmit=${(e) => this.submit(e)}>
-      <label>Name <input type="text" value=${s.name} maxlength="80" required
-        onInput=${(e) => this.setState({ name: e.target.value })} /></label>
-      <label>Customer <select onChange=${(e) => this.setState({ customer: Number(e.target.value) })}>
-        ${s.customers.map((c) => html`<option key=${c.id} value=${c.id} selected=${c.id === s.customer}>${c.name}</option>`)}
-      </select></label>
-      ${b.intake === "port" ? html`<label>UDP port <input type="number" min="1024" max="65535" value=${s.port}
-        onInput=${(e) => this.setState({ port: e.target.value })} /></label>` : null}
-      ${b.intake !== "proxy" && !b.is_default ? html`<label class="brk-wide">Ranges (CIDR)
-        <textarea rows="2" value=${s.networks} onInput=${(e) => this.setState({ networks: e.target.value })}></textarea></label>` : null}
-      <label class="brk-wide">Description <input type="text" value=${s.description} maxlength="2000"
-        onInput=${(e) => this.setState({ description: e.target.value })} /></label>
-      <p class="hint brk-wide">How its traps arrive is fixed: a network that moves to a proxy is a new broker.</p>
-      <div class="brk-nav brk-wide">
+    const id = (f) => `brk-${b.id}-${f}`;
+    return html`<form class="brk-form" onSubmit=${(e) => this.submit(e)}>
+      <fieldset class="brk-group">
+        <legend>Broker</legend>
+        <div class="brk-fields">
+          <div class="pe-field brk-wide brk-name"><label for=${id("name")}>Name</label>
+            <input id=${id("name")} type="text" value=${s.name} maxlength="80" required
+              onInput=${(e) => this.setState({ name: e.target.value })} />
+            <small class="muted">How the sidebar, the situations and the cases name this network.</small></div>
+          <div class="pe-field brk-wide"><label for=${id("desc")}>Description</label>
+            <textarea id=${id("desc")} rows="2" maxlength="2000" value=${s.description}
+              onInput=${(e) => this.setState({ description: e.target.value })}></textarea></div>
+        </div>
+      </fieldset>
+      <fieldset class="brk-group">
+        <legend>NOC customer</legend>
+        <div class="brk-fields">
+          <div class="pe-field"><label for=${id("cust")}>Customer</label>
+            <select id=${id("cust")} onChange=${(e) => this.setState({ customer: Number(e.target.value) })}>
+              ${s.customers.map((c) => html`<option key=${c.id} value=${c.id} selected=${c.id === s.customer}
+                >${c.name}${c.is_default ? " (default)" : ""}</option>`)}
+            </select>
+            <small class="muted">Every broker belongs to exactly one customer: its situations become
+              that customer's NOC cases, worked with its instructions, contacts and routines.</small></div>
+          <p class="brk-aside"><a href="#/customers">Customers in the NOC →</a></p>
+        </div>
+      </fieldset>
+      <fieldset class="brk-group">
+        <legend>How its traps arrive</legend>
+        <p class="brk-arrive"><b>${INTAKE[b.intake][0]}</b> <span class="muted">— ${INTAKE[b.intake][1].replace(/\.+$/, "")}.
+          This is fixed: a network that moves to a proxy is a new broker.</span></p>
+        ${b.intake === "port" ? html`<div class="pe-field brk-narrow"><label for=${id("port")}>UDP port</label>
+          <input id=${id("port")} type="number" min="1024" max="65535" value=${s.port}
+            onInput=${(e) => this.setState({ port: e.target.value })} /></div>` : null}
+        ${b.intake !== "proxy" && !b.is_default ? html`<div class="pe-field"><label for=${id("nets")}>Ranges (CIDR)</label>
+          <textarea id=${id("nets")} class="mono" rows="2" value=${s.networks}
+            onInput=${(e) => this.setState({ networks: e.target.value })}></textarea>
+          <small class="muted">Comma or space separated, such as 10.20.0.0/16, 192.0.2.0/24.</small></div>` : null}
+        ${b.is_default ? html`<p class="muted brk-arrive">It takes every trap on the standard port that no
+          other broker's ranges claim.</p>` : null}
+      </fieldset>
+      <div class="brk-nav">
         <button type="button" onClick=${onCancel}>Cancel</button>
-        <button type="submit" class="primary" disabled=${busy}>${busy ? "Saving…" : "Save"}</button>
+        <button type="submit" class="primary" disabled=${busy || !s.name.trim()}>${busy ? "Saving…" : "Save changes"}</button>
       </div>
     </form>`;
   }

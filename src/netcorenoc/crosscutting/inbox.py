@@ -22,7 +22,9 @@ import ssl
 from contextlib import suppress
 from dataclasses import dataclass
 
-__all__ = ["MAX_BYTES", "InboxError", "Mailbox", "fetch_unseen"]
+from netcorenoc.crosscutting import mailauth
+
+__all__ = ["MAX_BYTES", "InboxError", "Mailbox", "check", "fetch_unseen"]
 
 #: The most of one message read: enough for a reply and its headers, never an attachment.
 MAX_BYTES = 256 * 1024
@@ -42,6 +44,10 @@ class Mailbox:
     username: str
     password: str
     timeout_s: float = TIMEOUT_S
+    #: ADR #510: a mailbox signed in with Microsoft — its registration and refresh token.
+    oauth_client_id: str = ""
+    oauth_tenant: str = "consumers"
+    oauth_refresh: str = ""
 
 
 def _connect(box: Mailbox) -> imaplib.IMAP4:
@@ -53,6 +59,63 @@ def _connect(box: Mailbox) -> imaplib.IMAP4:
         client.starttls(ssl_context=context)
         return client
     raise InboxError(f"security: one of {', '.join(SECURITY_MODES)}")
+
+
+def _login(client: imaplib.IMAP4, box: Mailbox) -> None:
+    """A password, or Microsoft's sign-in as XOAUTH2 (ADR #510)."""
+    try:
+        if box.oauth_refresh:
+            token = mailauth.access_token(box.oauth_client_id, box.oauth_tenant, box.oauth_refresh)
+            raw = f"user={box.username}\x01auth=Bearer {token}\x01\x01".encode()
+            client.authenticate("XOAUTH2", lambda _challenge: raw)
+        else:
+            client.login(box.username, box.password)
+    except mailauth.AuthError as exc:
+        raise InboxError(f"Microsoft sign-in: {exc}") from exc
+    except imaplib.IMAP4.error as exc:
+        said = str(exc)
+        if "basic" in said.lower() or "AUTHENTICATE failed" in said:
+            raise InboxError(
+                "the server refused the login. Outlook.com and Hotmail accept only Microsoft's "
+                "sign-in now: choose Outlook.com and Sign in with Microsoft."
+            ) from exc
+        raise InboxError(
+            "the server refused the username or password. Gmail, Microsoft 365 and Yahoo "
+            "need an app password rather than the account's own."
+        ) from exc
+
+
+def check(box: Mailbox) -> None:
+    """Sign in and open INBOX, reading nothing — the wizard's test (ADR #510). Blocking."""
+    client = _open(box)
+    try:
+        _login(client, box)
+        status, _ = client.select("INBOX", readonly=True)
+        if status != "OK":
+            raise InboxError("the mailbox has no INBOX this account may open")
+    except InboxError:
+        raise
+    except (OSError, imaplib.IMAP4.error) as exc:
+        raise InboxError(f"reading {box.host}:{box.port} failed: {exc}") from exc
+    finally:
+        with suppress(Exception):
+            client.logout()
+
+
+def _open(box: Mailbox) -> imaplib.IMAP4:
+    try:
+        return _connect(box)
+    except InboxError:
+        raise
+    except ssl.SSLError as exc:
+        raise InboxError(
+            f"the TLS handshake with {box.host}:{box.port} failed ({exc.reason or exc}). 993 is "
+            "IMAPS; 143 is STARTTLS."
+        ) from exc
+    except TimeoutError as exc:
+        raise InboxError(f"no answer from {box.host}:{box.port} within the timeout") from exc
+    except (OSError, imaplib.IMAP4.error) as exc:
+        raise InboxError(f"could not reach {box.host}:{box.port}: {exc}") from exc
 
 
 def fetch_unseen(box: Mailbox, *, limit: int = 20) -> list[bytes]:
@@ -72,13 +135,7 @@ def fetch_unseen(box: Mailbox, *, limit: int = 20) -> list[bytes]:
     except (OSError, imaplib.IMAP4.error) as exc:
         raise InboxError(f"could not reach {box.host}:{box.port}: {exc}") from exc
     try:
-        try:
-            client.login(box.username, box.password)
-        except imaplib.IMAP4.error as exc:
-            raise InboxError(
-                "the server refused the username or password. Gmail, Microsoft 365 and Yahoo "
-                "need an app password rather than the account's own."
-            ) from exc
+        _login(client, box)
         status, _ = client.select("INBOX")
         if status != "OK":
             raise InboxError("the mailbox has no INBOX this account may open")

@@ -40,9 +40,9 @@ import { SituationCard } from "./parts/card.js";
 import { get } from "../../api.js";
 import { withBroker } from "../../brokers.js";
 import { BrokerSelect } from "./parts/brokerpick.js";
-import { Loading, Empty, Failed, routeKey } from "../../widgets.js";
+import { Loading, Failed, routeKey } from "../../widgets.js";
 import { plural } from "../../format.js";
-import { Counts, SEARCH_NOTE, TABS } from "./parts/finder.js";
+import { Counts, NoRows, SEARCH_NOTE, TABS } from "./parts/finder.js";
 import * as store from "../../store.js";
 
 const SEARCH_DEBOUNCE_MS = 250;
@@ -109,7 +109,7 @@ export class Situations extends Component {
    * The link is the operator asking for THIS situation, so the pin is exactly the right
    * mechanism — the card appears where they are, its badge says which state it is in, and
    * collapsing it or choosing a tab releases it like any other pin. */
-  followDeepLink() {
+  async followDeepLink() {
     const sid = Number(this.props.params[0]);
     if (!sid) return;
     // The pin is unconditional and the expand is not, and the two must not be folded together.
@@ -117,9 +117,24 @@ export class Situations extends Component {
     // the constructor — so on a remount a card can already be expanded and still be absent from
     // the tab's list. Skipping the pin because it was open left the operator on the New tab with
     // no card at all, which is F97's symptom reached by a different door. And `open` TOGGLES, so
-    // calling it on a card already open would close the one they asked for.
+    // calling it on a card already open would close the one they asked for: an open card is
+    // re-read instead — a merge links to its destination, whose held payload predates the merge.
     this.setState({ pinned: new Set(this.state.pinned).add(sid) });
-    if (!store.isExpanded(sid)) this.open(sid);
+    if (store.isExpanded(sid)) await this.reread(sid); else await this.open(sid);
+    // ADR #506: the link shows the situation in ITS state's tab. A merge into an Open situation
+    // links to it, and pinning it into the New tab listed an Open situation under New.
+    const detail = store.heldDetail(sid);
+    const state = detail && !detail.__error ? detail.status : null;
+    if (state && state !== this.state.status && !this.state.filter.trim() &&
+        TABS.some(([value]) => value === state)) {
+      this.setState({ status: state, pinned: new Set([sid]) });
+    }
+  }
+
+  /** Re-read one open card's payload and re-freeze it (the operator, not the stream, asked). */
+  async reread(sid) {
+    try { store.refreshHeld(sid, await get(`/api/situations/${sid}`)); }
+    catch (error) { store.refreshHeld(sid, { __error: error }); }
   }
 
   componentWillUnmount() {
@@ -145,6 +160,10 @@ export class Situations extends Component {
    * is a second, private notion of state, which is exactly what #267 refused to build. */
   pickTab(value) {
     this.setState({ status: value, pinned: new Set() }, () => this.refresh());
+    // ADR #506: a card left open keeps its held payload across the tab change, so a situation
+    // confirmed a moment ago showed Confirm grouping again under Open. A new list is a new look:
+    // every open card is re-read once, and then held again as before.
+    for (const sid of store.expandedIds()) this.reread(sid);
   }
 
   /** Re-run the current search, which is what a gesture inside a search result needs. */
@@ -198,8 +217,7 @@ export class Situations extends Component {
    * component for the length of a visit.
    */
   async reopen(sid) {
-    try { store.refreshHeld(sid, await get(`/api/situations/${sid}`)); }
-    catch (error) { store.refreshHeld(sid, { __error: error }); }
+    await this.reread(sid);
     this.setState({ pinned: new Set(this.state.pinned).add(sid) });
     // A search answer is a snapshot, so a gesture made inside one has to be asked for again or the
     // row beside the card would keep the status, the name and the count it had before the gesture.
@@ -220,8 +238,7 @@ export class Situations extends Component {
     // the payload when it lands. v0.7.4 emptied the container before the round trip and a click
     // in that window hit nothing.
     store.expand(sid, null);
-    try { store.refreshHeld(sid, await get(`/api/situations/${sid}`)); }
-    catch (error) { store.refreshHeld(sid, { __error: error }); }
+    await this.reread(sid);
   }
 
   render(_props, { live, filter, status, results, searching, searchError, pinned }) {
@@ -282,23 +299,8 @@ export class Situations extends Component {
                                       retry=${() => this.refresh()} />` : null}
 
       ${!query && live.situations === null ? html`<${Loading} label="Reading situations" />` : null}
-      ${rows.length === 0 && !searching && !searchError ? html`<${Empty}
-          title=${query || status !== "new"
-            ? "No situations match this filter."
-            : "The network is quiet."}
-          will=${query
-            ? "The search reads the operator's name, the derived name, the device, the trap OID " +
-              "and the instance — and only the ones your account is shown. Clearing the box " +
-              "returns to the live list."
-            : status !== "new"
-            ? "Clearing the filter will show everything the appliance currently holds."
-            : "Situations appear here the moment two or more alarms correlate. Nothing has to be " +
-              "configured first: the appliance learns alarm classes, network elements and their " +
-              "affinities from the trap stream itself."}
-          meanwhile=${query || status !== "new"
-            ? null
-            : "Point your devices' trap destination at this appliance. The Alarm classes screen " +
-              "fills in as soon as the first trap arrives, before any grouping happens."} />` : null}
+      ${rows.length === 0 && !searching && !searchError
+        ? html`<${NoRows} query=${query} status=${status} />` : null}
 
       <div id="sits" class="cards" role="tabpanel"
            aria-labelledby=${`tab-${status || "any"}`}>

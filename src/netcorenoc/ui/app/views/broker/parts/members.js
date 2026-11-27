@@ -144,7 +144,12 @@ export function Members({
             face=${html`<${SeverityBadge} alarm=${a} />`} /></td>`
         : html`<${SeverityCell} alarm=${a} />`),
       count: a.count,
-      state: a.status,
+      // ADR #506: raised again since, and held by the live situation it joined — the record says
+      // where the alarm went, not "active" on a situation that is over.
+      state: a.held_by != null
+        ? html`<span title="This alarm was raised again and belongs to that situation now"
+            >active in <a href=${`#/situations/${a.held_by}`}>#${a.held_by}</a></span>`
+        : a.status,
       // **One cell, four controls, and each still says which kind of thing it asserts.** The three
       // declarations state what a thing IS; the clear states that an ALARM was stale and asserts
       // nothing whatever about the grouping — which is why it has no confidence control and why it
@@ -154,7 +159,7 @@ export function Members({
       // cleared should be treated as cleared — so it keeps a button of its own, and the column
       // that used to hold four now holds one.
       actions: html`<td class="row-actions">
-        ${a.status === "active" ? html`<button type="button" class="tap row-clear"
+        ${a.status === "active" && a.held_by == null ? html`<button type="button" class="tap row-clear"
           title="This alarm never cleared. Clearing it by hand says nothing about the grouping."
           onClick=${() => onClear(a.id)}>clear</button>` : null}
       </td>`,

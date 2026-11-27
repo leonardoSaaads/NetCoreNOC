@@ -238,8 +238,9 @@ def case_view(
                 "name": o["name"],
                 "summary": text(o["summary"]) if o["summary"] else None,
                 "reads": text(o["summary"]) if o["summary"] else default,
-                # ADR #473: a customer's book opens from the case (the default is no customer).
-                "customer": not o.get("is_default", False),
+                # ADR #473: a customer's book opens from the case — the Default one's too, since
+                # ADR #507 made the default organization the Default customer.
+                "customer": True,
             }
             for o in organizations
         ]
